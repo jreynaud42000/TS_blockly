@@ -1,0 +1,2894 @@
+// un.js : Interface complète avec Animation du Texte
+import { genererFichierHexFinal } from './deux.js';
+
+try {
+    // ==========================================
+    // 0. OUTILS COMMUNS AUX GÉNÉRATEURS
+    // ==========================================
+
+    const P = Blockly.Python;
+
+    // Le panneau Grove est câblé en section 5 ; tant que ce n'est pas fait, le
+    // premier appel à updatePythonCode ne doit pas essayer de le rafraîchir.
+    let panneauGrovePret = false;
+
+    /**
+     * Déclare `from microbit import *`.
+     *
+     * À appeler dans TOUT générateur qui produit du code touchant à l'API de la
+     * carte (display, Image, button_a, accelerometer, compass, microphone,
+     * SoundEvent, Sound, pin_logo, pinN, temperature(), running_time(), sleep(),
+     * reset()). Sans cet import, le programme s'arrête au démarrage sur un
+     * NameError.
+     */
+    function importerMicrobit() {
+        P.definitions_['import_microbit'] = 'from microbit import *';
+    }
+
+    /** Déclare un module supplémentaire (audio, music, speech, radio, math, time, random). */
+    function importerModule(nom) {
+        P.definitions_['import_' + nom] = 'import ' + nom;
+    }
+
+    /** Une entrée convertie en texte : display et radio n'acceptent que des chaînes. */
+    function versTexte(block, nomEntree, defaut) {
+        return 'str(' + (P.valueToCode(block, nomEntree, P.ORDER_NONE) || (defaut || '""')) + ')';
+    }
+
+    // ==========================================
+    // 1. CRÉATION DE TOUS LES BLOCS MICRO:BIT
+    // ==========================================
+
+    // ---------- Temps ----------
+
+    Blockly.Blocks['attendre_temps'] = { init: function() {
+        this.appendValueInput("TEMPS").setCheck("Number").appendField("attendre");
+        this.appendDummyInput().appendField(new Blockly.FieldDropdown([
+            ["seconde.s", "s"], ["milliseconde.s", "ms"]
+        ]), "UNITE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(230);
+    }};
+    P.forBlock['attendre_temps'] = function(block) {
+        importerMicrobit();
+        const temps = P.valueToCode(block, 'TEMPS', P.ORDER_ATOMIC) || '0';
+        return block.getFieldValue('UNITE') === 's'
+            ? 'sleep(' + temps + ' * 1000)\n'
+            : 'sleep(' + temps + ')\n';
+    };
+
+    Blockly.Blocks['attendre_jusqua'] = { init: function() {
+        this.appendValueInput("CONDITION").setCheck("Boolean").appendField("attendre jusqu'à");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(230);
+    }};
+    P.forBlock['attendre_jusqua'] = function(block) {
+        importerMicrobit();
+        const condition = P.valueToCode(block, 'CONDITION', P.ORDER_ATOMIC) || 'False';
+        return 'while not (' + condition + '):\n' + P.INDENT + 'sleep(10)\n';
+    };
+
+    // Champs répartis sur trois lignes : sur une seule, le bloc faisait 539 px
+    // et imposait à lui seul la largeur du tiroir de la catégorie.
+    Blockly.Blocks['repeter_toutes_les'] = { init: function() {
+        this.appendDummyInput().appendField("répéter toutes les");
+        this.appendDummyInput()
+            .appendField(new Blockly.FieldNumber(0, 0), "H").appendField("h")
+            .appendField(new Blockly.FieldNumber(0, 0), "M").appendField("min");
+        this.appendDummyInput()
+            .appendField(new Blockly.FieldNumber(1, 0), "S").appendField("s")
+            .appendField(new Blockly.FieldNumber(0, 0), "MS").appendField("ms");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(230);
+    }};
+    P.forBlock['repeter_toutes_les'] = function(block) {
+        importerMicrobit();
+        const h = block.getFieldValue('H') || 0;
+        const m = block.getFieldValue('M') || 0;
+        const s = block.getFieldValue('S') || 0;
+        const ms = block.getFieldValue('MS') || 0;
+        const total = (h * 3600000) + (m * 60000) + (s * 1000) + Number(ms);
+        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
+        return 'while True:\n' + branche + P.INDENT + 'sleep(' + total + ')\n';
+    };
+
+    Blockly.Blocks['reset_chrono'] = { init: function() {
+        this.appendDummyInput().appendField("remettre le chronomètre à 0");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(230);
+    }};
+    P.forBlock['reset_chrono'] = function(block) {
+        importerMicrobit();
+        return '_timer_start = running_time()\n';
+    };
+
+    Blockly.Blocks['valeur_chrono'] = { init: function() {
+        this.appendDummyInput().appendField("valeur du chronomètre en")
+            .appendField(new Blockly.FieldDropdown([["(s)", "s"], ["(ms)", "ms"]]), "UNITE");
+        this.setOutput(true, "Number");
+        this.setColour(230);
+    }};
+    P.forBlock['valeur_chrono'] = function(block) {
+        importerMicrobit();
+        let code = '(running_time() - globals().get("_timer_start", 0))';
+        if (block.getFieldValue('UNITE') === 's') code += ' / 1000';
+        return [code, P.ORDER_ATOMIC];
+    };
+
+    // ---------- Affichage ----------
+
+    Blockly.Blocks['afficher_valeur'] = { init: function() {
+        this.appendValueInput("VALEUR").appendField("afficher");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(160);
+    }};
+    P.forBlock['afficher_valeur'] = function(block) {
+        importerMicrobit();
+        return 'display.show(' + versTexte(block, 'VALEUR') + ')\n';
+    };
+
+    Blockly.Blocks['faire_defiler'] = { init: function() {
+        this.appendValueInput("VALEUR").appendField("faire défiler");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(160);
+    }};
+    P.forBlock['faire_defiler'] = function(block) {
+        importerMicrobit();
+        return 'display.scroll(' + versTexte(block, 'VALEUR') + ')\n';
+    };
+
+    Blockly.Blocks['afficher_icone'] = { init: function() {
+        this.appendDummyInput().appendField("afficher l'icône")
+            .appendField(new Blockly.FieldDropdown([
+                ["Cœur", "HEART"], ["Heureux", "HAPPY"], ["Triste", "SAD"], ["Fantôme", "GHOST"]
+            ]), "ICONE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(160);
+    }};
+    P.forBlock['afficher_icone'] = function(block) {
+        importerMicrobit();
+        return 'display.show(Image.' + block.getFieldValue('ICONE') + ')\n';
+    };
+
+    Blockly.Blocks['afficher_image_matrice'] = { init: function() {
+        this.appendDummyInput().appendField("afficher l'image");
+        for (let y = 0; y < 5; y++) {
+            const ligne = this.appendDummyInput();
+            for (let x = 0; x < 5; x++) {
+                ligne.appendField(new Blockly.FieldCheckbox("FALSE"), "LED_" + x + "_" + y);
+            }
+        }
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(160);
+    }};
+    P.forBlock['afficher_image_matrice'] = function(block) {
+        importerMicrobit();
+        let image = "";
+        for (let y = 0; y < 5; y++) {
+            for (let x = 0; x < 5; x++) {
+                image += block.getFieldValue("LED_" + x + "_" + y) === 'TRUE' ? "9" : "0";
+            }
+            if (y < 4) image += ":";
+        }
+        return 'display.show(Image("' + image + '"))\n';
+    };
+
+    Blockly.Blocks['effacer_ecran'] = { init: function() {
+        this.appendDummyInput().appendField("effacer l'écran");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(160);
+    }};
+    P.forBlock['effacer_ecran'] = function(block) {
+        importerMicrobit();
+        return 'display.clear()\n';
+    };
+
+    // ---------- Blocs « lorsque … » ----------
+    //
+    // MicroPython n'a pas de système d'événements : ces blocs produisent une
+    // fonction, que la boucle construite en section 4 vient appeler. Tout nom
+    // `on_…` défini ici DOIT avoir son entrée correspondante dans GESTIONNAIRES,
+    // sans quoi le bloc reste sans effet.
+
+    Blockly.Blocks['lorsque_bouton'] = { init: function() {
+        this.appendDummyInput().appendField("lorsque le bouton")
+            .appendField(new Blockly.FieldDropdown([["A", "a"], ["B", "b"], ["A+B", "ab"]]), "BOUTON")
+            .appendField("est pressé");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(300);
+    }};
+    P.forBlock['lorsque_bouton'] = function(block) {
+        importerMicrobit();
+        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
+        return 'def on_button_pressed_' + block.getFieldValue('BOUTON') + '():\n' + branche;
+    };
+
+    Blockly.Blocks['lorsque_geste'] = { init: function() {
+        this.appendDummyInput().appendField("lorsque")
+            .appendField(new Blockly.FieldDropdown([
+                ["secouer", "shake"], ["logo vers le haut", "up"], ["logo vers le bas", "down"]
+            ]), "GESTE");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(300);
+    }};
+    P.forBlock['lorsque_geste'] = function(block) {
+        importerMicrobit();
+        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
+        return 'def on_gesture_' + block.getFieldValue('GESTE') + '():\n' + branche;
+    };
+
+    Blockly.Blocks['lorsque_broche'] = { init: function() {
+        this.appendDummyInput().appendField("lorsque la broche")
+            .appendField(new Blockly.FieldDropdown([["P0", "pin0"], ["P1", "pin1"], ["P2", "pin2"]]), "BROCHE")
+            .appendField("est")
+            .appendField(new Blockly.FieldDropdown([["activée", "touched"], ["relachée", "released"]]), "ETAT");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(300);
+    }};
+    P.forBlock['lorsque_broche'] = function(block) {
+        importerMicrobit();
+        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
+        return 'def on_pin_' + block.getFieldValue('BROCHE') + '_' + block.getFieldValue('ETAT') + '():\n' + branche;
+    };
+
+    Blockly.Blocks['lorsque_son_detecte'] = { init: function() {
+        this.appendDummyInput().appendField("lorsque le son")
+            .appendField(new Blockly.FieldDropdown([["bruyant", "LOUD"], ["faible", "QUIET"]]), "SON")
+            .appendField("est detecté");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(300);
+    }};
+    P.forBlock['lorsque_son_detecte'] = function(block) {
+        importerMicrobit();
+        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
+        return 'def on_sound_' + block.getFieldValue('SON') + '():\n' + branche;
+    };
+
+    Blockly.Blocks['lorsque_logo'] = { init: function() {
+        this.appendDummyInput().appendField("sur le logo")
+            .appendField(new Blockly.FieldDropdown([["appuyé", "touched"], ["relaché", "released"]]), "ACTION");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(300);
+    }};
+    P.forBlock['lorsque_logo'] = function(block) {
+        importerMicrobit();
+        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
+        return 'def on_logo_' + block.getFieldValue('ACTION') + '():\n' + branche;
+    };
+
+    // ---------- Entrées / Sorties ----------
+
+    /** Condition « bouton pressé », commune à deux blocs. */
+    function conditionBouton(bouton) {
+        if (bouton === 'a') return 'button_a.is_pressed()';
+        if (bouton === 'b') return 'button_b.is_pressed()';
+        return '(button_a.is_pressed() and button_b.is_pressed())';
+    }
+
+    Blockly.Blocks['si_bouton_appuye'] = { init: function() {
+        this.appendDummyInput().appendField("si le bouton")
+            .appendField(new Blockly.FieldDropdown([["A", "a"], ["B", "b"], ["A+B", "ab"]]), "BOUTON")
+            .appendField("est appuyé alors");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(210);
+    }};
+    P.forBlock['si_bouton_appuye'] = function(block) {
+        importerMicrobit();
+        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
+        return 'if ' + conditionBouton(block.getFieldValue('BOUTON')) + ':\n' + branche;
+    };
+
+    Blockly.Blocks['si_logo_touche'] = { init: function() {
+        this.appendDummyInput().appendField("si LOGO est touché alors");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(210);
+    }};
+    P.forBlock['si_logo_touche'] = function(block) {
+        importerMicrobit();
+        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
+        return 'if pin_logo.is_touched():\n' + branche;
+    };
+
+    Blockly.Blocks['si_secoue_alors'] = { init: function() {
+        this.appendDummyInput().appendField("si secoué alors");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(210);
+    }};
+    P.forBlock['si_secoue_alors'] = function(block) {
+        importerMicrobit();
+        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
+        return 'if accelerometer.was_gesture("shake"):\n' + branche;
+    };
+
+    Blockly.Blocks['bouton_est_appuye'] = { init: function() {
+        this.appendDummyInput().appendField("bouton")
+            .appendField(new Blockly.FieldDropdown([["A", "a"], ["B", "b"], ["A+B", "ab"]]), "BOUTON")
+            .appendField("est appuyé");
+        this.setOutput(true, "Boolean");
+        this.setColour(300);
+    }};
+    P.forBlock['bouton_est_appuye'] = function(block) {
+        importerMicrobit();
+        return [conditionBouton(block.getFieldValue('BOUTON')), P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['broche_est_pressee'] = { init: function() {
+        this.appendDummyInput().appendField("broche")
+            .appendField(new Blockly.FieldDropdown([["P0", "pin0"], ["P1", "pin1"], ["P2", "pin2"]]), "BROCHE")
+            .appendField("est pressée");
+        this.setOutput(true, "Boolean");
+        this.setColour(300);
+    }};
+    P.forBlock['broche_est_pressee'] = function(block) {
+        importerMicrobit();
+        return [block.getFieldValue('BROCHE') + '.is_touched()', P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['geste_est_actif'] = { init: function() {
+        this.appendDummyInput().appendField("geste")
+            .appendField(new Blockly.FieldDropdown([
+                ["secouer", "shake"], ["logo vers le haut", "up"], ["logo vers le bas", "down"]
+            ]), "GESTE")
+            .appendField("est actif");
+        this.setOutput(true, "Boolean");
+        this.setColour(300);
+    }};
+    P.forBlock['geste_est_actif'] = function(block) {
+        importerMicrobit();
+        return ['accelerometer.is_gesture("' + block.getFieldValue('GESTE') + '")', P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['logo_est_touche'] = { init: function() {
+        this.appendDummyInput().appendField("le logo est appuyé");
+        this.setOutput(true, "Boolean");
+        this.setColour(300);
+    }};
+    P.forBlock['logo_est_touche'] = function(block) {
+        importerMicrobit();
+        return ['pin_logo.is_touched()', P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['nombre_clics_bouton'] = { init: function() {
+        this.appendDummyInput().appendField("nombre de clics du bouton")
+            .appendField(new Blockly.FieldDropdown([["A", "a"], ["B", "b"]]), "BOUTON");
+        this.setOutput(true, "Number");
+        this.setColour(210);
+    }};
+    P.forBlock['nombre_clics_bouton'] = function(block) {
+        importerMicrobit();
+        return ['button_' + block.getFieldValue('BOUTON') + '.get_presses()', P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['reinitialiser_microbit'] = { init: function() {
+        this.appendDummyInput().appendField("[Micro:bit] réinitialiser la carte");
+        this.setPreviousStatement(true, null);
+        this.setColour(210);
+    }};
+    P.forBlock['reinitialiser_microbit'] = function(block) {
+        importerMicrobit();
+        return 'reset()\n';
+    };
+
+    // ---------- Capteurs ----------
+
+    Blockly.Blocks['capteur_acceleration'] = { init: function() {
+        this.appendDummyInput().appendField("accélération (mg)")
+            .appendField(new Blockly.FieldDropdown([["x", "x"], ["y", "y"], ["z", "z"], ["force", "strength"]]), "AXIS");
+        this.setOutput(true, "Number");
+        this.setColour(300);
+    }};
+    P.forBlock['capteur_acceleration'] = function(block) {
+        importerMicrobit();
+        const axe = block.getFieldValue('AXIS');
+        const code = axe === 'strength' ? 'accelerometer.get_strength()' : 'accelerometer.get_' + axe + '()';
+        return [code, P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['capteur_luminosite'] = { init: function() {
+        this.appendDummyInput().appendField("niveau d'intensité lumineuse");
+        this.setOutput(true, "Number");
+        this.setColour(300);
+    }};
+    P.forBlock['capteur_luminosite'] = function(block) {
+        importerMicrobit();
+        return ['display.read_light_level()', P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['capteur_boussole_direction'] = { init: function() {
+        this.appendDummyInput().appendField("direction de la boussole (°)");
+        this.setOutput(true, "Number");
+        this.setColour(300);
+    }};
+    P.forBlock['capteur_boussole_direction'] = function(block) {
+        importerMicrobit();
+        return ['compass.heading()', P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['capteur_boussole_force'] = { init: function() {
+        this.appendDummyInput().appendField("force magnétique (µT)")
+            .appendField(new Blockly.FieldDropdown([["x", "x"], ["y", "y"], ["z", "z"], ["force", "strength"]]), "AXIS");
+        this.setOutput(true, "Number");
+        this.setColour(300);
+    }};
+    P.forBlock['capteur_boussole_force'] = function(block) {
+        importerMicrobit();
+        const axe = block.getFieldValue('AXIS');
+        const code = axe === 'strength' ? 'compass.get_field_strength()' : 'compass.get_' + axe + '()';
+        return [code, P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['capteur_boussole_calibrer'] = { init: function() {
+        this.appendDummyInput().appendField("calibrer la boussole");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(300);
+    }};
+    P.forBlock['capteur_boussole_calibrer'] = function(block) {
+        importerMicrobit();
+        return 'compass.calibrate()\n';
+    };
+
+    Blockly.Blocks['capteur_temperature'] = { init: function() {
+        this.appendDummyInput().appendField("température (° C)");
+        this.setOutput(true, "Number");
+        this.setColour(300);
+    }};
+    P.forBlock['capteur_temperature'] = function(block) {
+        importerMicrobit();
+        return ['temperature()', P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['capteur_rotation'] = { init: function() {
+        this.appendDummyInput().appendField("rotation (°)")
+            .appendField(new Blockly.FieldDropdown([["pitch", "pitch"], ["roll", "roll"]]), "AXIS");
+        this.setOutput(true, "Number");
+        this.setColour(300);
+    }};
+    P.forBlock['capteur_rotation'] = function(block) {
+        importerMicrobit();
+        importerModule('math');
+        if (block.getFieldValue('AXIS') === 'pitch') {
+            P.definitions_['def_pitch'] =
+                'def get_pitch():\n' +
+                '    x, y, z = accelerometer.get_values()\n' +
+                '    return int(math.atan2(y, math.sqrt(x*x + z*z)) * 180 / math.pi)';
+            return ['get_pitch()', P.ORDER_ATOMIC];
+        }
+        P.definitions_['def_roll'] =
+            'def get_roll():\n' +
+            '    x, y, z = accelerometer.get_values()\n' +
+            '    return int(math.atan2(-x, z) * 180 / math.pi)';
+        return ['get_roll()', P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['temps_execution'] = { init: function() {
+        this.appendDummyInput().appendField("temps d'exécution")
+            .appendField(new Blockly.FieldDropdown([["(ms)", "ms"], ["(micros)", "us"]]), "UNITE");
+        this.setOutput(true, "Number");
+        this.setColour(300);
+    }};
+    P.forBlock['temps_execution'] = function(block) {
+        importerMicrobit();
+        if (block.getFieldValue('UNITE') === 'ms') {
+            return ['running_time()', P.ORDER_ATOMIC];
+        }
+        importerModule('time');
+        return ['time.ticks_us()', P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['gamme_accelerometre'] = { init: function() {
+        this.appendDummyInput().appendField("spécifier la gamme de l'acceleromètre")
+            .appendField(new Blockly.FieldDropdown([["1g", "1"], ["2g", "2"], ["4g", "4"], ["8g", "8"]]), "GAMME");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(300);
+    }};
+    P.forBlock['gamme_accelerometre'] = function(block) {
+        importerMicrobit();
+        return 'accelerometer.set_range(' + block.getFieldValue('GAMME') + ')\n';
+    };
+
+    Blockly.Blocks['micro_intensite_son'] = { init: function() {
+        this.appendDummyInput().appendField("niveau sonore");
+        this.setOutput(true, "Number");
+        this.setColour(300);
+    }};
+    P.forBlock['micro_intensite_son'] = function(block) {
+        importerMicrobit();
+        return ['microphone.sound_level()', P.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['micro_definir_seuil'] = { init: function() {
+        this.appendDummyInput().appendField("définit le seuil du son")
+            .appendField(new Blockly.FieldDropdown([["bruyant", "LOUD"], ["faible", "QUIET"]]), "SON")
+            .appendField("à");
+        this.appendValueInput("SEUIL").setCheck("Number");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(300);
+        this.setInputsInline(true);
+    }};
+    P.forBlock['micro_definir_seuil'] = function(block) {
+        importerMicrobit();
+        const seuil = P.valueToCode(block, 'SEUIL', P.ORDER_ATOMIC) || '128';
+        return 'microphone.set_threshold(SoundEvent.' + block.getFieldValue('SON') + ', ' + seuil + ')\n';
+    };
+
+    // ---------- Actionneurs (audio) ----------
+
+    Blockly.Blocks['audio_jouer'] = { init: function() {
+        this.appendDummyInput().appendField("[Audio] jouer la musique")
+            .appendField(new Blockly.FieldDropdown([
+                ["Giggle", "GIGGLE"], ["Happy", "HAPPY"], ["Hello", "HELLO"],
+                ["Sad", "SAD"], ["Twinkle", "TWINKLE"]
+            ]), "SON");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(330);
+    }};
+    P.forBlock['audio_jouer'] = function(block) {
+        importerMicrobit();          // `Sound` appartient au module microbit
+        importerModule('audio');
+        return 'audio.play(Sound.' + block.getFieldValue('SON') + ')\n';
+    };
+
+    Blockly.Blocks['audio_arreter'] = { init: function() {
+        this.appendDummyInput().appendField("[Audio] arrêter la musique");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(330);
+    }};
+    P.forBlock['audio_arreter'] = function(block) {
+        importerModule('audio');
+        return 'audio.stop()\n';
+    };
+
+    Blockly.Blocks['music_jouer_melodie'] = { init: function() {
+        this.appendDummyInput().appendField("[Music] jouer la mélodie")
+            .appendField(new Blockly.FieldDropdown([
+                ["Dadadadum", "DADADADUM"], ["Pirates", "PUNCHLINE"], ["Entertainer", "ENTERTAINER"]
+            ]), "MELODY");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(330);
+    }};
+    P.forBlock['music_jouer_melodie'] = function(block) {
+        importerModule('music');
+        return 'music.play(music.' + block.getFieldValue('MELODY') + ')\n';
+    };
+
+    Blockly.Blocks['speech_dire'] = { init: function() {
+        this.appendValueInput("TEXT").setCheck("String").appendField("[Speech] dire");
+        this.appendDummyInput()
+            .appendField("vitesse").appendField(new Blockly.FieldNumber(100, 0, 255), "SPEED");
+        this.appendDummyInput()
+            .appendField("hauteur").appendField(new Blockly.FieldNumber(100, 0, 255), "PITCH");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(330);
+    }};
+    P.forBlock['speech_dire'] = function(block) {
+        importerModule('speech');
+        const texte = P.valueToCode(block, 'TEXT', P.ORDER_ATOMIC) || '""';
+        return 'speech.say(' + texte + ', speed=' + block.getFieldValue('SPEED') +
+               ', pitch=' + block.getFieldValue('PITCH') + ')\n';
+    };
+
+    // ---------- Communication ----------
+
+    Blockly.Blocks['radio_activer'] = { init: function() {
+        this.appendDummyInput().appendField("allumer la radio");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(120);
+    }};
+    P.forBlock['radio_activer'] = function(block) {
+        importerModule('radio');
+        return 'radio.on()\n';
+    };
+
+    // Pas de setCheck sur l'entrée : on veut pouvoir envoyer un nombre (une
+    // température, un compteur). La conversion est faite par le générateur, car
+    // radio.send() n'accepte que des chaînes.
+    Blockly.Blocks['radio_envoyer_texte'] = { init: function() {
+        this.appendValueInput("MESSAGE").appendField("envoyer msg radio");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(120);
+    }};
+    P.forBlock['radio_envoyer_texte'] = function(block) {
+        importerModule('radio');
+        return 'radio.send(' + versTexte(block, 'MESSAGE') + ')\n';
+    };
+
+    Blockly.Blocks['boucle_infinie'] = { init: function() {
+        this.appendDummyInput().appendField("Répéter indéfiniment");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(120);
+    }};
+    P.forBlock['boucle_infinie'] = function(block) {
+        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
+        return 'while True:\n' + branche;
+    };
+
+    // ---------- Maths ----------
+
+    Blockly.Blocks['math_min_max'] = { init: function() {
+        this.appendValueInput("A").setCheck("Number")
+            .appendField(new Blockly.FieldDropdown([["min", "min"], ["max", "max"]]), "OP").appendField("de");
+        this.appendValueInput("B").setCheck("Number").appendField("et");
+        this.setOutput(true, "Number");
+        this.setColour(280);
+    }};
+    P.forBlock['math_min_max'] = function(block) {
+        const a = P.valueToCode(block, 'A', P.ORDER_NONE) || '0';
+        const b = P.valueToCode(block, 'B', P.ORDER_NONE) || '0';
+        return [block.getFieldValue('OP') + '(' + a + ', ' + b + ')', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['math_absolue'] = { init: function() {
+        this.appendValueInput("NUM").setCheck("Number").appendField("valeur absolue de");
+        this.setOutput(true, "Number");
+        this.setColour(280);
+    }};
+    P.forBlock['math_absolue'] = function(block) {
+        const num = P.valueToCode(block, 'NUM', P.ORDER_NONE) || '0';
+        return ['abs(' + num + ')', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['math_racine'] = { init: function() {
+        this.appendValueInput("NUM").setCheck("Number")
+            .appendField(new Blockly.FieldDropdown([["racine carrée", "sqrt"]]), "OP");
+        this.setOutput(true, "Number");
+        this.setColour(280);
+    }};
+    P.forBlock['math_racine'] = function(block) {
+        importerModule('math');
+        const num = P.valueToCode(block, 'NUM', P.ORDER_NONE) || '0';
+        return ['math.sqrt(' + num + ')', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['math_arrondi_custom'] = { init: function() {
+        this.appendValueInput("NUM").setCheck("Number")
+            .appendField(new Blockly.FieldDropdown([
+                ["arrondi", "round"], ["arrondi supérieur", "ceil"], ["arrondi inférieur", "floor"]
+            ]), "OP");
+        this.setOutput(true, "Number");
+        this.setColour(280);
+    }};
+    P.forBlock['math_arrondi_custom'] = function(block) {
+        const op = block.getFieldValue('OP');
+        const num = P.valueToCode(block, 'NUM', P.ORDER_NONE) || '0';
+        if (op === 'round') return ['round(' + num + ')', P.ORDER_FUNCTION_CALL];
+        importerModule('math');
+        return ['math.' + op + '(' + num + ')', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['math_random_bool'] = { init: function() {
+        this.appendDummyInput().appendField("choisir au hasard vrai ou faux");
+        this.setOutput(true, "Boolean");
+        this.setColour(280);
+    }};
+    P.forBlock['math_random_bool'] = function(block) {
+        importerModule('random');
+        return ['random.choice([True, False])', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['math_convert'] = { init: function() {
+        this.appendValueInput("NUM").setCheck("Number").appendField("convert");
+        this.appendDummyInput().appendField("from")
+            .appendField(new Blockly.FieldDropdown([
+                ["degrees to radians", "radians"], ["radians to degrees", "degrees"]
+            ]), "OP");
+        this.setOutput(true, "Number");
+        this.setColour(280);
+        this.setInputsInline(false);
+    }};
+    P.forBlock['math_convert'] = function(block) {
+        importerModule('math');
+        const num = P.valueToCode(block, 'NUM', P.ORDER_NONE) || '0';
+        return ['math.' + block.getFieldValue('OP') + '(' + num + ')', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['math_map'] = { init: function() {
+        this.appendValueInput("VAL").setCheck("Number").appendField("projeter");
+        this.appendValueInput("FROMLOW").setCheck("Number").appendField("de");
+        this.appendValueInput("FROMHIGH").setCheck("Number").appendField("et");
+        this.appendValueInput("TOLOW").setCheck("Number").appendField("à");
+        this.appendValueInput("TOHIGH").setCheck("Number").appendField("et");
+        this.setOutput(true, "Number");
+        this.setColour(280);
+        this.setInputsInline(false);
+    }};
+    P.forBlock['math_map'] = function(block) {
+        P.definitions_['def_map'] =
+            'def map_val(value, from_low, from_high, to_low, to_high):\n' +
+            '    return (value - from_low) * (to_high - to_low) / (from_high - from_low) + to_low';
+        const val = P.valueToCode(block, 'VAL', P.ORDER_NONE) || '0';
+        const fromL = P.valueToCode(block, 'FROMLOW', P.ORDER_NONE) || '0';
+        const fromH = P.valueToCode(block, 'FROMHIGH', P.ORDER_NONE) || '1023';
+        const toL = P.valueToCode(block, 'TOLOW', P.ORDER_NONE) || '0';
+        const toH = P.valueToCode(block, 'TOHIGH', P.ORDER_NONE) || '4';
+        return ['map_val(' + val + ', ' + fromL + ', ' + fromH + ', ' + toL + ', ' + toH + ')',
+                P.ORDER_FUNCTION_CALL];
+    };
+
+    // ---------- Grove ----------
+    //
+    // Les pilotes de ces modules ne sont pas dans le firmware : ils sont écrits
+    // dans le programme généré, via definitions_. Chacun est encadré par
+    //     # >>> pilote grove   …   # <<< pilote grove
+    // pour que le simulateur puisse les retirer et leur substituer ses propres
+    // objets : sur la carte on pilote de vraies broches, ici on dessine.
+
+    const COULEUR_GROVE = 285;
+
+    const BROCHES_GROVE = [
+        ["P0", "pin0"], ["P1", "pin1"], ["P2", "pin2"], ["P8", "pin8"],
+        ["P12", "pin12"], ["P13", "pin13"], ["P14", "pin14"],
+        ["P15", "pin15"], ["P16", "pin16"]
+    ];
+
+    const COULEURS_GROVE = [
+        ["rouge", "0xFF0000"], ["orange", "0xFF7F00"], ["jaune", "0xFFFF00"],
+        ["vert", "0x00FF00"], ["bleu", "0x0000FF"], ["indigo", "0x4B0082"],
+        ["violet", "0x8B00FF"], ["blanc", "0xFFFFFF"], ["noir", "0x000000"]
+    ];
+
+    const menuBroche = () => new Blockly.FieldDropdown(BROCHES_GROVE);
+    const menuCouleur = () => new Blockly.FieldDropdown(COULEURS_GROVE);
+
+    /** Enrobe un pilote des marqueurs que le simulateur reconnaît. */
+    function pilote(nom, lignes) {
+        P.definitions_['grove_' + nom] =
+            '# >>> pilote grove\n' + lignes.join('\n') + '\n# <<< pilote grove';
+    }
+
+    /**
+     * Registre des périphériques, créés à la première utilisation.
+     *
+     * Sans cela, oublier le bloc « définir … » donnait un NameError à
+     * l'exécution — invisible tant qu'on n'avait pas lancé le programme, et
+     * muet sur la carte. Chaque module a donc un accesseur qui le fabrique au
+     * besoin ; le bloc « définir … » ne sert plus qu'à choisir d'autres
+     * broches, et devient facultatif.
+     *
+     * Le registre est un dictionnaire : on peut y écrire depuis une fonction
+     * sans avoir à déclarer `global`.
+     */
+    function piloteRegistre() {
+        pilote('objets', [
+            '_grove_objets = {}',
+            '',
+            'def _grove_obj(nom, fabrique):',
+            '    if nom not in _grove_objets:',
+            '        _grove_objets[nom] = fabrique()',
+            '    return _grove_objets[nom]',
+        ]);
+    }
+
+    // --- Ruban RGB WS2813 (module neopixel intégré au firmware) ---
+
+    function piloteRuban() {
+        importerMicrobit();
+        importerModule('neopixel');
+        piloteRegistre();
+        // La luminosité est rangée dans une liste : on peut alors la changer
+        // depuis une fonction sans avoir à déclarer `global`.
+        pilote('teinte', [
+            '_grove_lum = [100]',
+            '',
+            'def _grove_teinte(couleur):',
+            '    f = _grove_lum[0] / 100',
+            '    return (int(((couleur >> 16) & 255) * f),',
+            '            int(((couleur >> 8) & 255) * f),',
+            '            int((couleur & 255) * f))',
+            '',
+            '# Par defaut : broche P1, 16 LED.',
+            'def _grove_ruban():',
+            '    return _grove_obj("ruban", lambda: neopixel.NeoPixel(pin1, 16))',
+        ]);
+    }
+
+    Blockly.Blocks['grove_ruban_definir'] = { init: function() {
+        this.appendDummyInput().appendField("définir le ruban RGB sur")
+            .appendField(menuBroche(), "BROCHE")
+            .appendField("avec").appendField(new Blockly.FieldNumber(16, 1, 64), "NB")
+            .appendField("LED(s)");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Facultatif : sans ce bloc, le ruban est pris sur P1 avec 16 LED.");
+    }};
+    P.forBlock['grove_ruban_definir'] = function(block) {
+        piloteRuban();
+        return '_grove_objets["ruban"] = neopixel.NeoPixel(' + block.getFieldValue('BROCHE') +
+               ', ' + block.getFieldValue('NB') + ')\n';
+    };
+
+    Blockly.Blocks['grove_ruban_couleur'] = { init: function() {
+        this.appendDummyInput().appendField("colorer tout le ruban en")
+            .appendField(menuCouleur(), "COULEUR");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_ruban_couleur'] = function(block) {
+        piloteRuban();
+        return '_grove_ruban().fill(_grove_teinte(' + block.getFieldValue('COULEUR') + '))\n_grove_ruban().show()\n';
+    };
+
+    Blockly.Blocks['grove_ruban_effacer'] = { init: function() {
+        this.appendDummyInput().appendField("éteindre le ruban");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_ruban_effacer'] = function(block) {
+        piloteRuban();
+        return '_grove_ruban().clear()\n';
+    };
+
+    Blockly.Blocks['grove_ruban_couleur_index'] = { init: function() {
+        this.appendValueInput("INDEX").setCheck("Number").appendField("colorer la LED n°");
+        this.appendDummyInput().appendField("en").appendField(menuCouleur(), "COULEUR");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_ruban_couleur_index'] = function(block) {
+        piloteRuban();
+        const index = P.valueToCode(block, 'INDEX', P.ORDER_NONE) || '0';
+        return '_grove_ruban()[' + index + '] = _grove_teinte(' + block.getFieldValue('COULEUR') + ')\n_grove_ruban().show()\n';
+    };
+
+    Blockly.Blocks['grove_ruban_effacer_index'] = { init: function() {
+        this.appendValueInput("INDEX").setCheck("Number").appendField("éteindre la LED n°");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_ruban_effacer_index'] = function(block) {
+        piloteRuban();
+        const index = P.valueToCode(block, 'INDEX', P.ORDER_NONE) || '0';
+        return '_grove_ruban()[' + index + '] = (0, 0, 0)\n_grove_ruban().show()\n';
+    };
+
+    Blockly.Blocks['grove_ruban_perso'] = { init: function() {
+        this.appendDummyInput().appendField("colorer tout le ruban en R");
+        this.appendValueInput("R").setCheck("Number");
+        this.appendValueInput("V").setCheck("Number").appendField("V");
+        this.appendValueInput("B").setCheck("Number").appendField("B");
+        this.setInputsInline(false);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_ruban_perso'] = function(block) {
+        piloteRuban();
+        const r = P.valueToCode(block, 'R', P.ORDER_NONE) || '0';
+        const v = P.valueToCode(block, 'V', P.ORDER_NONE) || '0';
+        const b = P.valueToCode(block, 'B', P.ORDER_NONE) || '0';
+        return '_grove_ruban().fill(_grove_teinte(((' + r + ') << 16) + ((' + v + ') << 8) + (' + b + ')))\n_grove_ruban().show()\n';
+    };
+
+    Blockly.Blocks['grove_ruban_perso_index'] = { init: function() {
+        this.appendValueInput("INDEX").setCheck("Number").appendField("colorer la LED n°");
+        this.appendValueInput("R").setCheck("Number").appendField("en R");
+        this.appendValueInput("V").setCheck("Number").appendField("V");
+        this.appendValueInput("B").setCheck("Number").appendField("B");
+        this.setInputsInline(false);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_ruban_perso_index'] = function(block) {
+        piloteRuban();
+        const index = P.valueToCode(block, 'INDEX', P.ORDER_NONE) || '0';
+        const r = P.valueToCode(block, 'R', P.ORDER_NONE) || '0';
+        const v = P.valueToCode(block, 'V', P.ORDER_NONE) || '0';
+        const b = P.valueToCode(block, 'B', P.ORDER_NONE) || '0';
+        return '_grove_ruban()[' + index + '] = _grove_teinte(((' + r + ') << 16) + ((' + v + ') << 8) + (' + b + '))\n_grove_ruban().show()\n';
+    };
+
+    Blockly.Blocks['grove_ruban_luminosite'] = { init: function() {
+        this.appendValueInput("NIVEAU").setCheck("Number").appendField("luminosité du ruban à");
+        this.appendDummyInput().appendField("%");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Le module neopixel n'a pas de réglage de luminosité : les couleurs sont atténuées avant envoi.");
+    }};
+    P.forBlock['grove_ruban_luminosite'] = function(block) {
+        piloteRuban();
+        const niveau = P.valueToCode(block, 'NIVEAU', P.ORDER_NONE) || '100';
+        return '_grove_lum[0] = max(0, min(100, ' + niveau + '))\n';
+    };
+
+    // --- Afficheur 4 digits (TM1637, protocole 2 fils) ---
+
+    function piloteAfficheur() {
+        importerMicrobit();
+        piloteRegistre();
+        pilote('tm1637', [
+            '_TM_SEG = (0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F)',
+            '',
+            'class _Afficheur4:',
+            '    def __init__(self, clk, dio):',
+            '        self.clk = clk',
+            '        self.dio = dio',
+            '        self.lum = 7',
+            '        self.pts = False',
+            '        self.tampon = [0, 0, 0, 0]',
+            '',
+            '    def _debut(self):',
+            '        self.dio.write_digital(1)',
+            '        self.clk.write_digital(1)',
+            '        self.dio.write_digital(0)',
+            '        self.clk.write_digital(0)',
+            '',
+            '    def _fin(self):',
+            '        self.clk.write_digital(0)',
+            '        self.dio.write_digital(0)',
+            '        self.clk.write_digital(1)',
+            '        self.dio.write_digital(1)',
+            '',
+            '    def _octet(self, valeur):',
+            '        for i in range(8):',
+            '            self.clk.write_digital(0)',
+            '            self.dio.write_digital((valeur >> i) & 1)',
+            '            self.clk.write_digital(1)',
+            '        # neuvieme front : acquittement de l afficheur',
+            '        self.clk.write_digital(0)',
+            '        self.dio.write_digital(1)',
+            '        self.clk.write_digital(1)',
+            '        self.clk.write_digital(0)',
+            '',
+            '    def _envoyer(self):',
+            '        self._debut(); self._octet(0x40); self._fin()',
+            '        self._debut(); self._octet(0xC0)',
+            '        for i in range(4):',
+            '            v = self.tampon[i]',
+            '            if i == 1 and self.pts:',
+            '                v = v | 0x80',
+            '            self._octet(v)',
+            '        self._fin()',
+            '        self._debut(); self._octet(0x88 | (self.lum & 7)); self._fin()',
+            '',
+            '    def effacer(self):',
+            '        self.tampon = [0, 0, 0, 0]',
+            '        self._envoyer()',
+            '',
+            '    def chiffre(self, position, valeur):',
+            '        position = max(0, min(3, int(position)))',
+            '        valeur = int(valeur)',
+            '        self.tampon[position] = _TM_SEG[valeur % 10] if 0 <= valeur <= 9 else 0',
+            '        self._envoyer()',
+            '',
+            '    def nombre(self, valeur):',
+            '        valeur = int(valeur)',
+            '        negatif = valeur < 0',
+            '        valeur = abs(valeur) % 10000',
+            '        for i in range(3, -1, -1):',
+            '            self.tampon[i] = _TM_SEG[valeur % 10]',
+            '            valeur = valeur // 10',
+            '        if negatif:',
+            '            self.tampon[0] = 0x40',
+            '        self._envoyer()',
+            '',
+            '    def points(self, actif):',
+            '        self.pts = bool(actif)',
+            '        self._envoyer()',
+            '',
+            '    def luminosite(self, niveau):',
+            '        self.lum = max(0, min(7, int(niveau)))',
+            '        self._envoyer()',
+            '',
+            '# Par defaut : CLK sur P0, DIO sur P1.',
+            'def _grove_afficheur():',
+            '    return _grove_obj("afficheur", lambda: _Afficheur4(pin0, pin1))',
+        ]);
+    }
+
+    Blockly.Blocks['grove_4d_definir'] = { init: function() {
+        this.appendDummyInput().appendField("définir l'afficheur 4 digits : CLK")
+            .appendField(menuBroche(), "CLK")
+            .appendField("DIO").appendField(menuBroche(), "DIO");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Facultatif : sans ce bloc, CLK est pris sur P0 et DIO sur P1.");
+    }};
+    P.forBlock['grove_4d_definir'] = function(block) {
+        piloteAfficheur();
+        return '_grove_objets["afficheur"] = _Afficheur4(' + block.getFieldValue('CLK') +
+               ', ' + block.getFieldValue('DIO') + ')\n';
+    };
+
+    Blockly.Blocks['grove_4d_nombre'] = { init: function() {
+        this.appendValueInput("VALEUR").setCheck("Number").appendField("afficher le nombre");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_4d_nombre'] = function(block) {
+        piloteAfficheur();
+        return '_grove_afficheur().nombre(' + (P.valueToCode(block, 'VALEUR', P.ORDER_NONE) || '0') + ')\n';
+    };
+
+    Blockly.Blocks['grove_4d_chiffre'] = { init: function() {
+        this.appendValueInput("VALEUR").setCheck("Number").appendField("afficher le chiffre");
+        this.appendValueInput("POSITION").setCheck("Number").appendField("à la position");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_4d_chiffre'] = function(block) {
+        piloteAfficheur();
+        const valeur = P.valueToCode(block, 'VALEUR', P.ORDER_NONE) || '0';
+        const position = P.valueToCode(block, 'POSITION', P.ORDER_NONE) || '0';
+        return '_grove_afficheur().chiffre(' + position + ', ' + valeur + ')\n';
+    };
+
+    Blockly.Blocks['grove_4d_points'] = { init: function() {
+        this.appendDummyInput().appendField(new Blockly.FieldDropdown([
+            ["allumer", "True"], ["éteindre", "False"]
+        ]), "ETAT").appendField("les deux points");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_4d_points'] = function(block) {
+        piloteAfficheur();
+        return '_grove_afficheur().points(' + block.getFieldValue('ETAT') + ')\n';
+    };
+
+    Blockly.Blocks['grove_4d_luminosite'] = { init: function() {
+        this.appendValueInput("NIVEAU").setCheck("Number").appendField("luminosité de l'afficheur à");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("De 0 (le plus faible) à 7 (le plus fort).");
+    }};
+    P.forBlock['grove_4d_luminosite'] = function(block) {
+        piloteAfficheur();
+        return '_grove_afficheur().luminosite(' + (P.valueToCode(block, 'NIVEAU', P.ORDER_NONE) || '7') + ')\n';
+    };
+
+    Blockly.Blocks['grove_4d_effacer'] = { init: function() {
+        this.appendDummyInput().appendField("effacer l'afficheur");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_4d_effacer'] = function(block) {
+        piloteAfficheur();
+        return '_grove_afficheur().effacer()\n';
+    };
+
+    // --- Télémètre à ultrasons (un seul fil, déclenchement puis écho) ---
+
+    function piloteUltrason() {
+        importerMicrobit();
+        importerModule('machine');
+        importerModule('utime');
+        pilote('ultrason', [
+            'def _grove_echo_us(broche):',
+            '    broche.write_digital(0)',
+            '    utime.sleep_us(2)',
+            '    broche.write_digital(1)',
+            '    utime.sleep_us(10)',
+            '    broche.write_digital(0)',
+            '    broche.set_pull(broche.NO_PULL)',
+            '    # 30 ms de patience : au-dela, plus rien ne revient (~5 m)',
+            '    return machine.time_pulse_us(broche, 1, 30000)',
+            '',
+            'def _grove_distance_cm(broche):',
+            '    duree = _grove_echo_us(broche)',
+            '    return 0 if duree < 0 else duree // 58',
+            '',
+            'def _grove_distance_pouces(broche):',
+            '    duree = _grove_echo_us(broche)',
+            '    return 0 if duree < 0 else duree // 148',
+        ]);
+    }
+
+    Blockly.Blocks['grove_ultrason_cm'] = { init: function() {
+        this.appendDummyInput().appendField("distance (cm) sur").appendField(menuBroche(), "BROCHE");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_ultrason_cm'] = function(block) {
+        piloteUltrason();
+        return ['_grove_distance_cm(' + block.getFieldValue('BROCHE') + ')', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['grove_ultrason_pouces'] = { init: function() {
+        this.appendDummyInput().appendField("distance (pouces) sur").appendField(menuBroche(), "BROCHE");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_ultrason_pouces'] = function(block) {
+        piloteUltrason();
+        return ['_grove_distance_pouces(' + block.getFieldValue('BROCHE') + ')', P.ORDER_FUNCTION_CALL];
+    };
+
+    // --- Joystick (deux axes analogiques, appui = axe X au plancher) ---
+
+    function piloteJoystick() {
+        importerMicrobit();
+        pilote('joystick', [
+            'def _grove_joystick(bx, by, direction):',
+            '    x = bx.read_analog()',
+            '    y = by.read_analog()',
+            '    if direction == "gauche":',
+            '        return x < 350',
+            '    if direction == "droite":',
+            '        return x > 700',
+            '    if direction == "bas":',
+            '        return y < 350',
+            '    if direction == "haut":',
+            '        return y > 700',
+            '    return 350 <= x <= 700 and 350 <= y <= 700',
+        ]);
+    }
+
+    Blockly.Blocks['grove_joystick_valeur'] = { init: function() {
+        this.appendDummyInput().appendField("valeur du joystick sur").appendField(menuBroche(), "BROCHE");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("De 0 à 1023. Un axe par broche.");
+    }};
+    P.forBlock['grove_joystick_valeur'] = function(block) {
+        importerMicrobit();
+        return [block.getFieldValue('BROCHE') + '.read_analog()', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['grove_joystick_direction'] = { init: function() {
+        this.appendDummyInput().appendField("joystick X").appendField(menuBroche(), "X")
+            .appendField("Y").appendField(menuBroche(), "Y")
+            .appendField("vers").appendField(new Blockly.FieldDropdown([
+                ["le haut", "haut"], ["le bas", "bas"],
+                ["la gauche", "gauche"], ["la droite", "droite"], ["le centre", "centre"]
+            ]), "DIRECTION");
+        this.setOutput(true, "Boolean");
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_joystick_direction'] = function(block) {
+        piloteJoystick();
+        return ['_grove_joystick(' + block.getFieldValue('X') + ', ' + block.getFieldValue('Y') +
+                ', "' + block.getFieldValue('DIRECTION') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['grove_joystick_bouton'] = { init: function() {
+        this.appendDummyInput().appendField("bouton du joystick sur")
+            .appendField(menuBroche(), "BROCHE").appendField("pressé");
+        this.setOutput(true, "Boolean");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("L'appui sur le manche tire l'axe X presque à zéro.");
+    }};
+    P.forBlock['grove_joystick_bouton'] = function(block) {
+        importerMicrobit();
+        return ['(' + block.getFieldValue('BROCHE') + '.read_analog() < 250)', P.ORDER_ATOMIC];
+    };
+
+    // --- Capteur de gestes PAJ7620 (I2C) ---
+    //
+    // Table d'initialisation et registres repris de la bibliotheque Seeed
+    // (Gesture_PAJ7620, src/paj7620.h) : 50 registres, adresse 0x73, resultats
+    // en 0x43 (8 gestes) et 0x44 (le geste « vague »).
+
+    const GESTES_PAJ = [
+        ["vers le haut", "haut"], ["vers le bas", "bas"],
+        ["vers la gauche", "gauche"], ["vers la droite", "droite"],
+        ["vers l'avant", "avant"], ["vers l'arrière", "arriere"],
+        ["sens horaire", "horaire"], ["sens antihoraire", "antihoraire"],
+        ["vague", "vague"]
+    ];
+
+    function piloteGestes() {
+        importerMicrobit();
+        piloteRegistre();
+        pilote('paj7620', [
+            '_PAJ_ADR = 0x73',
+            '_PAJ_INIT = (',
+            '    (0xEF, 0x00), (0x37, 0x07), (0x38, 0x17), (0x39, 0x06), (0x42, 0x01),',
+            '    (0x46, 0x2D), (0x47, 0x0F), (0x48, 0x3C), (0x49, 0x00), (0x4A, 0x1E),',
+            '    (0x4C, 0x20), (0x51, 0x10), (0x5E, 0x10), (0x60, 0x27), (0x80, 0x42),',
+            '    (0x81, 0x44), (0x82, 0x04), (0x8B, 0x01), (0x90, 0x06), (0x95, 0x0A),',
+            '    (0x96, 0x0C), (0x97, 0x05), (0x9A, 0x14), (0x9C, 0x3F), (0xA5, 0x19),',
+            '    (0xCC, 0x19), (0xCD, 0x0B), (0xCE, 0x13), (0xCF, 0x64), (0xD0, 0x21),',
+            '    (0xEF, 0x01), (0x02, 0x0F), (0x03, 0x10), (0x04, 0x02), (0x25, 0x01),',
+            '    (0x27, 0x39), (0x28, 0x7F), (0x29, 0x08), (0x3E, 0xFF), (0x5E, 0x3D),',
+            '    (0x65, 0x96), (0x67, 0x97), (0x69, 0xCD), (0x6A, 0x01), (0x6D, 0x2C),',
+            '    (0x6E, 0x01), (0x72, 0x01), (0x73, 0x35), (0x77, 0x01), (0xEF, 0x00),',
+            ')',
+            '',
+            '# bit 0 a 7 du registre 0x43, puis bit 0 du registre 0x44',
+            '_PAJ_NOMS = ("haut", "bas", "gauche", "droite",',
+            '             "avant", "arriere", "horaire", "antihoraire")',
+            '',
+            'class _CapteurGestes:',
+            '    def __init__(self):',
+            '        i2c.init()',
+            '        # Reveil du capteur : la premiere lecture echoue souvent.',
+            '        try:',
+            '            i2c.write(_PAJ_ADR, bytes([0x00]))',
+            '            i2c.read(_PAJ_ADR, 1)',
+            '        except OSError:',
+            '            pass',
+            '        sleep(5)',
+            '        for registre, valeur in _PAJ_INIT:',
+            '            i2c.write(_PAJ_ADR, bytes([registre, valeur]))',
+            '',
+            '    def lire(self):',
+            '        try:',
+            '            i2c.write(_PAJ_ADR, bytes([0x43]))',
+            '            drapeaux = i2c.read(_PAJ_ADR, 2)',
+            '        except OSError:',
+            '            return ""',
+            '        bas = drapeaux[0]',
+            '        for i in range(8):',
+            '            if bas & (1 << i):',
+            '                return _PAJ_NOMS[i]',
+            '        if drapeaux[1] & 1:',
+            '            return "vague"',
+            '        return ""',
+            '',
+            'def _grove_gestes():',
+            '    return _grove_obj("gestes", _CapteurGestes)',
+        ]);
+    }
+
+    Blockly.Blocks['grove_gestes_init'] = { init: function() {
+        this.appendDummyInput().appendField("initialiser le capteur de gestes");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Facultatif : le capteur s'initialise à la première lecture.");
+    }};
+    P.forBlock['grove_gestes_init'] = function(block) {
+        piloteGestes();
+        return '_grove_objets["gestes"] = _CapteurGestes()\n';
+    };
+
+    Blockly.Blocks['grove_gestes_lire'] = { init: function() {
+        this.appendDummyInput().appendField("geste détecté");
+        this.setOutput(true, "String");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Texte vide si aucun geste depuis la dernière lecture.");
+    }};
+    P.forBlock['grove_gestes_lire'] = function(block) {
+        piloteGestes();
+        return ['_grove_gestes().lire()', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['grove_gestes_est'] = { init: function() {
+        this.appendDummyInput().appendField("le geste détecté est")
+            .appendField(new Blockly.FieldDropdown(GESTES_PAJ), "GESTE");
+        this.setOutput(true, "Boolean");
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_gestes_est'] = function(block) {
+        piloteGestes();
+        return ['(_grove_gestes().lire() == "' + block.getFieldValue('GESTE') + '")', P.ORDER_ATOMIC];
+    };
+
+    // ---------- Grove : modules I2C ----------
+    //
+    // Adresses, trames et formules reprises des bibliotheques Seeed
+    // (pxt-grove : sensors/AHT20.ts, blocks/GroveLCD1602v1.ts,
+    // sensors/VEML6040.ts, sensors/DRV8830.ts, sensors/SCD30.ts,
+    // sensors/SCD41.ts). Meme encadrement « pilote grove » que plus haut.
+
+    /** CRC8 Sensirion (polynome 0x31, valeur initiale 0xFF), commun à AHT20 et SCD. */
+    function piloteCrc8() {
+        pilote('crc8', [
+            'def _grove_crc8(donnees):',
+            '    crc = 0xFF',
+            '    for octet in donnees:',
+            '        crc ^= octet',
+            '        for _ in range(8):',
+            '            if crc & 0x80:',
+            '                crc = ((crc << 1) ^ 0x31) & 0xFF',
+            '            else:',
+            '                crc = (crc << 1) & 0xFF',
+            '    return crc',
+        ]);
+    }
+
+    // --- Température & humidité : AHT20, et DHT20 qui embarque la même puce ---
+
+    function piloteTempHum() {
+        importerMicrobit();
+        piloteRegistre();
+        piloteCrc8();
+        pilote('aht20', [
+            'class _CapteurTH:',
+            '    ADR = 0x38',
+            '',
+            '    def __init__(self):',
+            '        i2c.init()',
+            '        sleep(40)',
+            '        i2c.write(self.ADR, bytes([0xBE, 0x08, 0x00]))',
+            '        sleep(10)',
+            '',
+            '    def _mesurer(self):',
+            '        i2c.write(self.ADR, bytes([0xAC, 0x33, 0x00]))',
+            '        sleep(80)',
+            '        t = i2c.read(self.ADR, 7)',
+            '        # Le 7e octet controle les 6 premiers : mesure rejetee si faux.',
+            '        if _grove_crc8(t[0:6]) != t[6]:',
+            '            return None',
+            '        return t',
+            '',
+            '    def humidite(self):',
+            '        t = self._mesurer()',
+            '        if t is None:',
+            '            return -1',
+            '        brut = (t[1] << 12) + (t[2] << 4) + (t[3] >> 4)',
+            '        return brut * 100 / 1048576',
+            '',
+            '    def temperature(self):',
+            '        t = self._mesurer()',
+            '        if t is None:',
+            '            return -1',
+            '        brut = ((t[3] & 0x0F) << 16) + (t[4] << 8) + t[5]',
+            '        return brut * 200 / 1048576 - 50',
+            '',
+            'def _grove_th():',
+            '    return _grove_obj("th", _CapteurTH)',
+        ]);
+    }
+
+    Blockly.Blocks['grove_th_init'] = { init: function() {
+        this.appendDummyInput().appendField("initialiser le capteur température & humidité");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("AHT20 ou DHT20 : même puce, adresse I²C 0x38. Facultatif.");
+    }};
+    P.forBlock['grove_th_init'] = function(block) {
+        piloteTempHum();
+        return '_grove_objets["th"] = _CapteurTH()\n';
+    };
+
+    Blockly.Blocks['grove_th_mesure'] = { init: function() {
+        this.appendDummyInput().appendField("capteur T&H :")
+            .appendField(new Blockly.FieldDropdown([
+                ["température (°C)", "c"], ["température (°F)", "f"], ["humidité (%)", "h"]
+            ]), "GRANDEUR");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_th_mesure'] = function(block) {
+        piloteTempHum();
+        const g = block.getFieldValue('GRANDEUR');
+        if (g === 'h') return ['_grove_th().humidite()', P.ORDER_FUNCTION_CALL];
+        if (g === 'f') return ['(_grove_th().temperature() * 9 / 5 + 32)', P.ORDER_ATOMIC];
+        return ['_grove_th().temperature()', P.ORDER_FUNCTION_CALL];
+    };
+
+    // --- Écran LCD 16x2 v1 (JHD1802) ---
+
+    function piloteLcd() {
+        importerMicrobit();
+        piloteRegistre();
+        pilote('lcd1602', [
+            'class _EcranLCD:',
+            '    ADR = 0x3E',
+            '',
+            '    def __init__(self):',
+            '        i2c.init()',
+            '        self.controle = 0x04',
+            '        sleep(50)',
+            '        self._commande(0x28)                       # 2 lignes, 5x8',
+            '        self._commande(0x08 | self.controle)       # affichage allume',
+            '        self._commande(0x06)                       # avance du curseur',
+            '        self.effacer()',
+            '',
+            '    def _commande(self, valeur):',
+            '        i2c.write(self.ADR, bytes([0x80, valeur]))',
+            '',
+            '    def _donnee(self, valeur):',
+            '        i2c.write(self.ADR, bytes([0x40, valeur]))',
+            '',
+            '    def effacer(self):',
+            '        self._commande(0x01)',
+            '        sleep(2)',
+            '',
+            '    def allumer(self):',
+            '        self.controle = self.controle | 0x04',
+            '        self._commande(0x08 | self.controle)',
+            '',
+            '    def eteindre(self):',
+            '        self.controle = self.controle & 0xFB',
+            '        self._commande(0x08 | self.controle)',
+            '',
+            '    def texte(self, message, x, y):',
+            '        x = max(0, min(15, int(x)))',
+            '        y = max(0, min(1, int(y)))',
+            '        self._commande((x | 0x80) if y == 0 else (x | 0xC0))',
+            '        for c in str(message)[:16 - x]:',
+            '            self._donnee(ord(c))',
+            '',
+            'def _grove_lcd():',
+            '    return _grove_obj("lcd", _EcranLCD)',
+        ]);
+    }
+
+    Blockly.Blocks['grove_lcd_init'] = { init: function() {
+        this.appendDummyInput().appendField("initialiser l'écran LCD 16x2");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Adresse I²C 0x3E. Facultatif : l'écran s'initialise à la première utilisation.");
+    }};
+    P.forBlock['grove_lcd_init'] = function(block) {
+        piloteLcd();
+        return '_grove_objets["lcd"] = _EcranLCD()\n';
+    };
+
+    Blockly.Blocks['grove_lcd_texte'] = { init: function() {
+        this.appendValueInput("TEXTE").appendField("LCD : afficher");
+        this.appendValueInput("X").setCheck("Number").appendField("en x");
+        this.appendValueInput("Y").setCheck("Number").appendField("y");
+        this.setInputsInline(false);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("x de 0 à 15, y de 0 à 1.");
+    }};
+    P.forBlock['grove_lcd_texte'] = function(block) {
+        piloteLcd();
+        const x = P.valueToCode(block, 'X', P.ORDER_NONE) || '0';
+        const y = P.valueToCode(block, 'Y', P.ORDER_NONE) || '0';
+        return '_grove_lcd().texte(' + versTexte(block, 'TEXTE') + ', ' + x + ', ' + y + ')\n';
+    };
+
+    Blockly.Blocks['grove_lcd_effacer'] = { init: function() {
+        this.appendDummyInput().appendField("LCD : effacer");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_lcd_effacer'] = function(block) {
+        piloteLcd();
+        return '_grove_lcd().effacer()\n';
+    };
+
+    Blockly.Blocks['grove_lcd_alimenter'] = { init: function() {
+        this.appendDummyInput().appendField("LCD :")
+            .appendField(new Blockly.FieldDropdown([
+                ["allumer", "allumer"], ["éteindre", "eteindre"]
+            ]), "ETAT").appendField("l'affichage");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_lcd_alimenter'] = function(block) {
+        piloteLcd();
+        return '_grove_lcd().' + block.getFieldValue('ETAT') + '()\n';
+    };
+
+    // --- Capteur de couleur VEML6040 ---
+
+    function piloteCouleur() {
+        importerMicrobit();
+        piloteRegistre();
+        pilote('veml6040', [
+            'class _CapteurCouleur:',
+            '    ADR = 0x10',
+            '    CANAUX = {"rouge": 0x08, "vert": 0x09, "bleu": 0x0A, "blanc": 0x0B}',
+            '',
+            '    def __init__(self):',
+            '        i2c.init()',
+            '        # Configuration : mesure continue, integration 40 ms.',
+            '        i2c.write(self.ADR, bytes([0x00, 0x00, 0x00]))',
+            '        sleep(50)',
+            '',
+            '    def lire(self, canal):',
+            '        i2c.write(self.ADR, bytes([self.CANAUX[canal]]))',
+            '        t = i2c.read(self.ADR, 2)',
+            '        return t[0] + (t[1] << 8)   # 16 bits, octet de poids faible en tete',
+            '',
+            'def _grove_couleur():',
+            '    return _grove_obj("couleur", _CapteurCouleur)',
+        ]);
+    }
+
+    Blockly.Blocks['grove_couleur_init'] = { init: function() {
+        this.appendDummyInput().appendField("initialiser le capteur de couleur");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("VEML6040, adresse I²C 0x10. Facultatif.");
+    }};
+    P.forBlock['grove_couleur_init'] = function(block) {
+        piloteCouleur();
+        return '_grove_objets["couleur"] = _CapteurCouleur()\n';
+    };
+
+    Blockly.Blocks['grove_couleur_lire'] = { init: function() {
+        this.appendDummyInput().appendField("capteur de couleur : canal")
+            .appendField(new Blockly.FieldDropdown([
+                ["rouge", "rouge"], ["vert", "vert"], ["bleu", "bleu"], ["blanc", "blanc"]
+            ]), "CANAL");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Valeur brute sur 16 bits.");
+    }};
+    P.forBlock['grove_couleur_lire'] = function(block) {
+        piloteCouleur();
+        return ['_grove_couleur().lire("' + block.getFieldValue('CANAL') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    // --- Pilote moteur DRV8830 (deux canaux, deux adresses) ---
+
+    function piloteMoteur() {
+        importerMicrobit();
+        pilote('drv8830', [
+            '# Canal 1 : adresse 8 bits 0xCA, canal 2 : 0xC0, decalees d un bit.',
+            '_DRV_ADR = {1: 0x65, 2: 0x60}',
+            '',
+            'def _grove_moteur_ecrire(canal, registre, valeur):',
+            '    i2c.init()',
+            '    i2c.write(_DRV_ADR[canal], bytes([registre, valeur]))',
+            '',
+            'def _grove_moteur_vitesse(canal, vitesse):',
+            '    vitesse = max(-63, min(63, int(vitesse)))',
+            '    _grove_moteur_ecrire(canal, 0x01, 0x80)   # effacer un defaut en attente',
+            '    sens = 0x01 if vitesse < 0 else 0x02',
+            '    _grove_moteur_ecrire(canal, 0x00, ((abs(vitesse) & 0x3F) << 2) | sens)',
+            '',
+            'def _grove_moteur_arret(canal):',
+            '    _grove_moteur_ecrire(canal, 0x00, 0x00)',
+            '',
+            'def _grove_moteur_frein(canal):',
+            '    _grove_moteur_ecrire(canal, 0x00, 0x03)',
+            '',
+            'def _grove_moteur_effacer_defaut(canal):',
+            '    _grove_moteur_ecrire(canal, 0x01, 0x80)',
+            '',
+            'def _grove_moteur_defaut(canal):',
+            '    i2c.init()',
+            '    i2c.write(_DRV_ADR[canal], bytes([0x01]))',
+            '    return i2c.read(_DRV_ADR[canal], 1)[0]',
+        ]);
+    }
+
+    const menuCanalMoteur = () => new Blockly.FieldDropdown([["1", "1"], ["2", "2"]]);
+
+    Blockly.Blocks['grove_moteur_vitesse'] = { init: function() {
+        this.appendValueInput("VITESSE").setCheck("Number")
+            .appendField("moteur canal").appendField(menuCanalMoteur(), "CANAL")
+            .appendField("vitesse");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("De -63 à 63. Négatif pour tourner à l'envers.");
+    }};
+    P.forBlock['grove_moteur_vitesse'] = function(block) {
+        piloteMoteur();
+        const v = P.valueToCode(block, 'VITESSE', P.ORDER_NONE) || '0';
+        return '_grove_moteur_vitesse(' + block.getFieldValue('CANAL') + ', ' + v + ')\n';
+    };
+
+    Blockly.Blocks['grove_moteur_action'] = { init: function() {
+        this.appendDummyInput()
+            .appendField(new Blockly.FieldDropdown([
+                ["arrêter", "arret"], ["freiner", "frein"], ["effacer le défaut de", "effacer_defaut"]
+            ]), "ACTION")
+            .appendField("le moteur canal").appendField(menuCanalMoteur(), "CANAL");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_moteur_action'] = function(block) {
+        piloteMoteur();
+        return '_grove_moteur_' + block.getFieldValue('ACTION') +
+               '(' + block.getFieldValue('CANAL') + ')\n';
+    };
+
+    Blockly.Blocks['grove_moteur_defaut'] = { init: function() {
+        this.appendDummyInput().appendField("défaut du moteur canal").appendField(menuCanalMoteur(), "CANAL");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("0 si tout va bien.");
+    }};
+    P.forBlock['grove_moteur_defaut'] = function(block) {
+        piloteMoteur();
+        return ['_grove_moteur_defaut(' + block.getFieldValue('CANAL') + ')', P.ORDER_FUNCTION_CALL];
+    };
+
+    // --- Capteurs de CO2 SCD30 et SCD41 ---
+
+    function piloteScd30() {
+        importerMicrobit();
+        piloteRegistre();
+        importerModule('ustruct');
+        piloteCrc8();
+        pilote('scd30', [
+            'class _CapteurSCD30:',
+            '    ADR = 0x61',
+            '',
+            '    def __init__(self):',
+            '        i2c.init()',
+            '        self._commande(0x0010, 0x0000)   # mesure continue',
+            '        sleep(20)',
+            '',
+            '    def _commande(self, commande, valeur):',
+            '        trame = bytes([commande >> 8, commande & 0xFF, valeur >> 8, valeur & 0xFF])',
+            '        i2c.write(self.ADR, trame + bytes([_grove_crc8(trame[2:4])]))',
+            '',
+            '    def _pret(self):',
+            '        i2c.write(self.ADR, bytes([0x02, 0x02]))',
+            '        sleep(3)',
+            '        t = i2c.read(self.ADR, 3)',
+            '        return ((t[0] << 8) + t[1]) != 0',
+            '',
+            '    def lire(self, grandeur):',
+            '        if not self._pret():',
+            '            return -1',
+            '        i2c.write(self.ADR, bytes([0x03, 0x00]))',
+            '        sleep(3)',
+            '        t = i2c.read(self.ADR, 18)',
+            '        # Trois flottants, chacun en deux moities suivies de leur CRC.',
+            '        depart = {"co2": 0, "temperature": 6, "humidite": 12}[grandeur]',
+            '        d = depart',
+            '        return ustruct.unpack(">f", bytes([t[d], t[d+1], t[d+3], t[d+4]]))[0]',
+            '',
+            'def _grove_scd30():',
+            '    return _grove_obj("scd30", _CapteurSCD30)',
+        ]);
+    }
+
+    function piloteScd41() {
+        importerMicrobit();
+        piloteRegistre();
+        pilote('scd41', [
+            'class _CapteurSCD41:',
+            '    ADR = 0x62',
+            '',
+            '    def __init__(self):',
+            '        i2c.init()',
+            '        self._commande(0x3F86)   # arreter une mesure periodique en cours',
+            '        sleep(500)',
+            '        self._commande(0x3646)   # reinitialiser',
+            '        sleep(30)',
+            '        self._commande(0x21B1)   # demarrer la mesure periodique',
+            '        sleep(10)',
+            '',
+            '    def _commande(self, commande):',
+            '        i2c.write(self.ADR, bytes([commande >> 8, commande & 0xFF]))',
+            '',
+            '    def _pret(self):',
+            '        self._commande(0xE4B8)',
+            '        sleep(2)',
+            '        t = i2c.read(self.ADR, 3)',
+            '        return (((t[0] << 8) + t[1]) & 0x07FF) != 0',
+            '',
+            '    def lire(self, grandeur):',
+            '        if not self._pret():',
+            '            return -1',
+            '        self._commande(0xEC05)',
+            '        sleep(2)',
+            '        t = i2c.read(self.ADR, 9)',
+            '        if grandeur == "co2":',
+            '            return (t[0] << 8) + t[1]',
+            '        if grandeur == "temperature":',
+            '            return ((t[3] << 8) + t[4]) * 175.0 / 65535.0 - 45.0',
+            '        return ((t[6] << 8) + t[7]) * 100.0 / 65535.0',
+            '',
+            'def _grove_scd41():',
+            '    return _grove_obj("scd41", _CapteurSCD41)',
+        ]);
+    }
+
+    const GRANDEURS_CO2 = [["CO₂ (ppm)", "co2"], ["température (°C)", "temperature"], ["humidité (%)", "humidite"]];
+
+    Blockly.Blocks['grove_scd30_init'] = { init: function() {
+        this.appendDummyInput().appendField("initialiser le capteur CO₂ SCD30");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Adresse I²C 0x61. Facultatif.");
+    }};
+    P.forBlock['grove_scd30_init'] = function(block) {
+        piloteScd30();
+        return '_grove_objets["scd30"] = _CapteurSCD30()\n';
+    };
+
+    Blockly.Blocks['grove_scd30_lire'] = { init: function() {
+        this.appendDummyInput().appendField("SCD30 :")
+            .appendField(new Blockly.FieldDropdown(GRANDEURS_CO2), "GRANDEUR");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_scd30_lire'] = function(block) {
+        piloteScd30();
+        return ['_grove_scd30().lire("' + block.getFieldValue('GRANDEUR') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['grove_scd41_init'] = { init: function() {
+        this.appendDummyInput().appendField("initialiser le capteur CO₂ SCD41");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Adresse I²C 0x62. Facultatif.");
+    }};
+    P.forBlock['grove_scd41_init'] = function(block) {
+        piloteScd41();
+        return '_grove_objets["scd41"] = _CapteurSCD41()\n';
+    };
+
+    Blockly.Blocks['grove_scd41_lire'] = { init: function() {
+        this.appendDummyInput().appendField("SCD41 :")
+            .appendField(new Blockly.FieldDropdown(GRANDEURS_CO2), "GRANDEUR");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_scd41_lire'] = function(block) {
+        piloteScd41();
+        return ['_grove_scd41().lire("' + block.getFieldValue('GRANDEUR') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    // ==========================================
+    // 2. CRÉATION DE L'INTERFACE (TOOLBOX)
+    // ==========================================
+    window.workspace = Blockly.inject('blocklyDiv', {
+      // Sans ces options, Blockly reste figé à l'échelle 1 : ni boutons de zoom,
+      // ni molette, ni recentrage. Avec zoom.wheel ET move.wheel actifs,
+      // Ctrl+molette agrandit et la molette seule fait défiler.
+      zoom: {
+        // Les boutons internes de Blockly sont desactives : ils sont dessines
+        // dans le canevas, donc rognes des que la place manque, et ils se
+        // chevauchaient avec la corbeille. Ils sont remplaces par des boutons
+        // de la barre du haut, toujours visibles.
+        controls: false,
+        wheel: true,
+        pinch: true,
+        startScale: 1.0,
+        minScale: 0.3,
+        maxScale: 3.0,
+        scaleSpeed: 1.2
+      },
+      move: {
+        scrollbars: { horizontal: true, vertical: true },
+        drag: true,
+        wheel: true
+      },
+      grid: { spacing: 20, length: 3, colour: '#e4e4e4', snap: false },
+      trashcan: true,
+      toolbox: {
+        "kind": "categoryToolbox",
+        "contents": [
+          {
+            "kind": "category", "name": "Temps", "colour": "230",
+            "contents": [
+              { "kind": "block", "type": "attendre_temps", "inputs": { "TEMPS": { "shadow": { "type": "math_number", "fields": { "NUM": "1" } } } } },
+              { "kind": "block", "type": "attendre_jusqua" },
+              { "kind": "block", "type": "repeter_toutes_les" },
+              { "kind": "block", "type": "reset_chrono" },
+              { "kind": "block", "type": "valeur_chrono" }
+            ]
+          },
+          {
+            "kind": "category", "name": "Affichage", "colour": "160",
+            "contents": [
+              { "kind": "block", "type": "afficher_valeur", "inputs": { "VALEUR": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour !" } } } } },
+              { "kind": "block", "type": "faire_defiler", "inputs": { "VALEUR": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour !" } } } } },
+              { "kind": "block", "type": "afficher_icone" },
+              { "kind": "block", "type": "afficher_image_matrice" },
+              { "kind": "block", "type": "effacer_ecran" }
+            ]
+          },
+          {
+            "kind": "category", "name": "Entrées/Sorties", "colour": "210",
+            "contents": [
+              { "kind": "block", "type": "si_bouton_appuye" },
+              { "kind": "block", "type": "si_logo_touche" },
+              { "kind": "block", "type": "si_secoue_alors" },
+              { "kind": "block", "type": "bouton_est_appuye" },
+              { "kind": "block", "type": "logo_est_touche" },
+              { "kind": "block", "type": "nombre_clics_bouton" },
+              { "kind": "block", "type": "reinitialiser_microbit" }
+            ]
+          },
+          {
+            "kind": "category", "name": "Capteurs", "colour": "300",
+            "contents": [
+              { "kind": "block", "type": "lorsque_bouton" },
+              { "kind": "block", "type": "lorsque_geste" },
+              { "kind": "block", "type": "lorsque_broche" },
+              { "kind": "block", "type": "lorsque_son_detecte" },
+              { "kind": "block", "type": "lorsque_logo" },
+              { "kind": "block", "type": "capteur_acceleration" },
+              { "kind": "block", "type": "broche_est_pressee" },
+              { "kind": "block", "type": "capteur_luminosite" },
+              { "kind": "block", "type": "capteur_boussole_direction" },
+              { "kind": "block", "type": "capteur_temperature" },
+              { "kind": "block", "type": "geste_est_actif" },
+              { "kind": "block", "type": "micro_intensite_son" },
+              { "kind": "block", "type": "capteur_boussole_calibrer" },
+              { "kind": "block", "type": "capteur_boussole_force" },
+              { "kind": "block", "type": "capteur_rotation" },
+              { "kind": "block", "type": "temps_execution" },
+              { "kind": "block", "type": "gamme_accelerometre" },
+              { "kind": "block", "type": "micro_definir_seuil", "inputs": { "SEUIL": { "shadow": { "type": "math_number", "fields": { "NUM": "128" } } } } }
+            ]
+          },
+          {
+            "kind": "category", "name": "Actionneurs (Audio)", "colour": "330",
+            "contents": [
+              { "kind": "block", "type": "audio_jouer" },
+              { "kind": "block", "type": "audio_arreter" },
+              { "kind": "block", "type": "music_jouer_melodie" },
+              { "kind": "block", "type": "speech_dire", "inputs": { "TEXT": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour !" } } } } }
+            ]
+          },
+          {
+            "kind": "category", "name": "Communication", "colour": "120",
+            "contents": [
+              { "kind": "block", "type": "radio_activer" },
+              { "kind": "block", "type": "radio_envoyer_texte", "inputs": { "MESSAGE": { "shadow": { "type": "text", "fields": { "TEXT": "salut" } } } } }
+            ]
+          },
+          {
+            // 37 blocs dans un seul tiroir demandaient plus de deux ecrans de
+            // defilement : les derniers etaient introuvables en pratique. Un
+            // sous-menu par module, chacun tenant d'un coup d'oeil.
+            "kind": "category", "name": "Grove", "colour": String(COULEUR_GROVE),
+            "contents": [
+            {
+            "kind": "category", "name": "Ruban RGB (WS2813)", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_ruban_definir" },
+              { "kind": "block", "type": "grove_ruban_couleur" },
+              { "kind": "block", "type": "grove_ruban_effacer" },
+              { "kind": "block", "type": "grove_ruban_couleur_index", "inputs": { "INDEX": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_ruban_effacer_index", "inputs": { "INDEX": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_ruban_perso", "inputs": { "R": { "shadow": { "type": "math_number", "fields": { "NUM": "255" } } }, "V": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "B": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_ruban_perso_index", "inputs": { "INDEX": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "R": { "shadow": { "type": "math_number", "fields": { "NUM": "255" } } }, "V": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "B": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_ruban_luminosite", "inputs": { "NIVEAU": { "shadow": { "type": "math_number", "fields": { "NUM": "100" } } } } },
+
+              ]
+            },
+            {
+            "kind": "category", "name": "Afficheur 4 digits", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_4d_definir" },
+              { "kind": "block", "type": "grove_4d_nombre", "inputs": { "VALEUR": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_4d_chiffre", "inputs": { "VALEUR": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "POSITION": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_4d_points" },
+              { "kind": "block", "type": "grove_4d_luminosite", "inputs": { "NIVEAU": { "shadow": { "type": "math_number", "fields": { "NUM": "7" } } } } },
+              { "kind": "block", "type": "grove_4d_effacer" },
+
+              ]
+            },
+            {
+            "kind": "category", "name": "Ultrason", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_ultrason_cm" },
+              { "kind": "block", "type": "grove_ultrason_pouces" },
+
+              ]
+            },
+            {
+            "kind": "category", "name": "Joystick", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_joystick_valeur" },
+              { "kind": "block", "type": "grove_joystick_direction" },
+              { "kind": "block", "type": "grove_joystick_bouton" },
+
+              ]
+            },
+            {
+            "kind": "category", "name": "Capteur de gestes", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_gestes_init" },
+              { "kind": "block", "type": "grove_gestes_est" },
+              { "kind": "block", "type": "grove_gestes_lire" },
+
+              ]
+            },
+            {
+            "kind": "category", "name": "Température & humidité", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_th_init" },
+              { "kind": "block", "type": "grove_th_mesure" },
+
+              ]
+            },
+            {
+            "kind": "category", "name": "Écran LCD 16x2", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_lcd_init" },
+              { "kind": "block", "type": "grove_lcd_texte", "inputs": { "TEXTE": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour" } } }, "X": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "Y": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_lcd_effacer" },
+              { "kind": "block", "type": "grove_lcd_alimenter" },
+
+              ]
+            },
+            {
+            "kind": "category", "name": "Capteur de couleur", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_couleur_init" },
+              { "kind": "block", "type": "grove_couleur_lire" },
+
+              ]
+            },
+            {
+            "kind": "category", "name": "Pilote moteur", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_moteur_vitesse", "inputs": { "VITESSE": { "shadow": { "type": "math_number", "fields": { "NUM": "30" } } } } },
+              { "kind": "block", "type": "grove_moteur_action" },
+              { "kind": "block", "type": "grove_moteur_defaut" },
+
+              ]
+            },
+            {
+            "kind": "category", "name": "CO₂ (SCD30 / SCD41)", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_scd30_init" },
+              { "kind": "block", "type": "grove_scd30_lire" },
+              { "kind": "block", "type": "grove_scd41_init" },
+              { "kind": "block", "type": "grove_scd41_lire" }
+            ]
+            }
+            ]
+          },
+          {
+            "kind": "category", "name": "Boucles", "colour": "120",
+            "contents": [
+              { "kind": "block", "type": "boucle_infinie" },
+              { "kind": "block", "type": "controls_repeat_ext", "inputs": { "TIMES": { "shadow": { "type": "math_number", "fields": { "NUM": "10" } } } } },
+              { "kind": "block", "type": "controls_whileUntil" },
+              { "kind": "block", "type": "controls_for", "inputs": { "FROM": { "shadow": { "type": "math_number", "fields": { "NUM": "1" } } }, "TO": { "shadow": { "type": "math_number", "fields": { "NUM": "10" } } }, "BY": { "shadow": { "type": "math_number", "fields": { "NUM": "1" } } } } }
+            ]
+          },
+          {
+            "kind": "category", "name": "Logique", "colour": "210",
+            "contents": [
+              { "kind": "block", "type": "controls_if" },
+              { "kind": "block", "type": "logic_compare" },
+              { "kind": "block", "type": "logic_operation" },
+              { "kind": "block", "type": "logic_negate" },
+              { "kind": "block", "type": "logic_boolean" },
+              { "kind": "block", "type": "logic_null" },
+              { "kind": "block", "type": "logic_ternary" }
+            ]
+          },
+          {
+            "kind": "category", "name": "Variables", "custom": "VARIABLE", "colour": "330"
+          },
+          {
+            "kind": "category", "name": "Maths", "colour": "280",
+            "contents": [
+              { "kind": "block", "type": "math_number", "fields": { "NUM": "0" } },
+              { "kind": "block", "type": "math_arithmetic", "fields": { "OP": "ADD" } },
+              { "kind": "block", "type": "math_arithmetic", "fields": { "OP": "MINUS" } },
+              { "kind": "block", "type": "math_arithmetic", "fields": { "OP": "MULTIPLY" } },
+              { "kind": "block", "type": "math_arithmetic", "fields": { "OP": "DIVIDE" } },
+              { "kind": "block", "type": "math_modulo", "inputs": { "DIVIDEND": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "DIVISOR": { "shadow": { "type": "math_number", "fields": { "NUM": "1" } } } } },
+              { "kind": "block", "type": "math_min_max", "inputs": { "A": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "B": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "math_absolue", "inputs": { "NUM": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "math_racine", "inputs": { "NUM": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "math_arrondi_custom", "inputs": { "NUM": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "math_random_int", "inputs": { "FROM": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "TO": { "shadow": { "type": "math_number", "fields": { "NUM": "10" } } } } },
+              { "kind": "block", "type": "math_constrain", "inputs": { "VALUE": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "LOW": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "HIGH": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "math_map", "inputs": { "VAL": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "FROMLOW": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "FROMHIGH": { "shadow": { "type": "math_number", "fields": { "NUM": "1023" } } }, "TOLOW": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "TOHIGH": { "shadow": { "type": "math_number", "fields": { "NUM": "4" } } } } },
+              { "kind": "block", "type": "math_random_bool" },
+              { "kind": "block", "type": "math_convert", "inputs": { "NUM": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "math_constant", "fields": { "CONSTANT": "PI" } }
+            ]
+          },
+          {
+            "kind": "category", "name": "Texte", "colour": "160",
+            "contents": [
+              { "kind": "block", "type": "text" },
+              { "kind": "block", "type": "text_join" }
+            ]
+          }
+        ]
+      }
+    });
+
+    // ------------------------------------------
+    // REPLI DES PANNEAUX
+    // ------------------------------------------
+    // La boîte à outils ouvre un tiroir aussi large que son bloc le plus long ;
+    // sur la catégorie Grove il ne restait presque plus rien pour travailler.
+    // Replier la transcription ou le simulateur rend cette largeur au canevas.
+
+    function basculerPanneau(bouton, panneau) {
+        const replie = panneau.classList.toggle('replie');
+        bouton.classList.toggle('inactif', replie);
+        // Blockly ne s'apercoit pas tout seul qu'on lui a rendu de la place.
+        Blockly.svgResize(window.workspace);
+    }
+
+    const btnVueCode = document.getElementById('btn-vue-code');
+    const btnVueSimu = document.getElementById('btn-vue-simu');
+    if (btnVueCode) {
+        btnVueCode.addEventListener('click', () =>
+            basculerPanneau(btnVueCode, document.getElementById('code-container')));
+    }
+    if (btnVueSimu) {
+        btnVueSimu.addEventListener('click', () =>
+            basculerPanneau(btnVueSimu, document.getElementById('simulator-container')));
+    }
+    window.addEventListener('resize', () => Blockly.svgResize(window.workspace));
+
+    // Filet principal : on surveille la taille du canevas lui-meme. Blockly garde
+    // en cache les dimensions de son conteneur et place corbeille et barres de
+    // defilement d'apres ce cache ; des qu'il est perime, ils partent hors de
+    // l'ecran. Un observateur couvre toutes les causes — fenetre redimensionnee,
+    // panneau replie, sections Grove affichees ou masquees, zoom du navigateur —
+    // et se declenche apres le recalcul de la mise en page, donc au bon moment.
+    if (window.ResizeObserver) {
+        new ResizeObserver(() => Blockly.svgResize(window.workspace))
+            .observe(document.getElementById('blocklyDiv'));
+    }
+
+    // ------------------------------------------
+    // ZOOM DEPUIS LA BARRE
+    // ------------------------------------------
+    // Au chargement, Blockly place la corbeille d'apres des metriques pas encore
+    // a jour : elle se retrouvait 329 px sous le bas du canevas, donc invisible.
+    Blockly.svgResize(window.workspace);
+
+    const zoomValeur = document.getElementById('zoom-valeur');
+
+    function afficherZoom() {
+        if (zoomValeur) zoomValeur.textContent = Math.round(window.workspace.getScale() * 100) + ' %';
+    }
+
+    // L'indicateur est accroche a setScale plutot qu'aux evenements : toutes les
+    // facons de zoomer (boutons, molette, pincement, ajustement) y passent, alors
+    // que l'evenement viewport_change ne se declenche pas de facon fiable.
+    const reglerEchelleOrigine = window.workspace.setScale.bind(window.workspace);
+    window.workspace.setScale = function(echelle) {
+        const resultat = reglerEchelleOrigine(echelle);
+        afficherZoom();
+        return resultat;
+    };
+
+    function reglerZoom(sens) {
+        window.workspace.zoomCenter(sens);
+        afficherZoom();
+    }
+
+    /** Ajuste l'échelle aux blocs présents, ou revient à 100 % si l'espace est vide. */
+    function ajusterZoom() {
+        const ws = window.workspace;
+        if (ws.getTopBlocks(false).length === 0) {
+            ws.setScale(1);
+        } else {
+            ws.zoomToFit();
+        }
+        ws.scrollCenter();
+        afficherZoom();
+    }
+
+    const btnZoomMoins = document.getElementById('btn-zoom-moins');
+    const btnZoomPlus = document.getElementById('btn-zoom-plus');
+    const btnZoomAjuster = document.getElementById('btn-zoom-ajuster');
+    if (btnZoomMoins) btnZoomMoins.addEventListener('click', () => reglerZoom(-1));
+    if (btnZoomPlus) btnZoomPlus.addEventListener('click', () => reglerZoom(1));
+    if (btnZoomAjuster) btnZoomAjuster.addEventListener('click', ajusterZoom);
+
+    afficherZoom();
+
+    // ==========================================
+    // 3. GESTION DES TÉLÉCHARGEMENTS (.HEX et .PY)
+    // ==========================================
+    window.currentPythonCode = "";
+
+    const zoneEtat = document.getElementById('etat');
+    const boutonHex = document.getElementById('download-btn');
+
+    function afficherEtat(message, enErreur) {
+        if (!zoneEtat) return;
+        zoneEtat.textContent = message;
+        zoneEtat.classList.toggle('erreur', !!enErreur);
+    }
+    // Utilisé aussi par le simulateur Brython, qui n'a pas d'autre moyen de
+    // remonter une erreur à l'utilisateur.
+    window.simu_erreur = function(message) { afficherEtat('Simulateur : ' + message, true); };
+    window.simu_ok = function() { afficherEtat('', false); };
+
+    boutonHex.addEventListener('click', async () => {
+        const codePython = window.currentPythonCode;
+        if (!codePython || codePython.trim() === "") {
+            afficherEtat("Ajoutez d'abord des blocs sur l'espace de travail.", true);
+            return;
+        }
+
+        boutonHex.disabled = true;
+        afficherEtat('Génération…', false);
+
+        try {
+            const finalHex = await genererFichierHexFinal(codePython);
+            const blob = new Blob([finalHex], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'programme-microbit.hex';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            afficherEtat('Fichier téléchargé.', false);
+        } catch (error) {
+            // On affiche la cause réelle : un message passe-partout masquerait le
+            // vrai problème (firmware incomplet, CDN injoignable, image invalide…).
+            console.error("Erreur lors de la génération du .hex :", error);
+            afficherEtat(error.message, true);
+        } finally {
+            boutonHex.disabled = false;
+        }
+    });
+
+    document.getElementById('download-py-btn').addEventListener('click', () => {
+        let codePython = window.currentPythonCode;
+        if (!codePython || codePython.trim() === "") {
+            codePython = "# Aucun bloc n'a été ajouté.\nfrom microbit import *\n";
+        }
+        const blob = new Blob([codePython], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'script_microbit.py';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        afficherEtat('Script .py téléchargé.', false);
+    });
+
+    // ==========================================
+    // 4. AFFICHAGE ET INJECTION AUTOMATIQUE DES ÉVÉNEMENTS
+    // ==========================================
+
+    // Chaque fonction `on_…` que peuvent produire les blocs « lorsque … » doit
+    // figurer ici, sinon le bloc correspondant ne serait jamais exécuté.
+    const GESTIONNAIRES = [
+        ['def on_button_pressed_a(',  'if button_a.is_pressed(): on_button_pressed_a()'],
+        ['def on_button_pressed_b(',  'if button_b.is_pressed(): on_button_pressed_b()'],
+        ['def on_button_pressed_ab(', 'if button_a.is_pressed() and button_b.is_pressed(): on_button_pressed_ab()'],
+        ['def on_logo_touched(',      'if pin_logo.is_touched(): on_logo_touched()'],
+        ['def on_logo_released(',     'if not pin_logo.is_touched(): on_logo_released()'],
+        ['def on_pin_pin0_touched(',  'if pin0.is_touched(): on_pin_pin0_touched()'],
+        ['def on_pin_pin1_touched(',  'if pin1.is_touched(): on_pin_pin1_touched()'],
+        ['def on_pin_pin2_touched(',  'if pin2.is_touched(): on_pin_pin2_touched()'],
+        ['def on_pin_pin0_released(', 'if not pin0.is_touched(): on_pin_pin0_released()'],
+        ['def on_pin_pin1_released(', 'if not pin1.is_touched(): on_pin_pin1_released()'],
+        ['def on_pin_pin2_released(', 'if not pin2.is_touched(): on_pin_pin2_released()'],
+        ['def on_gesture_shake(',     "if accelerometer.was_gesture('shake'): on_gesture_shake()"],
+        ['def on_gesture_up(',        "if accelerometer.was_gesture('up'): on_gesture_up()"],
+        ['def on_gesture_down(',      "if accelerometer.was_gesture('down'): on_gesture_down()"],
+        ['def on_sound_LOUD(',        'if microphone.was_event(SoundEvent.LOUD): on_sound_LOUD()'],
+        ['def on_sound_QUIET(',       'if microphone.was_event(SoundEvent.QUIET): on_sound_QUIET()'],
+    ];
+
+    function updatePythonCode() {
+        let codePython = Blockly.Python.workspaceToCode(window.workspace);
+
+        const appels = GESTIONNAIRES
+            .filter(([signature]) => codePython.includes(signature))
+            .map(([, appel]) => appel);
+
+        if (appels.length) {
+            // L'indentation doit suivre celle du générateur Python de Blockly
+            // (P.INDENT), et non une valeur écrite en dur : mélanger 4 espaces et
+            // 2 espaces dans la même suite donne un IndentationError.
+            const boucles = /^([ \t]*)while True:[ \t]*$/gm;
+            if (boucles.test(codePython)) {
+                boucles.lastIndex = 0;
+                // Toutes les boucles infinies reçoivent la scrutation, pas
+                // seulement la première : sinon un programme à deux boucles
+                // ignorerait les boutons dans l'une d'elles.
+                codePython = codePython.replace(boucles, (ligne, marge) =>
+                    ligne + '\n' + appels.map(a => marge + P.INDENT + a).join('\n'));
+            } else {
+                codePython += '\n# --- Boucle des événements (générée automatiquement) ---\n' +
+                    'while True:\n' +
+                    appels.map(a => P.INDENT + a).join('\n') + '\n' +
+                    P.INDENT + 'sleep(100)\n';
+            }
+        }
+
+        window.currentPythonCode = codePython;
+
+        if (panneauGrovePret) rafraichirPanneauGrove();
+
+        document.getElementById('code-display').textContent =
+            codePython || "# Glissez des blocs pour voir le code...";
+
+        const wrapAB = document.getElementById('wrap-ab');
+        if (wrapAB) {
+            wrapAB.style.display =
+                (codePython.includes('button_a.is_pressed() and button_b.is_pressed()') ||
+                 codePython.includes('_ab()')) ? 'flex' : 'none';
+        }
+    }
+    window.workspace.addChangeListener(updatePythonCode);
+    updatePythonCode();
+
+    // ==========================================
+    // 5. FONCTIONS GRAPHIQUES POUR LE SIMULATEUR (AVEC ANIMATION TEXTE)
+    // ==========================================
+    const ledGrid = document.getElementById('led-grid');
+    const leds = [];
+    for (let i = 0; i < 25; i++) {
+        const led = document.createElement('div');
+        led.classList.add('led');
+        ledGrid.appendChild(led);
+        leds.push(led);
+    }
+
+    window.simuQueue = [];
+
+    // Numéro de l'exécution en cours. Les suites différées (pauses, défilement,
+    // notes, parole) ne reprennent la file que si elles appartiennent encore à
+    // l'exécution courante : sans cela, un minuteur laissé par une exécution
+    // interrompue ferait avancer la suivante d'un cran de trop.
+    let jetonSimulation = 0;
+
+    /** Reprend la file après un délai, sauf si la simulation a été relancée entre-temps. */
+    function suiteApres(ms) {
+        const jeton = jetonSimulation;
+        setTimeout(() => { if (jeton === jetonSimulation) window.simu_playQueue(); }, ms);
+    }
+
+    // Relancer la simulation coupe ce qui jouait encore : sinon deux exécutions
+    // se superposent.
+    window.simu_clearQueue = function() { window.simuQueue = []; jetonSimulation++; arreterSon(); };
+
+    /** Demande une remise à zéro de la carte depuis le programme (bloc reset()). */
+    window.simu_resetCarte = function() { window.simuQueue.push({ type: 'reset' }); };
+    window.simu_effacerEcran = function() { window.simuQueue.push({ type: 'clear' }); };
+    window.simu_afficherIcone = function(icone) { window.simuQueue.push({ type: 'show', value: icone }); };
+    window.simu_sleep = function(ms) { window.simuQueue.push({ type: 'sleep', value: ms }); };
+
+    // NOUVELLES FONCTIONS POUR LE TEXTE
+    window.simu_showTexte = function(txt) { window.simuQueue.push({ type: 'showText', value: txt }); };
+    window.simu_scrollTexte = function(txt) { window.simuQueue.push({ type: 'scrollText', value: txt }); };
+
+    // ------------------------------------------
+    // SORTIE SONORE (Web Audio)
+    // ------------------------------------------
+    // Le haut-parleur de la carte est un buzzer : une onde carrée en donne un
+    // timbre proche. Les notes sont des couples [fréquence en Hz, durée en ms],
+    // une fréquence nulle valant silence.
+    //
+    // Les mélodies de `music` suivent le decoupage officiel (1 temps = 4 tics,
+    // 120 bpm, donc 1 tic = 125 ms). Les sons de `audio`, eux, sont des
+    // approximations : ce sont des echantillons expressifs sur la vraie carte.
+
+    const MELODIES = {
+        DADADADUM: [[0, 250], [392, 250], [392, 250], [392, 250], [311.13, 1000],
+                    [0, 250], [349.23, 250], [349.23, 250], [349.23, 250], [293.66, 1000]],
+        PUNCHLINE: [[523.25, 375], [164.81, 125], [164.81, 125], [523.25, 125],
+                    [164.81, 375], [196, 125], [0, 125], [155.56, 125]],
+        ENTERTAINER: [[293.66, 125], [311.13, 125], [329.63, 125], [523.25, 250],
+                      [329.63, 125], [523.25, 250], [329.63, 125], [523.25, 375],
+                      [523.25, 125], [587.33, 125], [622.25, 125], [659.25, 125],
+                      [523.25, 125], [587.33, 125], [659.25, 250], [493.88, 125],
+                      [587.33, 250], [523.25, 500]],
+    };
+
+    const SONS = {
+        GIGGLE:  [[659.25, 80], [783.99, 80], [659.25, 80], [880, 120]],
+        HAPPY:   [[523.25, 120], [659.25, 120], [783.99, 120], [1046.5, 200]],
+        HELLO:   [[783.99, 120], [523.25, 200]],
+        SAD:     [[440, 200], [392, 200], [329.63, 300], [261.63, 400]],
+        TWINKLE: [[1046.5, 80], [1318.51, 80], [1567.98, 80], [2093, 150]],
+    };
+
+    let ctxAudio = null;
+    let oscillateursActifs = [];
+
+    function contexteAudio() {
+        const Constructeur = window.AudioContext || window.webkitAudioContext;
+        if (!Constructeur) return null;
+        if (!ctxAudio) ctxAudio = new Constructeur();
+        // Les navigateurs suspendent le son tant qu'aucun clic n'a eu lieu.
+        if (ctxAudio.state === 'suspended') ctxAudio.resume();
+        return ctxAudio;
+    }
+
+    /**
+     * Programme une suite de notes dans un contexte audio.
+     *
+     * Séparée de la lecture pour être vérifiable hors ligne (OfflineAudioContext).
+     *
+     * @returns {number} la durée totale, en secondes
+     */
+    function programmerNotes(ctx, sortie, notes, debut) {
+        let t = debut;
+        for (const [frequence, dureeMs] of notes) {
+            const duree = dureeMs / 1000;
+            if (frequence > 0) {
+                const osc = ctx.createOscillator();
+                const enveloppe = ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.value = frequence;
+                // Montée et descente rapides : sans elles, chaque note claque.
+                enveloppe.gain.setValueAtTime(0, t);
+                enveloppe.gain.linearRampToValueAtTime(1, t + 0.008);
+                enveloppe.gain.setValueAtTime(1, Math.max(t + 0.008, t + duree - 0.015));
+                enveloppe.gain.linearRampToValueAtTime(0, t + duree);
+                osc.connect(enveloppe);
+                enveloppe.connect(sortie);
+                osc.start(t);
+                osc.stop(t + duree);
+                oscillateursActifs.push(osc);
+                osc.onended = () => {
+                    oscillateursActifs = oscillateursActifs.filter(o => o !== osc);
+                };
+            }
+            t += duree;
+        }
+        return t - debut;
+    }
+    // Exposée pour pouvoir vérifier le rendu sonore sans haut-parleur.
+    window.simu_programmerNotes = programmerNotes;
+    window.simu_MELODIES = MELODIES;
+    window.simu_SONS = SONS;
+
+    /** Joue une suite de notes et renvoie sa durée en millisecondes. */
+    function jouerNotes(notes) {
+        const ctx = contexteAudio();
+        if (!ctx) return 0;
+        const volume = ctx.createGain();
+        volume.gain.value = 0.18;
+        volume.connect(ctx.destination);
+        return programmerNotes(ctx, volume, notes, ctx.currentTime + 0.02) * 1000;
+    }
+
+    function arreterSon() {
+        oscillateursActifs.forEach(osc => { try { osc.stop(); } catch (e) { /* déjà arrêté */ } });
+        oscillateursActifs = [];
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+    }
+
+    function parler(texte, suite) {
+        const synthese = window.speechSynthesis;
+        if (!synthese || typeof SpeechSynthesisUtterance === 'undefined') {
+            alert("La micro:bit dit : " + texte);
+            suite();
+            return;
+        }
+        let termine = false;
+        const continuer = () => { if (!termine) { termine = true; suite(); } };
+        const enonce = new SpeechSynthesisUtterance(texte);
+        enonce.lang = 'en-GB';   // le module speech de la micro:bit parle anglais
+        enonce.onend = continuer;
+        enonce.onerror = continuer;
+        synthese.cancel();
+        synthese.speak(enonce);
+        // Filet de sécurité : certains navigateurs n'émettent jamais onend.
+        setTimeout(continuer, 1500 + texte.length * 90);
+    }
+
+    // ------------------------------------------
+    // PÉRIPHÉRIQUES GROVE
+    // ------------------------------------------
+    // Les sorties (ruban, afficheur) passent par la file, pour rester dans
+    // l'ordre du programme. Les entrées (distance, joystick, geste) sont lues
+    // directement : ce sont des capteurs, pas des actions.
+
+    const zoneRuban = document.getElementById('grove-ruban');
+    const zone4Digit = document.getElementById('grove-4digit-texte');
+    const curseurDistance = document.getElementById('grove-distance');
+    const valeurDistance = document.getElementById('grove-distance-val');
+    const curseurJX = document.getElementById('grove-jx');
+    const curseurJY = document.getElementById('grove-jy');
+    const valeurJX = document.getElementById('grove-jx-val');
+    const valeurJY = document.getElementById('grove-jy-val');
+    const caseBoutonJoystick = document.getElementById('grove-jbtn');
+    const menuGesteGrove = document.getElementById('grove-geste');
+    const boutonGesteGrove = document.getElementById('grove-geste-btn');
+
+    const zoneLcd = document.getElementById('grove-lcd');
+    const lignesLcd = [document.getElementById('grove-lcd-l0'), document.getElementById('grove-lcd-l1')];
+    const curseurTemp = document.getElementById('grove-temp');
+    const curseurHumi = document.getElementById('grove-humi');
+    const curseurCo2 = document.getElementById('grove-co2');
+    const selecteurCouleur = document.getElementById('grove-couleur');
+    const zoneMoteurs = document.getElementById('grove-moteurs');
+
+    let ledsRuban = [];
+    let gesteGroveEnAttente = '';
+    let tamponLcd = ['                ', '                '];
+    let etatMoteurs = { 1: 'arrêt', 2: 'arrêt' };
+
+    function dessinerLcd() {
+        lignesLcd.forEach((l, i) => { if (l) l.textContent = tamponLcd[i]; });
+    }
+
+    function dessinerMoteurs() {
+        if (zoneMoteurs) {
+            zoneMoteurs.textContent = 'canal 1 : ' + etatMoteurs[1] + ' · canal 2 : ' + etatMoteurs[2];
+        }
+    }
+
+    // Chaque section du panneau Grove n'apparaît que si un bloc du module
+    // correspondant est posé dans le programme : sur un projet qui n'utilise
+    // qu'un ruban, les neuf autres n'ont rien à faire à l'écran.
+    const SECTIONS_GROVE = [
+        ['grove-sec-ruban',    /^grove_ruban_/],
+        ['grove-sec-4digit',   /^grove_4d_/],
+        ['grove-sec-ultrason', /^grove_ultrason_/],
+        ['grove-sec-joystick', /^grove_joystick_/],
+        ['grove-sec-gestes',   /^grove_gestes_/],
+        ['grove-sec-lcd',      /^grove_lcd_/],
+        // Les SCD mesurent aussi température et humidité : leurs curseurs
+        // servent donc aux trois capteurs.
+        ['grove-sec-th',       /^grove_(th|scd30|scd41)_/],
+        ['grove-sec-co2',      /^grove_scd(30|41)_/],
+        ['grove-sec-couleur',  /^grove_couleur_/],
+        ['grove-sec-moteurs',  /^grove_moteur_/],
+    ];
+
+    function rafraichirPanneauGrove() {
+        const types = window.workspace.getAllBlocks(false).map(b => b.type);
+        let auMoinsUne = false;
+        for (const [id, motif] of SECTIONS_GROVE) {
+            const section = document.getElementById(id);
+            if (!section) continue;
+            const utilise = types.some(t => motif.test(t));
+            section.classList.toggle('replie', !utilise);
+            if (utilise) auMoinsUne = true;
+        }
+        const panneau = document.getElementById('grove-panneau');
+        if (panneau) panneau.classList.toggle('replie', !auMoinsUne);
+
+        // Montrer ou masquer ces sections change la hauteur de la colonne de
+        // droite, donc celle du canevas. Sans cet avertissement, Blockly garde
+        // en cache une hauteur perimee et place la corbeille hors de l'ecran.
+        // Lire la geometrie force le navigateur a recalculer la mise en page :
+        // l'appel synchrone voit donc deja les sections montrees ou masquees.
+        Blockly.svgResize(window.workspace);
+    }
+
+    function reinitialiserGrove() {
+        if (zoneRuban) {
+            zoneRuban.innerHTML = '<span class="grove-vide">non défini</span>';
+            ledsRuban = [];
+        }
+        if (zone4Digit) zone4Digit.textContent = '    ';
+        gesteGroveEnAttente = '';
+        tamponLcd = ['                ', '                '];
+        if (zoneLcd) zoneLcd.classList.remove('eteint');
+        dessinerLcd();
+        etatMoteurs = { 1: 'arrêt', 2: 'arrêt' };
+        dessinerMoteurs();
+    }
+
+    window.simu_rubanDefinir = function(nombre) {
+        window.simuQueue.push({ type: 'rubanDef', nombre: Number(nombre) });
+    };
+    window.simu_rubanAfficher = function(couleurs) {
+        window.simuQueue.push({ type: 'rubanShow', couleurs: String(couleurs) });
+    };
+    window.simu_afficheur = function(texte, points) {
+        window.simuQueue.push({ type: 'afficheur', texte: String(texte), points: !!points });
+    };
+    window.simu_afficheurLuminosite = function(niveau) {
+        window.simuQueue.push({ type: 'afficheurLum', niveau: Number(niveau) });
+    };
+
+    window.simu_lcd = function(action, texte, x, y) {
+        window.simuQueue.push({ type: 'lcd', action: String(action),
+                                texte: String(texte), x: Number(x), y: Number(y) });
+    };
+    window.simu_moteur = function(canal, vitesse) {
+        window.simuQueue.push({ type: 'moteur', canal: Number(canal), vitesse: vitesse });
+    };
+
+    // Entrées : lues à l'instant où le programme les demande.
+    window.simu_mesure = function(grandeur) {
+        const g = String(grandeur);
+        if (g === 'humidite') return curseurHumi ? Number(curseurHumi.value) : 0;
+        if (g === 'co2') return curseurCo2 ? Number(curseurCo2.value) : 0;
+        return curseurTemp ? Number(curseurTemp.value) : 0;
+    };
+    window.simu_couleurCanal = function(canal) {
+        if (!selecteurCouleur) return 0;
+        const hexa = selecteurCouleur.value;                  // « #rrggbb »
+        const r = parseInt(hexa.substr(1, 2), 16);
+        const v = parseInt(hexa.substr(3, 2), 16);
+        const b = parseInt(hexa.substr(5, 2), 16);
+        // Le VEML6040 rend 16 bits : on transpose les 8 bits du sélecteur.
+        const brut = { rouge: r, vert: v, bleu: b, blanc: Math.max(r, v, b) };
+        return (brut[String(canal)] || 0) * 257;
+    };
+    window.simu_distanceCm = function() {
+        return curseurDistance ? Number(curseurDistance.value) : 0;
+    };
+    window.simu_lireAnalogique = function(idBroche) {
+        const id = String(idBroche);
+        // L'appui sur le manche tire l'axe X presque à zéro, comme sur le module.
+        if (id === '0' && caseBoutonJoystick && caseBoutonJoystick.checked) return 0;
+        if (id === '1') return curseurJY ? Number(curseurJY.value) : 512;
+        return curseurJX ? Number(curseurJX.value) : 512;
+    };
+    window.simu_joystickDirection = function(direction) {
+        const x = caseBoutonJoystick && caseBoutonJoystick.checked ? 0 : Number(curseurJX.value);
+        const y = Number(curseurJY.value);
+        if (direction === 'gauche') return x < 350;
+        if (direction === 'droite') return x > 700;
+        if (direction === 'bas') return y < 350;
+        if (direction === 'haut') return y > 700;
+        return x >= 350 && x <= 700 && y >= 350 && y <= 700;
+    };
+    /** Le capteur réel vide son registre à la lecture : on fait de même. */
+    window.simu_gesteGrove = function() {
+        const geste = gesteGroveEnAttente;
+        gesteGroveEnAttente = '';
+        return geste;
+    };
+
+    function dessinerRuban(nombre) {
+        zoneRuban.innerHTML = '';
+        ledsRuban = [];
+        for (let i = 0; i < nombre; i++) {
+            const led = document.createElement('div');
+            led.className = 'grove-led';
+            led.title = 'LED n° ' + i;
+            zoneRuban.appendChild(led);
+            ledsRuban.push(led);
+        }
+    }
+
+    function colorerRuban(couleurs) {
+        const liste = couleurs ? couleurs.split(',') : [];
+        liste.forEach((hexa, i) => {
+            if (!ledsRuban[i]) return;
+            const eteinte = hexa === '000000';
+            ledsRuban[i].style.background = eteinte ? '#2a2a2a' : '#' + hexa;
+            ledsRuban[i].style.boxShadow = eteinte ? 'inset 0 0 2px #000' : '0 0 6px #' + hexa;
+        });
+    }
+
+    if (curseurDistance) {
+        curseurDistance.addEventListener('input', () => {
+            valeurDistance.textContent = curseurDistance.value;
+        });
+    }
+    if (curseurJX) curseurJX.addEventListener('input', () => { valeurJX.textContent = curseurJX.value; });
+    if (curseurJY) curseurJY.addEventListener('input', () => { valeurJY.textContent = curseurJY.value; });
+    [['grove-temp', 'grove-temp-val'], ['grove-humi', 'grove-humi-val'],
+     ['grove-co2', 'grove-co2-val']].forEach(([idCurseur, idValeur]) => {
+        const c = document.getElementById(idCurseur);
+        const v = document.getElementById(idValeur);
+        if (c && v) c.addEventListener('input', () => { v.textContent = c.value; });
+    });
+    dessinerLcd();
+    dessinerMoteurs();
+
+    window.simu_jouerMelodie = function(nom) {
+        window.simuQueue.push({ type: 'son', notes: MELODIES[nom] || MELODIES.DADADADUM });
+    };
+    window.simu_jouerSon = function(nom) {
+        window.simuQueue.push({ type: 'son', notes: SONS[nom] || SONS.HELLO });
+    };
+    window.simu_jouerNote = function(frequence, dureeMs) {
+        window.simuQueue.push({ type: 'son', notes: [[Number(frequence), Number(dureeMs)]] });
+    };
+    window.simu_arreterSon = function() { window.simuQueue.push({ type: 'stopSon' }); };
+    window.simu_parler = function(texte) { window.simuQueue.push({ type: 'parler', texte: String(texte) }); };
+
+    window.simu_playQueue = function() {
+        if (window.simuQueue.length === 0) return;
+        let action = window.simuQueue.shift();
+
+        const textContainer = document.getElementById('led-text-container');
+        const textContent = document.getElementById('led-text-content');
+
+        if (action.type === 'clear') {
+            leds.forEach(led => led.classList.remove('on'));
+            if(textContainer) textContainer.style.display = 'none';
+            window.simu_playQueue();
+        }
+        else if (action.type === 'show') {
+            leds.forEach(led => led.classList.remove('on'));
+            if(textContainer) textContainer.style.display = 'none';
+            let pattern = [];
+            if (action.value === "HEART") pattern = [1,3,5,6,7,8,9,10,11,12,13,14,16,17,18,22];
+            else if (action.value === "HAPPY") pattern = [1,3,5,9,10,14,16,18,21,22,23];
+            else if (action.value === "SAD") pattern = [1,3,5,9,11,12,13,16,18,20,24];
+            else if (action.value === "GHOST") pattern = [1,2,3,5,7,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24];
+            else if (typeof action.value === 'string' && action.value.includes(':')) {
+                let rows = action.value.split(':');
+                for (let y = 0; y < 5; y++) {
+                    if (rows[y]) {
+                        for (let x = 0; x < 5; x++) {
+                            if (rows[y][x] && rows[y][x] !== '0') {
+                                pattern.push(y * 5 + x);
+                            }
+                        }
+                    }
+                }
+            }
+            pattern.forEach(index => { if(leds[index]) leds[index].classList.add('on'); });
+            window.simu_playQueue();
+        }
+        // GESTION MAGIQUE DE L'AFFICHAGE ET DÉFILEMENT DU TEXTE
+        else if (action.type === 'showText' || action.type === 'scrollText') {
+            leds.forEach(led => led.classList.remove('on')); // Éteindre les LEDs
+            if (textContainer && textContent) {
+                textContainer.style.display = 'flex';
+                textContent.textContent = action.value;
+
+                if (action.type === 'scrollText') {
+                    textContent.style.animation = 'none';
+                    void textContent.offsetWidth; // Force le redémarrage de l'animation
+                    let duration = Math.max(2, action.value.length * 0.3); // Le défilement s'adapte à la longueur
+                    textContent.style.animation = `scroll-left ${duration}s linear forwards`;
+
+                    const jeton = jetonSimulation;
+                    setTimeout(() => {
+                        if (jeton !== jetonSimulation) return;
+                        textContainer.style.display = 'none';
+                        window.simu_playQueue();
+                    }, duration * 1000);
+                } else {
+                    // Affichage fixe (show)
+                    textContent.style.animation = 'none';
+                    textContent.style.transform = 'none';
+                    const jeton = jetonSimulation;
+                    setTimeout(() => {
+                        if (jeton !== jetonSimulation) return;
+                        textContainer.style.display = 'none';
+                        window.simu_playQueue();
+                    }, 1000); // Reste affiché 1 seconde avant de continuer
+                }
+            } else {
+                window.simu_playQueue();
+            }
+        }
+        else if (action.type === 'son') {
+            // On enchaîne après la dernière note, pour que le son reste dans
+            // l'ordre du programme vis-à-vis des affichages et des pauses.
+            suiteApres(jouerNotes(action.notes));
+        }
+        else if (action.type === 'rubanDef') {
+            dessinerRuban(action.nombre);
+            window.simu_playQueue();
+        }
+        else if (action.type === 'rubanShow') {
+            colorerRuban(action.couleurs);
+            window.simu_playQueue();
+        }
+        else if (action.type === 'afficheur') {
+            const t = (action.texte + '    ').slice(0, 4);
+            zone4Digit.textContent = action.points ? t.slice(0, 2) + ':' + t.slice(2) : t;
+            window.simu_playQueue();
+        }
+        else if (action.type === 'lcd') {
+            if (action.action === 'init' || action.action === 'effacer') {
+                tamponLcd = ['                ', '                '];
+                if (action.action === 'init') zoneLcd.classList.remove('eteint');
+            } else if (action.action === 'allumer') {
+                zoneLcd.classList.remove('eteint');
+            } else if (action.action === 'eteindre') {
+                zoneLcd.classList.add('eteint');
+            } else if (action.action === 'texte') {
+                const y = Math.max(0, Math.min(1, action.y));
+                const x = Math.max(0, Math.min(15, action.x));
+                const morceau = action.texte.slice(0, 16 - x);
+                tamponLcd[y] = (tamponLcd[y].slice(0, x) + morceau +
+                                tamponLcd[y].slice(x + morceau.length)).slice(0, 16);
+            }
+            dessinerLcd();
+            window.simu_playQueue();
+        }
+        else if (action.type === 'moteur') {
+            etatMoteurs[action.canal] = action.vitesse === 'frein' ? 'frein'
+                : (action.vitesse === 0 ? 'arrêt' : 'vitesse ' + action.vitesse);
+            dessinerMoteurs();
+            window.simu_playQueue();
+        }
+        else if (action.type === 'afficheurLum') {
+            // 0 à 7 sur le module : on rend l'écart en opacité.
+            zone4Digit.style.opacity = String(0.25 + 0.75 * (action.niveau / 7));
+            window.simu_playQueue();
+        }
+        else if (action.type === 'stopSon') {
+            arreterSon();
+            window.simu_playQueue();
+        }
+        else if (action.type === 'parler') {
+            const jeton = jetonSimulation;
+            parler(action.texte, () => { if (jeton === jetonSimulation) window.simu_playQueue(); });
+        }
+        else if (action.type === 'reset') {
+            // Le bloc reset() redémarre la carte : l'écran s'éteint, le son se
+            // tait, et ce qui suivait dans le programme n'est pas execute.
+            window.simu_reinitialiser();
+        }
+        else if (action.type === 'sleep') {
+            suiteApres(action.value);
+        }
+    };
+
+    // ==========================================
+    // 6. GESTION DES CLICS (BOUTONS, LOGO, BROCHES)
+    // ==========================================
+    window.simu_btnA_pressed = false;
+    window.simu_btnB_pressed = false;
+    window.simu_logo_pressed = false;
+    window.simu_pin0_pressed = false;
+    window.simu_pin1_pressed = false;
+    window.simu_pin2_pressed = false;
+
+    // Geste en attente ('shake' ou null). Un geste est ponctuel : il ne vaut que
+    // pour une exécution de la simulation, contrairement aux boutons qui sont
+    // maintenus enfoncés.
+    window.simu_geste = null;
+
+    /** Lecture consommatrice, comme accelerometer.was_gesture() sur la carte. */
+    window.simu_consommerGeste = function(geste) {
+        if (window.simu_geste !== geste) return false;
+        window.simu_geste = null;
+        return true;
+    };
+
+    /** Lecture simple, comme accelerometer.is_gesture(). */
+    window.simu_gesteActif = function(geste) {
+        return window.simu_geste === geste;
+    };
+
+    const btnLancer = document.getElementById('run-sim');
+    const carte = document.getElementById('microbit-board');
+
+    /**
+     * Remet la simulation dans son état de départ.
+     *
+     * Vide la file, coupe le son et la parole, éteint les 25 LED et l'écran de
+     * texte, relâche boutons, logo, broches et geste en attente, et efface le
+     * message d'état. L'incrément du jeton neutralise les minuteurs encore en
+     * vol : rien de l'exécution précédente ne peut plus reprendre la main.
+     */
+    window.simu_reinitialiser = function() {
+        window.simuQueue = [];
+        jetonSimulation++;
+        arreterSon();
+
+        leds.forEach(led => led.classList.remove('on'));
+        const conteneurTexte = document.getElementById('led-text-container');
+        const contenuTexte = document.getElementById('led-text-content');
+        if (conteneurTexte) conteneurTexte.style.display = 'none';
+        if (contenuTexte) {
+            contenuTexte.style.animation = 'none';
+            contenuTexte.textContent = '';
+        }
+        if (carte) carte.classList.remove('secoue');
+
+        window.simu_btnA_pressed = false;
+        window.simu_btnB_pressed = false;
+        window.simu_logo_pressed = false;
+        window.simu_pin0_pressed = false;
+        window.simu_pin1_pressed = false;
+        window.simu_pin2_pressed = false;
+        window.simu_geste = null;
+
+        reinitialiserGrove();
+        afficherEtat('', false);
+    };
+
+    // Le geste Grove s'arme puis se joue, comme la secousse : il est ponctuel.
+    if (boutonGesteGrove) {
+        boutonGesteGrove.addEventListener('click', () => {
+            gesteGroveEnAttente = menuGesteGrove.value;
+            btnLancer.click();
+            gesteGroveEnAttente = '';
+        });
+    }
+
+    const btnReinit = document.getElementById('btn-reset');
+    if (btnReinit) {
+        btnReinit.addEventListener('click', () => {
+            window.simu_reinitialiser();
+            afficherEtat('Simulation réinitialisée.', false);
+        });
+    }
+
+    function lierCapteurTactile(idHTML, nomVariableGlobale) {
+        const element = document.getElementById(idHTML);
+        if(element) {
+            element.addEventListener('mousedown', () => {
+                window[nomVariableGlobale] = true;
+                btnLancer.click();
+            });
+            element.addEventListener('mouseup', () => window[nomVariableGlobale] = false);
+            element.addEventListener('mouseleave', () => window[nomVariableGlobale] = false);
+        }
+    }
+
+    lierCapteurTactile('btn-a', 'simu_btnA_pressed');
+    lierCapteurTactile('btn-b', 'simu_btnB_pressed');
+    lierCapteurTactile('mb-logo', 'simu_logo_pressed');
+    lierCapteurTactile('pin0', 'simu_pin0_pressed');
+    lierCapteurTactile('pin1', 'simu_pin1_pressed');
+    lierCapteurTactile('pin2', 'simu_pin2_pressed');
+
+    // Bouton « Secouer la carte » : arme le geste, lance la simulation, puis
+    // désarme. Le tout est synchrone — le gestionnaire Brython de #run-sim
+    // s'exécute pendant l'appel à click() — donc le geste est bien vu par le
+    // programme, et par lui seul.
+    const btnSecouer = document.getElementById('btn-shake');
+    if (btnSecouer) {
+        btnSecouer.addEventListener('click', () => {
+            if (carte) {
+                carte.classList.remove('secoue');
+                void carte.offsetWidth;      // force le redémarrage de l'animation
+                carte.classList.add('secoue');
+            }
+            window.simu_geste = 'shake';
+            btnLancer.click();
+            window.simu_geste = null;
+        });
+    }
+
+    // Tout le panneau Grove est en place : on peut le montrer, et le laisser
+    // se mettre à jour à chaque modification du programme.
+    panneauGrovePret = true;
+    rafraichirPanneauGrove();
+
+    const btnAB = document.getElementById('btn-ab');
+    if (btnAB) {
+        btnAB.addEventListener('mousedown', () => {
+            window.simu_btnA_pressed = true;
+            window.simu_btnB_pressed = true;
+            btnLancer.click();
+        });
+        btnAB.addEventListener('mouseup', () => {
+            window.simu_btnA_pressed = false;
+            window.simu_btnB_pressed = false;
+        });
+        btnAB.addEventListener('mouseleave', () => {
+            window.simu_btnA_pressed = false;
+            window.simu_btnB_pressed = false;
+        });
+    }
+
+} catch(erreur) {
+    console.error(erreur);
+    const zone = document.getElementById('etat');
+    if (zone) {
+        zone.textContent = "Chargement de l'interface impossible : " + erreur.message;
+        zone.classList.add('erreur');
+    } else {
+        alert("Une erreur est survenue lors du chargement de Blockly : " + erreur.message);
+    }
+}

@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Programmation Micro:bit V2</title>
+  
+  <script src="https://unpkg.com/blockly@10.4.3/blockly_compressed.js"></script>
+  <script src="https://unpkg.com/blockly@10.4.3/blocks_compressed.js"></script>
+  <script src="https://unpkg.com/blockly@10.4.3/python_compressed.js"></script>
+  <script src="https://unpkg.com/blockly@10.4.3/msg/fr.js"></script>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/brython/3.11.2/brython.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/brython/3.11.2/brython_stdlib.min.js"></script>
+  
+  <style>
+    body { margin: 0; padding: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4;}
+    #toolbar { padding: 10px; background-color: #2c3e50; color: white; display: flex; align-items: center;}
+    button { padding: 8px 16px; cursor: pointer; font-weight: bold; border-radius: 4px; border: none; background: #3498db; color: white; transition: 0.2s; margin-right: 10px;}
+    button:hover { background: #2980b9; }
+    #download-py-btn { background: #9b59b6; }
+    #download-py-btn:hover { background: #8e44ad; }
+    /* Zone de message : on y lit la cause réelle d'un échec, plutôt qu'une
+       alerte générique qui masquerait le vrai problème. */
+    /* Replier un panneau rend sa largeur a la zone de blocs : c'est le remede
+       le plus direct quand le tiroir de la boite a outils prend toute la place. */
+    .btn-vue { background: #34495e; font-weight: normal; font-size: 13px; padding: 7px 12px; }
+    .btn-vue:hover { background: #415b76; }
+    .btn-vue.inactif { background: #22303d; color: #7f8c8d; }
+
+    /* Le zoom vit dans la barre, pas dans le canevas : les controles internes de
+       Blockly sont dessines a l'interieur de l'espace de travail, ou ils peuvent
+       etre rognes par le bord ou recouverts par la corbeille. */
+    #zoom-groupe { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px;
+                   background: #22303d; border-radius: 4px; padding: 3px 6px; }
+    .btn-zoom { background: #34495e; font-weight: bold; font-size: 15px; line-height: 1;
+                padding: 5px 10px; margin: 0; min-width: 30px; }
+    .btn-zoom:hover { background: #415b76; }
+    .btn-zoom-large { font-size: 12px; font-weight: normal; padding: 6px 10px; }
+    #zoom-valeur { font-size: 12px; color: #bdc3c7; min-width: 5ch; text-align: center; }
+    #etat { font-size: 13px; opacity: 0.85; margin-left: auto; text-align: right; max-width: 70ch; }
+    #etat.erreur { color: #ff8a80; opacity: 1; font-weight: bold; }
+
+    /* min-height: 0 est indispensable : sans lui, un enfant flex ne peut pas
+       devenir plus petit que son contenu. Le panneau du simulateur, une fois
+       garni de sections Grove, poussait la rangee bien au-dela de la fenetre —
+       le canevas Blockly se retrouvait haut de 4754 px, et sa corbeille tres
+       loin sous la ligne de flottaison. */
+    #main-container { display: flex; flex-grow: 1; width: 100%; min-width: 0; min-height: 0; }
+    /* La zone de blocs prend tout ce que les deux panneaux laissent, au lieu
+       d'une part fixe de 50 % : en zoomant, ou en repliant un panneau, elle
+       s'elargit au lieu d'etre etranglee par le tiroir de la boite a outils. */
+    #blocklyDiv { flex: 1 1 auto; min-width: 260px; min-height: 0; height: 100%; }
+    .replie { display: none !important; }
+
+    #code-container { flex: 0 0 24%; min-width: 240px; min-height: 0; height: 100%; background: #1e1e1e; color: #d4d4d4; padding: 15px; box-sizing: border-box; overflow-y: auto; border-left: 2px solid #2c3e50;}
+    #code-container h3 { margin-top: 0; color: #569cd6; font-size: 14px; text-transform: uppercase; }
+    #code-display { white-space: pre-wrap; font-family: Consolas, monospace; font-size: 13px; line-height: 1.5; }
+    
+    #simulator-container { flex: 0 0 24%; min-width: 250px; min-height: 0; height: 100%; background: #2c3e50; display: flex; flex-direction: column; align-items: center; padding: 20px; box-sizing: border-box; border-left: 2px solid #1a252f; overflow-y: auto;}
+    #simulator-container h3 { margin-top: 0; color: #2ecc71; font-size: 14px; text-transform: uppercase; width: 100%; text-align: left;}
+    
+    #microbit-board { 
+        width: 280px; height: 230px; background: #191919; border-radius: 15px 15px 25px 25px; 
+        position: relative; margin-top: 20px; box-shadow: 0px 15px 25px rgba(0,0,0,0.6);
+        overflow: hidden; user-select: none;
+    }
+
+    #led-grid { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;}
+    .led { width: 8px; height: 14px; background: #2a2a2a; border-radius: 2px; transition: 0.05s; }
+    .led.on { background: #ff3333; box-shadow: 0 0 8px #ff3333; }
+    
+    /* --- NOUVEAU : GESTION DU TEXTE SUR LES LEDS --- */
+    #led-text-container {
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%);
+        width: 70px; height: 70px; overflow: hidden; display: none; z-index: 10;
+        background: #111; pointer-events: none; align-items: center; justify-content: center;
+    }
+    #led-text-content {
+        color: #ff3333; font-family: monospace; font-size: 26px; font-weight: bold;
+        white-space: nowrap; text-shadow: 0 0 5px #ff3333;
+    }
+    @keyframes scroll-left {
+        from { transform: translateX(70px); }
+        to { transform: translateX(-100%); }
+    }
+    /* ----------------------------------------------- */
+
+    .mb-btn-wrap { position: absolute; top: 95px; display: flex; flex-direction: column; align-items: center;}
+    #wrap-a { left: 15px; } #wrap-b { right: 15px; }
+    .mb-btn-outer { width: 32px; height: 32px; background: #888; border-radius: 3px; position: relative; }
+    .mb-btn-inner { position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; background: #111; border-radius: 50%; cursor: pointer; box-shadow: inset 0 2px 5px rgba(0,0,0,0.8); }
+    .mb-btn-inner:active { background: #333; }
+    .mb-btn-dot { position: absolute; width: 3px; height: 3px; background: #7a3f3f; border-radius: 50%; }
+    .dot-tl { top: 3px; left: 3px; } .dot-tr { top: 3px; right: 3px; }
+    .dot-bl { bottom: 3px; left: 3px; } .dot-br { bottom: 3px; right: 3px; }
+    .mb-btn-label { color: #33ccff; font-weight: bold; font-size: 16px; margin-top: 5px; }
+    #wrap-b .mb-btn-label { position: absolute; top: -25px; left: 15px; } 
+
+    .mb-btn-label-ab { position: absolute; color: white; font-weight: bold; font-size: 13px; left: -32px; top: 8px; }
+
+    .mb-badge { position: absolute; bottom: 50px; right: 25px; width: 28px; height: 28px; background: white; border-radius: 50%; color: #191919; font-family: sans-serif; font-weight: bold; font-size: 14px; display: flex; justify-content: center; align-items: center; }
+    .mb-accent { position: absolute; top: 0; left: 0; width: 100px; height: 60px; background: #33ccff; clip-path: polygon(0 0, 100% 0, 75% 25%, 55% 0, 30% 25%, 0 60%); }
+    .mb-logo { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); width: 40px; height: 18px; border: 4px solid #e4c558; border-radius: 12px; display: flex; justify-content: center; align-items: center; gap: 6px; cursor: pointer; transition: 0.1s; }
+    .mb-logo:active { background: rgba(228, 197, 88, 0.3); }
+    .mb-logo-dot { width: 4px; height: 4px; background: #e4c558; border-radius: 50%; }
+    .mb-edge { position: absolute; bottom: 0; left: 0; right: 0; height: 40px; background: repeating-linear-gradient(to right, #cba135, #cba135 2px, #e4c558 2px, #e4c558 4px); display: flex; justify-content: space-around; padding: 0 5px; }
+    .mb-pin { width: 40px; background: #e4c558; border-radius: 15px 15px 0 0; display: flex; flex-direction: column; align-items: center; padding-top: 5px; cursor: pointer; position: relative; }
+    .mb-pin:active { filter: brightness(0.8); }
+    .mb-pin-hole { width: 16px; height: 16px; background: #191919; border-radius: 50%; border: 2px solid #cba135; }
+    .mb-pin span { font-family: monospace; font-size: 11px; font-weight: bold; color: #191919; margin-top: 2px; }
+
+    #run-sim { margin-top: 15px; background: #2ecc71; width: 100%; font-size: 16px; padding: 12px;}
+    #run-sim:hover { background: #27ae60; }
+
+    /* Le geste « secouer » n'a pas de zone cliquable sur la carte : il lui faut
+       son propre bouton, sans quoi accelerometer.was_gesture() reste toujours
+       faux et les blocs correspondants ne se declenchent jamais. */
+    #btn-shake { margin-top: 25px; background: #e67e22; width: 100%; font-size: 15px; padding: 10px; }
+    #btn-shake:hover { background: #d35400; }
+    @keyframes secousse {
+        0%, 100% { transform: translateX(0) rotate(0deg); }
+        20% { transform: translateX(-7px) rotate(-2deg); }
+        40% { transform: translateX(7px) rotate(2deg); }
+        60% { transform: translateX(-5px) rotate(-1.5deg); }
+        80% { transform: translateX(5px) rotate(1.5deg); }
+    }
+    #microbit-board.secoue { animation: secousse 0.4s ease-in-out; }
+
+    #btn-reset { margin-top: 10px; background: #7f8c8d; width: 100%; font-size: 14px; padding: 9px; }
+    #btn-reset:hover { background: #616a6b; }
+
+    /* --- Peripheriques Grove --- */
+    #grove-panneau { width: 100%; margin-top: 22px; border-top: 1px solid #46617d; padding-top: 12px; }
+    #grove-panneau h4 { margin: 0 0 10px 0; color: #b39ddb; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .grove-bloc { margin-bottom: 12px; font-size: 12px; color: #d6e0ea; }
+    .grove-titre { display: block; margin-bottom: 4px; color: #9fb3c8; }
+    .grove-bloc label { display: block; margin: 3px 0; }
+    .grove-bloc input[type="range"] { width: 100%; vertical-align: middle; }
+    .grove-case { display: flex !important; align-items: center; gap: 6px; }
+    .grove-case input { width: auto; }
+
+    #grove-ruban { display: flex; flex-wrap: wrap; gap: 3px; min-height: 14px;
+                   padding: 5px; background: #1b2a38; border-radius: 4px; }
+    .grove-led { width: 11px; height: 11px; border-radius: 50%; background: #2a2a2a;
+                 box-shadow: inset 0 0 2px #000; }
+    .grove-vide { color: #6b7f93; font-style: italic; }
+
+    #grove-4digit { background: #1b2a38; border-radius: 4px; padding: 6px 8px; text-align: center; }
+    #grove-4digit-texte { font-family: Consolas, monospace; font-size: 26px; font-weight: bold;
+                          color: #ff3b30; letter-spacing: 4px; text-shadow: 0 0 6px rgba(255,59,48,0.7); }
+
+    #grove-lcd { background: #0f3d2e; border-radius: 4px; padding: 6px 8px;
+                 font-family: Consolas, monospace; font-size: 13px; color: #7dffb2;
+                 letter-spacing: 1px; white-space: pre; line-height: 1.5; }
+    #grove-lcd.eteint { opacity: 0.25; }
+
+    #grove-couleur { width: 100%; height: 30px; padding: 0; border: 0; background: none; cursor: pointer; }
+    #grove-moteurs { background: #1b2a38; border-radius: 4px; padding: 6px 8px; font-size: 11px; }
+
+    #grove-geste { width: 100%; padding: 4px; margin-bottom: 6px; font: inherit; font-size: 12px; }
+    #grove-geste-btn { width: 100%; background: #8e44ad; font-size: 13px; padding: 7px; margin: 0; }
+    #grove-geste-btn:hover { background: #7d3c98; }
+  </style>
+</head>
+
+<body onload="brython()">
+  
+  <div id="toolbar">
+    <button id="download-btn">⬇ Télécharger le fichier .hex</button>
+    <button id="download-py-btn">⬇ Télécharger le script .py</button>
+    <button id="btn-vue-code" class="btn-vue" title="Afficher ou masquer la transcription MicroPython">Code</button>
+    <button id="btn-vue-simu" class="btn-vue" title="Afficher ou masquer le simulateur">Simulateur</button>
+    <span id="zoom-groupe">
+      <button id="btn-zoom-moins" class="btn-zoom" title="Réduire les blocs">−</button>
+      <span id="zoom-valeur">100 %</span>
+      <button id="btn-zoom-plus" class="btn-zoom" title="Agrandir les blocs">+</button>
+      <button id="btn-zoom-ajuster" class="btn-zoom btn-zoom-large" title="Ajuster à la fenêtre">Ajuster</button>
+    </span>
+    <span id="etat"></span>
+  </div>
+  
+  <div id="main-container">
+    <div id="blocklyDiv"></div>
+    <div id="code-container">
+      <h3>Transcription MicroPython</h3>
+      <pre id="code-display">Le code s'affichera ici...</pre>
+    </div>
+    <div id="simulator-container">
+      <h3>Simulateur visuel</h3>
+      <div id="microbit-board">
+          <div class="mb-accent"></div>
+          <div class="mb-logo" id="mb-logo"><div class="mb-logo-dot"></div><div class="mb-logo-dot"></div></div>
+          
+          <div class="mb-btn-wrap" id="wrap-a">
+              <div class="mb-btn-outer">
+                  <div class="mb-btn-dot dot-tl"></div><div class="mb-btn-dot dot-tr"></div>
+                  <div class="mb-btn-dot dot-bl"></div><div class="mb-btn-dot dot-br"></div>
+                  <div class="mb-btn-inner" id="btn-a"></div>
+              </div>
+              <div class="mb-btn-label">A</div>
+          </div>
+          
+          <div id="led-grid"></div>
+
+          <!-- ÉCRAN TEXTE QUI SUPERPOSE LES LEDS -->
+          <div id="led-text-container">
+              <div id="led-text-content"></div>
+          </div>
+          
+          <div class="mb-btn-wrap" id="wrap-b">
+              <div class="mb-btn-label">B</div>
+              <div class="mb-btn-outer">
+                  <div class="mb-btn-dot dot-tl"></div><div class="mb-btn-dot dot-tr"></div>
+                  <div class="mb-btn-dot dot-bl"></div><div class="mb-btn-dot dot-br"></div>
+                  <div class="mb-btn-inner" id="btn-b"></div>
+              </div>
+          </div>
+          
+          <div class="mb-btn-wrap" id="wrap-ab" style="display: none; top: 140px; right: 15px;">
+              <div class="mb-btn-label-ab">A+B</div>
+              <div class="mb-btn-outer">
+                  <div class="mb-btn-dot dot-tl"></div><div class="mb-btn-dot dot-tr"></div>
+                  <div class="mb-btn-dot dot-bl"></div><div class="mb-btn-dot dot-br"></div>
+                  <div class="mb-btn-inner" id="btn-ab"></div>
+              </div>
+          </div>
+
+          <div class="mb-badge">V2</div>
+          
+          <div class="mb-edge">
+              <div class="mb-pin" id="pin0"><div class="mb-pin-hole"></div><span>0</span></div>
+              <div class="mb-pin" id="pin1"><div class="mb-pin-hole"></div><span>1</span></div>
+              <div class="mb-pin" id="pin2"><div class="mb-pin-hole"></div><span>2</span></div>
+              <div class="mb-pin"><div class="mb-pin-hole"></div><span>3V</span></div>
+              <div class="mb-pin"><div class="mb-pin-hole"></div><span>GND</span></div>
+          </div>
+      </div>
+      <button id="btn-shake">🤚 Secouer la carte</button>
+      <button id="run-sim">▶ Lancer la simulation</button>
+      <button id="btn-reset">⟲ Réinitialiser la simulation</button>
+
+      <div id="grove-panneau">
+        <h4>Périphériques Grove</h4>
+
+        <div class="grove-bloc" id="grove-sec-ruban">
+          <span class="grove-titre">Ruban RGB</span>
+          <div id="grove-ruban"><span class="grove-vide">non défini</span></div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-4digit">
+          <span class="grove-titre">Afficheur 4 digits</span>
+          <div id="grove-4digit"><span id="grove-4digit-texte">&nbsp;&nbsp;&nbsp;&nbsp;</span></div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-ultrason">
+          <label class="grove-titre" for="grove-distance">Ultrason : <b id="grove-distance-val">50</b> cm</label>
+          <input type="range" id="grove-distance" min="0" max="200" value="50">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-joystick">
+          <span class="grove-titre">Joystick</span>
+          <label>X (P0) : <b id="grove-jx-val">512</b><input type="range" id="grove-jx" min="0" max="1023" value="512"></label>
+          <label>Y (P1) : <b id="grove-jy-val">512</b><input type="range" id="grove-jy" min="0" max="1023" value="512"></label>
+          <label class="grove-case"><input type="checkbox" id="grove-jbtn"> bouton enfoncé</label>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-gestes">
+          <span class="grove-titre">Capteur de gestes</span>
+          <select id="grove-geste">
+            <option value="haut">vers le haut</option>
+            <option value="bas">vers le bas</option>
+            <option value="gauche">vers la gauche</option>
+            <option value="droite">vers la droite</option>
+            <option value="avant">vers l'avant</option>
+            <option value="arriere">vers l'arrière</option>
+            <option value="horaire">sens horaire</option>
+            <option value="antihoraire">sens antihoraire</option>
+            <option value="vague">vague</option>
+          </select>
+          <button id="grove-geste-btn">Déclencher le geste</button>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-lcd">
+          <span class="grove-titre">Écran LCD 16x2</span>
+          <div id="grove-lcd"><div id="grove-lcd-l0">&nbsp;</div><div id="grove-lcd-l1">&nbsp;</div></div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-th">
+          <label class="grove-titre" for="grove-temp">Température : <b id="grove-temp-val">22</b> °C</label>
+          <input type="range" id="grove-temp" min="-10" max="60" value="22">
+          <label class="grove-titre" for="grove-humi">Humidité : <b id="grove-humi-val">45</b> %</label>
+          <input type="range" id="grove-humi" min="0" max="100" value="45">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-co2">
+          <label class="grove-titre" for="grove-co2">CO₂ : <b id="grove-co2-val">600</b> ppm</label>
+          <input type="range" id="grove-co2" min="400" max="5000" step="10" value="600">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-couleur">
+          <label class="grove-titre" for="grove-couleur">Couleur vue par le capteur</label>
+          <input type="color" id="grove-couleur" value="#33cc66">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-moteurs">
+          <span class="grove-titre">Moteurs (DRV8830)</span>
+          <div id="grove-moteurs">canal 1 : arrêt · canal 2 : arrêt</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="trois.js"></script>
+  <script type="module" src="deux.js"></script>
+  <script type="module" src="un.js"></script>
+  
+  <!-- LOGIQUE DU SIMULATEUR EN PUR PYTHON (BRYTHON) -->
+  <script type="text/python">
+    from browser import window, document, alert
+    import math
+    import re
+
+    def sleep(ms): window.simu_sleep(ms)
+    def temperature(): return 21
+    def running_time(): return 0
+    def set_volume(vol): pass
+
+    class TimeMock:
+        def ticks_us(self): return 0
+
+    class Display:
+        def clear(self): 
+            window.simu_effacerEcran()
+            
+        def show(self, val):
+            # Si c'est une icône ou un motif dessiné, on allume les LEDs
+            if isinstance(val, str) and (":" in val or val in ["HEART", "HAPPY", "SAD", "GHOST", "ARROW_N"]):
+                window.simu_afficherIcone(val)
+            else:
+                # Sinon (Texte ou Nombre), on affiche en mode texte !
+                window.simu_showTexte(str(val))
+                
+        def scroll(self, texte): 
+            window.simu_scrollTexte(str(texte))
+            
+        def set_pixel(self, x, y, val): pass
+        def get_pixel(self, x, y): return 0
+        def read_light_level(self): return 128
+
+    class ImageMock:
+        HEART = "HEART"
+        HAPPY = "HAPPY"
+        SAD = "SAD"
+        GHOST = "GHOST"
+        ARROW_N = "ARROW_N"
+        def __call__(self, pattern=""): return pattern
+
+    class ButtonMock:
+        def __init__(self, id_btn): self.id_btn = id_btn
+        def is_pressed(self):
+            if self.id_btn == 'a': return window.simu_btnA_pressed
+            if self.id_btn == 'b': return window.simu_btnB_pressed
+            return False
+        def get_presses(self): return 0
+
+    class AccelerometerMock:
+        # was_gesture() consomme le geste : sur la carte, il ne repond vrai
+        # qu'une fois par secousse. is_gesture() se contente de le constater.
+        def was_gesture(self, gesture): return bool(window.simu_consommerGeste(gesture))
+        def is_gesture(self, gesture): return bool(window.simu_gesteActif(gesture))
+        def set_range(self, val): pass
+        def get_x(self): return 0
+        def get_y(self): return 0
+        def get_z(self): return -1024
+        def get_strength(self): return 1024
+        def get_values(self): return (0, 0, -1024)
+
+    class CompassMock:
+        def heading(self): return 0
+        def calibrate(self): pass
+        def is_calibrated(self): return True
+        def get_x(self): return 0
+        def get_y(self): return 0
+        def get_z(self): return 0
+        def get_field_strength(self): return 0
+
+    class SoundEventMock:
+        LOUD = "LOUD"
+        QUIET = "QUIET"
+
+    class MicrophoneMock:
+        def current_event(self): return None
+        def was_event(self, event): return False
+        def sound_level(self): return 0
+        def get_events(self): return ()
+        def set_threshold(self, event, value): pass
+
+    class AudioMock:
+        def play(self, sound): window.simu_jouerSon(str(sound))
+        def stop(self): window.simu_arreterSon()
+
+    class SoundMock:
+        GIGGLE = "GIGGLE"
+        HAPPY = "HAPPY"
+        HELLO = "HELLO"
+        SAD = "SAD"
+        TWINKLE = "TWINKLE"
+
+    class MusicMock:
+        DADADADUM = "DADADADUM"
+        PUNCHLINE = "PUNCHLINE"
+        ENTERTAINER = "ENTERTAINER"
+        PRELUDE = "PRELUDE"
+        ODE = "ODE"
+        NYAN = "NYAN"
+        def play(self, melody): window.simu_jouerMelodie(str(melody))
+        def pitch(self, freq, duration): window.simu_jouerNote(freq, duration)
+        def stop(self): window.simu_arreterSon()
+        def set_tempo(self, ticks, bpm): pass
+
+    class SpeechMock:
+        def say(self, text, speed=120, pitch=100):
+            window.simu_parler(str(text))
+
+    class PinMock:
+        NO_PULL = 0
+        PULL_UP = 1
+        PULL_DOWN = 2
+
+        def __init__(self, id_pin): self.id_pin = id_pin
+        def is_touched(self):
+            if self.id_pin == 'logo': return window.simu_logo_pressed
+            if self.id_pin == '0': return window.simu_pin0_pressed
+            if self.id_pin == '1': return window.simu_pin1_pressed
+            if self.id_pin == '2': return window.simu_pin2_pressed
+            return False
+        # Necessaire aux blocs Grove : le joystick lit une valeur analogique,
+        # les autres pilotes ecrivent sur la broche sans effet visible ici.
+        def read_analog(self): return int(window.simu_lireAnalogique(self.id_pin))
+        def write_analog(self, valeur): pass
+        def write_digital(self, valeur): pass
+        def read_digital(self): return 0
+        def set_pull(self, valeur): pass
+        def set_analog_period(self, periode): pass
+
+    # ---- Peripheriques Grove ----
+    #
+    # Les pilotes reels sont retires du code avant execution (voir plus bas) :
+    # ces classes prennent leur place et dessinent dans le panneau du simulateur.
+
+    class _NeoPixelMock:
+        def __init__(self, broche, nombre):
+            self.n = int(nombre)
+            self.pixels = [(0, 0, 0)] * self.n
+            window.simu_rubanDefinir(self.n)
+            self.show()
+
+        def __len__(self): return self.n
+        def __getitem__(self, i): return self.pixels[int(i)]
+
+        def __setitem__(self, i, couleur):
+            i = int(i)
+            if 0 <= i < self.n:
+                self.pixels[i] = (int(couleur[0]), int(couleur[1]), int(couleur[2]))
+
+        def fill(self, couleur):
+            self.pixels = [(int(couleur[0]), int(couleur[1]), int(couleur[2]))] * self.n
+
+        def clear(self):
+            self.pixels = [(0, 0, 0)] * self.n
+            self.show()
+
+        def show(self):
+            # Chaine "rrggbb,rrggbb,..." : le passage Brython -> JS reste simple.
+            window.simu_rubanAfficher(','.join('%02x%02x%02x' % p for p in self.pixels))
+
+    class _NeoPixelModuleMock:
+        NeoPixel = _NeoPixelMock
+
+    _grove_lum = [100]
+
+    def _grove_teinte(couleur):
+        f = _grove_lum[0] / 100
+        return (int(((couleur >> 16) & 255) * f),
+                int(((couleur >> 8) & 255) * f),
+                int((couleur & 255) * f))
+
+    class _Afficheur4Mock:
+        def __init__(self, clk, dio):
+            self.tampon = [None, None, None, None]
+            self.pts = False
+            self._envoyer()
+
+        def _envoyer(self):
+            texte = ''.join(' ' if c is None else str(c) for c in self.tampon)
+            window.simu_afficheur(texte, self.pts)
+
+        def effacer(self):
+            self.tampon = [None, None, None, None]
+            self._envoyer()
+
+        def chiffre(self, position, valeur):
+            p = max(0, min(3, int(position)))
+            v = int(valeur)
+            self.tampon[p] = v % 10 if 0 <= v <= 9 else None
+            self._envoyer()
+
+        def nombre(self, valeur):
+            v = int(valeur)
+            negatif = v < 0
+            v = abs(v) % 10000
+            chiffres = []
+            for i in range(4):
+                chiffres.insert(0, v % 10)
+                v = v // 10
+            if negatif:
+                chiffres[0] = '-'
+            self.tampon = chiffres
+            self._envoyer()
+
+        def points(self, actif):
+            self.pts = bool(actif)
+            self._envoyer()
+
+        def luminosite(self, niveau):
+            window.simu_afficheurLuminosite(int(niveau))
+
+    def _grove_distance_cm(broche): return int(window.simu_distanceCm())
+    def _grove_distance_pouces(broche): return int(int(window.simu_distanceCm()) / 2.54)
+    def _grove_joystick(bx, by, direction): return bool(window.simu_joystickDirection(direction))
+
+    class _CapteurGestesMock:
+        def __init__(self): pass
+        def lire(self): return str(window.simu_gesteGrove())
+
+    class _CapteurTHMock:
+        def __init__(self): pass
+        def temperature(self): return float(window.simu_mesure('temperature'))
+        def humidite(self): return float(window.simu_mesure('humidite'))
+
+    class _EcranLCDMock:
+        def __init__(self): window.simu_lcd('init', '', 0, 0)
+        def effacer(self): window.simu_lcd('effacer', '', 0, 0)
+        def allumer(self): window.simu_lcd('allumer', '', 0, 0)
+        def eteindre(self): window.simu_lcd('eteindre', '', 0, 0)
+        def texte(self, message, x, y): window.simu_lcd('texte', str(message), int(x), int(y))
+
+    class _CapteurCouleurMock:
+        def __init__(self): pass
+        def lire(self, canal): return int(window.simu_couleurCanal(canal))
+
+    def _grove_moteur_ecrire(canal, registre, valeur): pass
+    def _grove_moteur_vitesse(canal, vitesse): window.simu_moteur(int(canal), int(vitesse))
+    def _grove_moteur_arret(canal): window.simu_moteur(int(canal), 0)
+    def _grove_moteur_frein(canal): window.simu_moteur(int(canal), 'frein')
+    def _grove_moteur_effacer_defaut(canal): pass
+    def _grove_moteur_defaut(canal): return 0
+
+    class _CapteurSCD30Mock:
+        def __init__(self): pass
+        def lire(self, grandeur): return float(window.simu_mesure(grandeur))
+
+    class _CapteurSCD41Mock:
+        def __init__(self): pass
+        def lire(self, grandeur):
+            valeur = float(window.simu_mesure(grandeur))
+            # Le SCD41 rend le CO2 en entier, contrairement au SCD30.
+            return int(valeur) if grandeur == 'co2' else valeur
+
+    # Meme registre que sur la carte : le peripherique est cree a la premiere
+    # utilisation, le bloc « definir ... » n'etant que facultatif.
+    _grove_objets = {}
+
+    def _grove_obj(nom, fabrique):
+        if nom not in _grove_objets:
+            _grove_objets[nom] = fabrique()
+        return _grove_objets[nom]
+
+    def _grove_ruban(): return _grove_obj('ruban', lambda: _NeoPixelMock(None, 16))
+    def _grove_afficheur(): return _grove_obj('afficheur', lambda: _Afficheur4Mock(None, None))
+    def _grove_gestes(): return _grove_obj('gestes', _CapteurGestesMock)
+    def _grove_th(): return _grove_obj('th', _CapteurTHMock)
+    def _grove_lcd(): return _grove_obj('lcd', _EcranLCDMock)
+    def _grove_couleur(): return _grove_obj('couleur', _CapteurCouleurMock)
+    def _grove_scd30(): return _grove_obj('scd30', _CapteurSCD30Mock)
+    def _grove_scd41(): return _grove_obj('scd41', _CapteurSCD41Mock)
+
+    # La radio manquait a l'environnement : tout programme l'utilisant
+    # s'arretait sur "name 'radio' is not defined".
+    class RadioMock:
+        def on(self): pass
+        def off(self): pass
+        def config(self, **kwargs): pass
+        def send(self, message): pass
+        def receive(self): return None
+
+    # reset() redemarre la carte : dans le simulateur, l'ecran s'eteint, le son
+    # se tait, et la suite du programme n'est pas executee.
+    def reset(): window.simu_resetCarte()
+
+    def lancer_simulation(ev):
+        code = getattr(window, 'currentPythonCode', '')
+        if not code or "Glissez des blocs" in code:
+            return alert("Aucun code à simuler !")
+
+        window.simu_clearQueue()
+        # Chaque execution repart de peripheriques neufs.
+        _grove_objets.clear()
+        # Les pilotes Grove pilotent de vraies broches : on les retire et ce sont
+        # les classes ci-dessus, injectees dans env, qui prennent le relais.
+        code = re.sub(r"# >>> pilote grove.*?# <<< pilote grove", "", code, flags=re.S)
+        # replace() sans compte remplace TOUTES les occurrences en Python : un
+        # programme a deux boucles infinies ne fige donc plus l'onglet.
+        for ligne in ["from microbit import *", "import audio", "import music",
+                      "import speech", "import radio", "import time", "import math",
+                      "import random", "import neopixel", "import machine",
+                      "import utime", "import ustruct"]:
+            code = code.replace(ligne, "")
+        code = code.replace("while True:", "for _ in range(5):")
+
+        env = {
+            'display': Display(), 'Image': ImageMock(), 'sleep': sleep,
+            'temperature': temperature, 'running_time': running_time,
+            'set_volume': set_volume, 'time': TimeMock(), 'reset': reset,
+            'button_a': ButtonMock('a'), 'button_b': ButtonMock('b'),
+            'accelerometer': AccelerometerMock(), 'compass': CompassMock(),
+            'microphone': MicrophoneMock(), 'SoundEvent': SoundEventMock(),
+            'audio': AudioMock(), 'Sound': SoundMock(),
+            'music': MusicMock(), 'speech': SpeechMock(), 'radio': RadioMock(),
+            'pin_logo': PinMock('logo'), 'pin0': PinMock('0'), 'pin1': PinMock('1'), 'pin2': PinMock('2'),
+            'pin8': PinMock('8'), 'pin12': PinMock('12'), 'pin13': PinMock('13'),
+            'pin14': PinMock('14'), 'pin15': PinMock('15'), 'pin16': PinMock('16'),
+            'math': math,
+            # Grove : substituts des pilotes retires du code
+            'neopixel': _NeoPixelModuleMock(), '_grove_lum': _grove_lum,
+            '_grove_teinte': _grove_teinte, '_Afficheur4': _Afficheur4Mock,
+            '_grove_distance_cm': _grove_distance_cm,
+            '_grove_distance_pouces': _grove_distance_pouces,
+            '_grove_joystick': _grove_joystick,
+            '_CapteurGestes': _CapteurGestesMock,
+            '_CapteurTH': _CapteurTHMock, '_EcranLCD': _EcranLCDMock,
+            '_CapteurCouleur': _CapteurCouleurMock,
+            '_CapteurSCD30': _CapteurSCD30Mock, '_CapteurSCD41': _CapteurSCD41Mock,
+            '_grove_moteur_ecrire': _grove_moteur_ecrire,
+            '_grove_moteur_vitesse': _grove_moteur_vitesse,
+            '_grove_moteur_arret': _grove_moteur_arret,
+            '_grove_moteur_frein': _grove_moteur_frein,
+            '_grove_moteur_effacer_defaut': _grove_moteur_effacer_defaut,
+            '_grove_moteur_defaut': _grove_moteur_defaut,
+            '_grove_objets': _grove_objets, '_grove_obj': _grove_obj,
+            '_grove_ruban': _grove_ruban, '_grove_afficheur': _grove_afficheur,
+            '_grove_gestes': _grove_gestes, '_grove_th': _grove_th,
+            '_grove_lcd': _grove_lcd, '_grove_couleur': _grove_couleur,
+            '_grove_scd30': _grove_scd30, '_grove_scd41': _grove_scd41
+        }
+
+        try:
+            exec(code, env)
+            window.simu_ok()
+            window.simu_playQueue()
+        except Exception as e:
+            # L'erreur doit remonter a l'ecran : dans la console seule, elle
+            # passait inapercue et la simulation semblait ne rien faire.
+            print("Erreur d'exécution :", e)
+            window.simu_erreur(str(e))
+
+    document["run-sim"].bind("click", lancer_simulation)
+  </script>
+</body>
+</html>
