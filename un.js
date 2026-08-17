@@ -200,6 +200,21 @@ try {
     // `on_…` défini ici DOIT avoir son entrée correspondante dans GESTIONNAIRES,
     // sans quoi le bloc reste sans effet.
 
+    /**
+     * Declare une fonction de gestionnaire en tete de programme.
+     *
+     * Les blocs « lorsque ... » se posent n'importe ou, et Blockly genere les
+     * blocs de premier niveau dans l'ordre de leur position. Une fonction posee
+     * sous la boucle serait donc definie apres l'appel qui l'utilise, d'ou un
+     * NameError a l'execution. En passant par definitions_, elle remonte avant
+     * tout le code executable, quelle que soit la disposition des blocs.
+     */
+    function declarerGestionnaire(nom, corps) {
+        const contenu = corps.replace(/\s+$/, '');
+        P.definitions_['gestionnaire_' + nom] =
+            'def ' + nom + '():' + '\n' + (contenu ? contenu : P.INDENT + 'pass');
+        return '';
+    }
     Blockly.Blocks['lorsque_bouton'] = { init: function() {
         this.appendDummyInput().appendField("lorsque le bouton")
             .appendField(new Blockly.FieldDropdown([["A", "a"], ["B", "b"], ["A+B", "ab"]]), "BOUTON")
@@ -209,8 +224,7 @@ try {
     }};
     P.forBlock['lorsque_bouton'] = function(block) {
         importerMicrobit();
-        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
-        return 'def on_button_pressed_' + block.getFieldValue('BOUTON') + '():\n' + branche;
+        return declarerGestionnaire('on_button_pressed_' + block.getFieldValue('BOUTON'), P.statementToCode(block, 'DO'));
     };
 
     Blockly.Blocks['lorsque_geste'] = { init: function() {
@@ -223,8 +237,7 @@ try {
     }};
     P.forBlock['lorsque_geste'] = function(block) {
         importerMicrobit();
-        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
-        return 'def on_gesture_' + block.getFieldValue('GESTE') + '():\n' + branche;
+        return declarerGestionnaire('on_gesture_' + block.getFieldValue('GESTE'), P.statementToCode(block, 'DO'));
     };
 
     Blockly.Blocks['lorsque_broche'] = { init: function() {
@@ -237,8 +250,7 @@ try {
     }};
     P.forBlock['lorsque_broche'] = function(block) {
         importerMicrobit();
-        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
-        return 'def on_pin_' + block.getFieldValue('BROCHE') + '_' + block.getFieldValue('ETAT') + '():\n' + branche;
+        return declarerGestionnaire('on_pin_' + block.getFieldValue('BROCHE') + '_' + block.getFieldValue('ETAT'), P.statementToCode(block, 'DO'));
     };
 
     Blockly.Blocks['lorsque_son_detecte'] = { init: function() {
@@ -250,8 +262,7 @@ try {
     }};
     P.forBlock['lorsque_son_detecte'] = function(block) {
         importerMicrobit();
-        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
-        return 'def on_sound_' + block.getFieldValue('SON') + '():\n' + branche;
+        return declarerGestionnaire('on_sound_' + block.getFieldValue('SON'), P.statementToCode(block, 'DO'));
     };
 
     Blockly.Blocks['lorsque_logo'] = { init: function() {
@@ -262,8 +273,7 @@ try {
     }};
     P.forBlock['lorsque_logo'] = function(block) {
         importerMicrobit();
-        const branche = P.statementToCode(block, 'DO') || P.INDENT + 'pass\n';
-        return 'def on_logo_' + block.getFieldValue('ACTION') + '():\n' + branche;
+        return declarerGestionnaire('on_logo_' + block.getFieldValue('ACTION'), P.statementToCode(block, 'DO'));
     };
 
     // ---------- Entrées / Sorties ----------
@@ -615,6 +625,22 @@ try {
     P.forBlock['radio_envoyer_texte'] = function(block) {
         importerModule('radio');
         return 'radio.send(' + versTexte(block, 'MESSAGE') + ')\n';
+    };
+
+    // Bloc de demarrage : son contenu s'execute une fois, avant tout le reste.
+    // Ni encoche du dessus ni du dessous — il vit seul, comme dans MakeCode.
+    Blockly.Blocks['au_demarrage'] = { init: function() {
+        this.appendDummyInput().appendField("Au démarrage");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(120);
+        this.setTooltip("Exécuté une seule fois au démarrage de la carte, avant les boucles.");
+    }};
+    P.forBlock['au_demarrage'] = function(block) {
+        const branche = P.statementToCode(block, 'DO');
+        if (!branche.trim()) return '';
+        // statementToCode indente d'un cran ; ce code est de premier niveau,
+        // on le remet donc a plat.
+        return branche.replace(new RegExp('^' + P.INDENT, 'gm'), '');
     };
 
     Blockly.Blocks['boucle_infinie'] = { init: function() {
@@ -1948,6 +1974,9 @@ try {
       },
       grid: { spacing: 20, length: 3, colour: '#e4e4e4', snap: false },
       trashcan: true,
+      // Un seul bloc de demarrage a la fois : deux rendraient l'ordre
+      // d'execution ambigu. Le tiroir grise le bloc quand il est deja pose.
+      maxInstances: { 'au_demarrage': 1 },
       toolbox: {
         "kind": "categoryToolbox",
         "contents": [
@@ -2145,6 +2174,7 @@ try {
           {
             "kind": "category", "name": "Boucles", "colour": "120",
             "contents": [
+              { "kind": "block", "type": "au_demarrage" },
               { "kind": "block", "type": "boucle_infinie" },
               { "kind": "block", "type": "controls_repeat_ext", "inputs": { "TIMES": { "shadow": { "type": "math_number", "fields": { "NUM": "10" } } } } },
               { "kind": "block", "type": "controls_whileUntil" },
@@ -2197,6 +2227,16 @@ try {
         ]
       }
     });
+
+    // Espace de depart : le demarrage puis la boucle, comme dans MakeCode.
+    // Les blocs de premier niveau sont generes dans l'ordre de leur position,
+    // le demarrage est donc pose au-dessus pour s'executer en premier.
+    if (!window.workspace.getTopBlocks(false).length) {
+        Blockly.serialization.workspaces.load({ blocks: { languageVersion: 0, blocks: [
+            { type: 'au_demarrage', x: 40, y: 40 },
+            { type: 'boucle_infinie', x: 40, y: 190 }
+        ]}}, window.workspace);
+    }
 
     // ------------------------------------------
     // REPLI DES PANNEAUX
@@ -2683,7 +2723,66 @@ try {
     // directement : ce sont des capteurs, pas des actions.
 
     const zoneRuban = document.getElementById('grove-ruban');
-    const zone4Digit = document.getElementById('grove-4digit-texte');
+    const ecran4Digit = document.getElementById('grove-4digit-ecran');
+
+    // Sept segments, dans l'ordre des bits du TM1637 : a b c d e f g.
+    const SEGMENTS_7 = [
+        ['a', '10,2 30,2 34,6 30,10 10,10 6,6'],
+        ['b', '35,7 39,11 39,29 35,33 31,29 31,11'],
+        ['c', '35,37 39,41 39,59 35,63 31,59 31,41'],
+        ['d', '10,60 30,60 34,64 30,68 10,68 6,64'],
+        ['e', '5,37 9,41 9,59 5,63 1,59 1,41'],
+        ['f', '5,7 9,11 9,29 5,33 1,29 1,11'],
+        ['g', '10,31 30,31 34,35 30,39 10,39 6,35'],
+    ];
+    let chiffres7 = [];
+    let pointsDeuxPoints = null;
+
+    function construireAfficheur7() {
+        if (!ecran4Digit || chiffres7.length) return;
+        const svgNS = 'http://www.w3.org/2000/svg';
+        for (let i = 0; i < 4; i++) {
+            const svg = document.createElementNS(svgNS, 'svg');
+            svg.setAttribute('class', 'digit7');
+            svg.setAttribute('viewBox', '0 0 40 70');
+            const segments = {};
+            for (const [nom, points] of SEGMENTS_7) {
+                const p = document.createElementNS(svgNS, 'polygon');
+                p.setAttribute('class', 'seg');
+                p.setAttribute('points', points);
+                svg.appendChild(p);
+                segments[nom] = p;
+            }
+            ecran4Digit.appendChild(svg);
+            chiffres7.push(segments);
+            // Les deux points du TM1637 se placent entre le 2e et le 3e chiffre.
+            if (i === 1) {
+                pointsDeuxPoints = document.createElement('div');
+                pointsDeuxPoints.className = 'digit7-points';
+                pointsDeuxPoints.innerHTML = '<span></span><span></span>';
+                ecran4Digit.appendChild(pointsDeuxPoints);
+            }
+        }
+    }
+
+    /**
+     * Allume les segments d'après le motif envoyé par le pilote.
+     *
+     * @param {string} motifs  quatre octets en hexadécimal, séparés par des virgules
+     * @param {boolean} points les deux points du milieu
+     */
+    function afficher7Segments(motifs, points) {
+        construireAfficheur7();
+        if (!chiffres7.length) return;
+        const octets = String(motifs).split(',');
+        chiffres7.forEach((segments, i) => {
+            const valeur = parseInt(octets[i], 16) || 0;
+            SEGMENTS_7.forEach(([nom], bit) => {
+                segments[nom].classList.toggle('on', (valeur & (1 << bit)) !== 0);
+            });
+        });
+        if (pointsDeuxPoints) pointsDeuxPoints.classList.toggle('on', !!points);
+    }
     const curseurDistance = document.getElementById('grove-distance');
     const valeurDistance = document.getElementById('grove-distance-val');
     const curseurJX = document.getElementById('grove-jx');
@@ -2825,7 +2924,7 @@ try {
             zoneRuban.innerHTML = '<span class="grove-vide">non défini</span>';
             ledsRuban = [];
         }
-        if (zone4Digit) zone4Digit.textContent = '    ';
+        afficher7Segments('00,00,00,00', false);
         gesteGroveEnAttente = '';
         tamponLcd = ['                ', '                '];
         if (zoneLcd) zoneLcd.classList.remove('eteint');
@@ -2842,8 +2941,8 @@ try {
     window.simu_rubanAfficher = function(couleurs) {
         window.simuQueue.push({ type: 'rubanShow', couleurs: String(couleurs) });
     };
-    window.simu_afficheur = function(texte, points) {
-        window.simuQueue.push({ type: 'afficheur', texte: String(texte), points: !!points });
+    window.simu_afficheur = function(motifs, points) {
+        window.simuQueue.push({ type: 'afficheur', motifs: String(motifs), points: !!points });
     };
     window.simu_afficheurLuminosite = function(niveau) {
         window.simuQueue.push({ type: 'afficheurLum', niveau: Number(niveau) });
@@ -3038,8 +3137,7 @@ try {
             window.simu_playQueue();
         }
         else if (action.type === 'afficheur') {
-            const t = (action.texte + '    ').slice(0, 4);
-            zone4Digit.textContent = action.points ? t.slice(0, 2) + ':' + t.slice(2) : t;
+            afficher7Segments(action.motifs, action.points);
             window.simu_playQueue();
         }
         else if (action.type === 'lcd') {
@@ -3073,7 +3171,7 @@ try {
         }
         else if (action.type === 'afficheurLum') {
             // 0 à 7 sur le module : on rend l'écart en opacité.
-            zone4Digit.style.opacity = String(0.25 + 0.75 * (action.niveau / 7));
+            ecran4Digit.style.opacity = String(0.25 + 0.75 * (action.niveau / 7));
             window.simu_playQueue();
         }
         else if (action.type === 'stopSon') {

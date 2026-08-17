@@ -148,9 +148,25 @@
                  box-shadow: inset 0 0 2px #000; }
     .grove-vide { color: #6b7f93; font-style: italic; }
 
-    #grove-4digit { background: #1b2a38; border-radius: 4px; padding: 6px 8px; text-align: center; }
-    #grove-4digit-texte { font-family: Consolas, monospace; font-size: 26px; font-weight: bold;
-                          color: #ff3b30; letter-spacing: 4px; text-shadow: 0 0 6px rgba(255,59,48,0.7); }
+    /* Afficheur a sept segments : on dessine les segments reellement allumes,
+       d'apres le motif que le pilote TM1637 envoie a la puce. Les segments
+       eteints restent faiblement visibles, comme sur un vrai module. */
+    /* Boitier noir a bord arrondi, chiffres cyan legerement penches : c'est
+       l'aspect du module reel. L'inclinaison porte sur tout l'ecran, deux
+       points compris, comme sur un afficheur du commerce. */
+    #grove-4digit { background: linear-gradient(#242424, #131313);
+                    border: 1px solid #4a4f52; border-radius: 9px; padding: 9px 14px;
+                    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 3px rgba(0,0,0,0.6); }
+    #grove-4digit-ecran { display: flex; align-items: center; justify-content: center; gap: 6px;
+                          transform: skewX(-8deg); }
+    .digit7 { width: 26px; height: 46px; display: block; }
+    .digit7 .seg { fill: #1b2f2c; transition: fill 0.08s; }
+    .digit7 .seg.on { fill: #24e8c6; filter: drop-shadow(0 0 3px rgba(36, 232, 198, 0.85)); }
+    .digit7-points { display: flex; flex-direction: column; justify-content: center; gap: 11px;
+                     height: 46px; padding: 0 1px; }
+    .digit7-points span { width: 5px; height: 5px; border-radius: 50%; background: #1b2f2c;
+                          transition: background 0.08s; }
+    .digit7-points.on span { background: #24e8c6; box-shadow: 0 0 4px rgba(36, 232, 198, 0.9); }
 
     #grove-lcd { background: #0f3d2e; border-radius: 4px; padding: 6px 8px;
                  font-family: Consolas, monospace; font-size: 13px; color: #7dffb2;
@@ -278,7 +294,7 @@
 
         <div class="grove-bloc" id="grove-sec-4digit">
           <span class="grove-titre">Afficheur 4 digits</span>
-          <div id="grove-4digit"><span id="grove-4digit-texte">&nbsp;&nbsp;&nbsp;&nbsp;</span></div>
+          <div id="grove-4digit"><div id="grove-4digit-ecran"></div></div>
         </div>
 
         <div class="grove-bloc" id="grove-sec-ultrason">
@@ -519,37 +535,38 @@
                 int(((couleur >> 8) & 255) * f),
                 int((couleur & 255) * f))
 
+    # Memes motifs de segments que le pilote reel : le simulateur montre donc
+    # exactement ce que la puce recevrait.
+    _TM_SEG_SIMU = (0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F)
+
     class _Afficheur4Mock:
         def __init__(self, clk, dio):
-            self.tampon = [None, None, None, None]
+            self.tampon = [0, 0, 0, 0]
             self.pts = False
             self._envoyer()
 
         def _envoyer(self):
-            texte = ''.join(' ' if c is None else str(c) for c in self.tampon)
-            window.simu_afficheur(texte, self.pts)
+            window.simu_afficheur(','.join('%02x' % v for v in self.tampon), self.pts)
 
         def effacer(self):
-            self.tampon = [None, None, None, None]
+            self.tampon = [0, 0, 0, 0]
             self._envoyer()
 
         def chiffre(self, position, valeur):
             p = max(0, min(3, int(position)))
             v = int(valeur)
-            self.tampon[p] = v % 10 if 0 <= v <= 9 else None
+            self.tampon[p] = _TM_SEG_SIMU[v % 10] if 0 <= v <= 9 else 0
             self._envoyer()
 
         def nombre(self, valeur):
             v = int(valeur)
             negatif = v < 0
             v = abs(v) % 10000
-            chiffres = []
-            for i in range(4):
-                chiffres.insert(0, v % 10)
+            for i in range(3, -1, -1):
+                self.tampon[i] = _TM_SEG_SIMU[v % 10]
                 v = v // 10
             if negatif:
-                chiffres[0] = '-'
-            self.tampon = chiffres
+                self.tampon[0] = 0x40   # segment central seul
             self._envoyer()
 
         def points(self, actif):
