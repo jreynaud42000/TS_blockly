@@ -39,8 +39,10 @@ function classeSystemeDeFichiers() {
 function verifierFirmwareComplet(hex) {
   if (!/^:00000001FF\s*$/m.test(hex)) {
     throw new Error(
-      "firmware.hex est incomplet : l'enregistrement de fin (:00000001FF) manque. " +
-      'Le fichier a probablement été copié à moitié — le recopier en entier.'
+      "firmware.hex est incomplet : l'enregistrement de fin (:00000001FF) manque " +
+      `(${hex.length} octets reçus). Deux causes possibles : le fichier a été copié ` +
+      'à moitié, ou le navigateur ressert une ancienne version en cache — ' +
+      'vérifier la taille du fichier sur le disque, puis recharger par Ctrl+Maj+R.'
     );
   }
 }
@@ -132,7 +134,13 @@ function construireSystemeDeFichiers(entree) {
  */
 export async function genererFichierHexFinal(codePython) {
   // 1. Le firmware MicroPython officiel, posé à côté des fichiers du projet.
-  const reponse = await fetch('./firmware.hex');
+  //
+  // `no-store` est indispensable : un autre projet servi auparavant sur le meme
+  // http://localhost:8000 laisse son propre firmware.hex dans le cache, a la
+  // meme adresse. Le navigateur ressert alors ce fichier-la — abime, dans le cas
+  // qui a motive cette ligne — et l'erreur est incomprehensible puisque le
+  // fichier sur le disque, lui, est parfaitement valide.
+  const reponse = await fetch('./firmware.hex', { cache: 'no-store' });
   if (!reponse.ok) {
     throw new Error(
       `Impossible de lire firmware.hex (HTTP ${reponse.status}). ` +

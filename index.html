@@ -19,6 +19,9 @@
     button:hover { background: #2980b9; }
     #download-py-btn { background: #9b59b6; }
     #download-py-btn:hover { background: #8e44ad; }
+    #btn-envoyer { background: #16a085; }
+    #btn-envoyer:hover { background: #12816a; }
+    #btn-envoyer:disabled { background: #22303d; color: #7f8c8d; cursor: not-allowed; }
     /* Zone de message : on y lit la cause réelle d'un échec, plutôt qu'une
        alerte générique qui masquerait le vrai problème. */
     /* Replier un panneau rend sa largeur a la zone de blocs : c'est le remede
@@ -169,6 +172,7 @@
     <img src="logo.png" alt="Logo" style="height: 30px; margin-right: 15px; vertical-align: middle;">
     <button id="download-btn">⬇ Télécharger le fichier .hex</button>
     <button id="download-py-btn">⬇ Télécharger le script .py</button>
+    <button id="btn-envoyer" title="Écrire le programme sur le lecteur MICROBIT">📤 Envoyer sur la carte</button>
     <button id="btn-vue-code" class="btn-vue" title="Afficher ou masquer la transcription MicroPython">Code</button>
     <button id="btn-vue-simu" class="btn-vue" title="Afficher ou masquer le simulateur">Simulateur</button>
     <span id="zoom-groupe">

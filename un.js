@@ -2155,6 +2155,104 @@ try {
         }
     });
 
+    // ------------------------------------------
+    // ENVOI DIRECT SUR LE LECTEUR MICROBIT
+    // ------------------------------------------
+    // Le lecteur n'accepte que des .hex : y deposer un .py ne ferait rien. On y
+    // ecrit donc le meme fichier que celui du bouton de telechargement, ce qui
+    // revient exactement a un glisser-deposer.
+    //
+    // L'API d'acces aux fichiers n'existe que sur Chrome et Edge ; ailleurs le
+    // bouton est desactive plutot que trompeur.
+
+    const boutonEnvoyer = document.getElementById('btn-envoyer');
+    let dossierCarte = null;
+
+    /** Un lecteur micro:bit porte toujours l'un de ces deux fichiers. */
+    async function estLecteurMicrobit(dossier) {
+        for (const nom of ['DETAILS.TXT', 'MICROBIT.HTM']) {
+            try {
+                await dossier.getFileHandle(nom);
+                return true;
+            } catch (erreur) { /* fichier absent, on essaie le suivant */ }
+        }
+        return false;
+    }
+
+    /** Redemande l'autorisation d'ecriture sur un dossier deja choisi. */
+    async function autorisationEcriture(dossier) {
+        const options = { mode: 'readwrite' };
+        if (await dossier.queryPermission(options) === 'granted') return true;
+        return await dossier.requestPermission(options) === 'granted';
+    }
+
+    async function envoyerSurLaCarte() {
+        const codePython = window.currentPythonCode;
+        if (!codePython || !codePython.trim()) {
+            afficherEtat("Ajoutez d'abord des blocs sur l'espace de travail.", true);
+            return;
+        }
+
+        boutonEnvoyer.disabled = true;
+        // On distingue les deux moitiés de l'opération : un firmware invalide
+        // n'a rien à voir avec le lecteur, et proposer d'en redésigner un
+        // envoyait sur une fausse piste.
+        let etape = 'generation';
+        try {
+            // Générer d'abord : inutile de faire choisir un lecteur si le
+            // programme ne peut de toute façon pas être produit.
+            afficherEtat('Génération du programme…', false);
+            const contenuHex = await genererFichierHexFinal(codePython);
+
+            etape = 'lecteur';
+            if (!dossierCarte) {
+                afficherEtat('Choisissez le lecteur MICROBIT…', false);
+                const choisi = await window.showDirectoryPicker({ mode: 'readwrite', id: 'microbit' });
+                if (!await estLecteurMicrobit(choisi)) {
+                    throw new Error("Ce dossier ne ressemble pas au lecteur MICROBIT : ni DETAILS.TXT " +
+                                    'ni MICROBIT.HTM ne s\'y trouvent. Choisir le lecteur de la carte.');
+                }
+                dossierCarte = choisi;
+            }
+
+            if (!await autorisationEcriture(dossierCarte)) {
+                throw new Error("Autorisation d'écriture refusée sur le lecteur.");
+            }
+
+            afficherEtat('Écriture sur la carte…', false);
+            const fichier = await dossierCarte.getFileHandle('programme-microbit.hex', { create: true });
+            const flux = await fichier.createWritable();
+            await flux.write(new Blob([contenuHex], { type: 'application/octet-stream' }));
+            await flux.close();
+
+            afficherEtat('Programme envoyé. La carte clignote puis redémarre.', false);
+        } catch (erreur) {
+            console.error('Envoi sur la carte :', erreur);
+            if (erreur && erreur.name === 'AbortError') {
+                afficherEtat('Envoi annulé.', false);
+            } else if (etape === 'generation') {
+                afficherEtat(erreur.message, true);
+            } else {
+                // Apres un transfert, le lecteur se demonte et se remonte : la
+                // reference gardee ne vaut plus rien, il faut le redesigner.
+                dossierCarte = null;
+                afficherEtat(erreur.message + ' — recliquez pour redésigner le lecteur.', true);
+            }
+        } finally {
+            boutonEnvoyer.disabled = false;
+        }
+    }
+
+    if (boutonEnvoyer) {
+        if (typeof window.showDirectoryPicker !== 'function') {
+            boutonEnvoyer.disabled = true;
+            boutonEnvoyer.title = "Cette fonction demande Chrome ou Edge : Firefox et Safari " +
+                                  "n'ont pas l'API d'accès aux fichiers. Utilisez le bouton .hex.";
+        } else {
+            boutonEnvoyer.addEventListener('click', envoyerSurLaCarte);
+        }
+    }
+
     document.getElementById('download-py-btn').addEventListener('click', () => {
         let codePython = window.currentPythonCode;
         if (!codePython || codePython.trim() === "") {
