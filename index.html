@@ -158,7 +158,31 @@
     #grove-lcd.eteint { opacity: 0.25; }
 
     #grove-couleur { width: 100%; height: 30px; padding: 0; border: 0; background: none; cursor: pointer; }
-    #grove-moteurs { background: #1b2a38; border-radius: 4px; padding: 6px 8px; font-size: 11px; }
+    #grove-moteurs, #grove-servos { background: #1b2a38; border-radius: 4px; padding: 6px 8px; font-size: 11px; }
+    #grove-servos { display: flex; flex-wrap: wrap; gap: 4px; }
+
+    /* Un servo positionnel se place a un angle : rotation animee par une
+       transition. Un servo a rotation continue tourne sans fin : rotation
+       animee par des images cles, dont la duree vient de la vitesse. */
+    .servo { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px; }
+    .servo-cadran { width: 44px; height: 44px; border-radius: 50%; background: #0f1c26;
+                    border: 2px solid #46617d; position: relative; box-sizing: border-box; }
+    .servo-rotor { position: absolute; inset: 0; transform: rotate(0deg);
+                   transition: transform 0.35s ease-out; }
+    .servo-bras { position: absolute; left: 50%; top: 4px; width: 3px; height: 16px;
+                  margin-left: -1.5px; background: #2ecc71; border-radius: 2px; }
+    .servo-axe { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px;
+                 margin: -3.5px 0 0 -3.5px; background: #46617d; border-radius: 50%; }
+    .servo-cadran.continu .servo-rotor {
+        transition: none;
+        animation: servo-tour var(--duree, 2s) linear infinite;
+    }
+    .servo-cadran.continu.inverse .servo-rotor { animation-direction: reverse; }
+    .servo-cadran.arret { border-color: #7f8c8d; }
+    .servo-cadran.arret .servo-bras { background: #7f8c8d; }
+    @keyframes servo-tour { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .servo-nom { font-size: 10px; color: #9fb3c8; }
+    .servo-etat { font-size: 10px; color: #d6e0ea; text-align: center; line-height: 1.2; }
 
     #grove-geste { width: 100%; padding: 4px; margin-bottom: 6px; font: inherit; font-size: 12px; }
     #grove-geste-btn { width: 100%; background: #8e44ad; font-size: 13px; padding: 7px; margin: 0; }
@@ -245,7 +269,7 @@
       <button id="btn-reset">⟲ Réinitialiser la simulation</button>
 
       <div id="grove-panneau">
-        <h4>Périphériques Grove</h4>
+        <h4>Périphériques</h4>
 
         <div class="grove-bloc" id="grove-sec-ruban">
           <span class="grove-titre">Ruban RGB</span>
@@ -310,6 +334,11 @@
         <div class="grove-bloc" id="grove-sec-moteurs">
           <span class="grove-titre">Moteurs (DRV8830)</span>
           <div id="grove-moteurs">canal 1 : arrêt · canal 2 : arrêt</div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-servos">
+          <span class="grove-titre">Servomoteurs</span>
+          <div id="grove-servos">aucun</div>
         </div>
       </div>
     </div>
@@ -572,6 +601,46 @@
             # Le SCD41 rend le CO2 en entier, contrairement au SCD30.
             return int(valeur) if grandeur == 'co2' else valeur
 
+    # Servomoteurs : memes bornes que le pilote reel, mais on dessine au lieu
+    # de piloter une broche.
+    _SERVO_ETAT_SIMU = {}
+
+    def _servo_etat(nom):
+        if nom not in _SERVO_ETAT_SIMU:
+            _SERVO_ETAT_SIMU[nom] = [0, 180, False]
+        return _SERVO_ETAT_SIMU[nom]
+
+    def _servo_impulsion(broche, microsecondes, nom=''):
+        us = max(500, min(2500, int(microsecondes)))
+        # 500 us correspond a 0 degre, 2500 us a 180 : on en deduit l orientation.
+        window.simu_servo(nom or '?', 'impulsion', us, (us - 500) * 180 / 2000)
+
+    def _servo_angle(broche, nom, angle):
+        etat = _servo_etat(nom)
+        a = max(etat[0], min(etat[1], int(angle)))
+        window.simu_servo(nom, 'angle', a, a)
+
+    def _servo_arreter(broche, nom):
+        window.simu_servo(nom, 'arret', 0, 0)
+
+    def _servo_continu(broche, nom, vitesse):
+        etat = _servo_etat(nom)
+        v = max(-100, min(100, int(vitesse)))
+        angle = etat[0] + (v + 100) * (etat[1] - etat[0]) / 200
+        angle = max(etat[0], min(etat[1], int(angle)))
+        if etat[2] and angle == (etat[1] - etat[0]) // 2:
+            _servo_arreter(broche, nom)
+        else:
+            window.simu_servo(nom, 'continu', v, angle)
+
+    def _servo_intervalle(nom, mini, maxi):
+        etat = _servo_etat(nom)
+        etat[0] = max(0, min(90, int(mini)))
+        etat[1] = max(90, min(180, int(maxi)))
+
+    def _servo_arret_neutre(nom, actif):
+        _servo_etat(nom)[2] = bool(actif)
+
     # Meme registre que sur la carte : le peripherique est cree a la premiere
     # utilisation, le bloc « definir ... » n'etant que facultatif.
     _grove_objets = {}
@@ -611,9 +680,10 @@
         window.simu_clearQueue()
         # Chaque execution repart de peripheriques neufs.
         _grove_objets.clear()
+        _SERVO_ETAT_SIMU.clear()
         # Les pilotes Grove pilotent de vraies broches : on les retire et ce sont
         # les classes ci-dessus, injectees dans env, qui prennent le relais.
-        code = re.sub(r"# >>> pilote grove.*?# <<< pilote grove", "", code, flags=re.S)
+        code = re.sub(r"# >>> pilote \S+.*?# <<< pilote \S+", "", code, flags=re.S)
         # replace() sans compte remplace TOUTES les occurrences en Python : un
         # programme a deux boucles infinies ne fige donc plus l'onglet.
         for ligne in ["from microbit import *", "import audio", "import music",
@@ -656,7 +726,11 @@
             '_grove_ruban': _grove_ruban, '_grove_afficheur': _grove_afficheur,
             '_grove_gestes': _grove_gestes, '_grove_th': _grove_th,
             '_grove_lcd': _grove_lcd, '_grove_couleur': _grove_couleur,
-            '_grove_scd30': _grove_scd30, '_grove_scd41': _grove_scd41
+            '_grove_scd30': _grove_scd30, '_grove_scd41': _grove_scd41,
+            '_servo_etat': _servo_etat, '_servo_impulsion': _servo_impulsion,
+            '_servo_angle': _servo_angle, '_servo_arreter': _servo_arreter,
+            '_servo_continu': _servo_continu, '_servo_intervalle': _servo_intervalle,
+            '_servo_arret_neutre': _servo_arret_neutre
         }
 
         try:

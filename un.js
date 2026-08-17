@@ -731,6 +731,169 @@ try {
                 P.ORDER_FUNCTION_CALL];
     };
 
+    // ---------- Servomoteurs ----------
+    //
+    // Conventions reprises de MakeCode (pxt-common-packages, libs/servo) :
+    // angle 0-180 correspondant a une impulsion de 500 a 2500 us dans une
+    // periode de 20 ms, soit 50 Hz. L'intervalle borne l'angle, le mini restant
+    // entre 0 et 90 et le maxi entre 90 et 180.
+
+    const COULEUR_SERVO = 140;
+    const BROCHES_SERVO = [["P0", "pin0"], ["P1", "pin1"], ["P2", "pin2"]];
+    const menuBrocheServo = () => new Blockly.FieldDropdown(BROCHES_SERVO);
+    /** Nom lisible de la broche, qui sert de clé d'état côté MicroPython. */
+    const nomBroche = block => block.getFieldValue('BROCHE').replace('pin', 'P');
+
+    function piloteServo() {
+        importerMicrobit();
+        P.definitions_['servo_pilote'] =
+            '# >>> pilote servo\n' + [
+            '# Un servomoteur attend une impulsion de 500 a 2500 us toutes les 20 ms.',
+            '# write_analog prend un rapport cyclique sur 1023 : d ou la conversion.',
+            '_SERVO_ETAT = {}',
+            '',
+            'def _servo_etat(nom):',
+            '    if nom not in _SERVO_ETAT:',
+            '        _SERVO_ETAT[nom] = [0, 180, False]   # angle mini, maxi, arret au neutre',
+            '    return _SERVO_ETAT[nom]',
+            '',
+            'def _servo_impulsion(broche, microsecondes, nom=""):',
+            '    microsecondes = max(500, min(2500, int(microsecondes)))',
+            '    broche.set_analog_period(20)',
+            '    broche.write_analog(int(microsecondes * 1023 / 20000))',
+            '',
+            'def _servo_angle(broche, nom, angle):',
+            '    etat = _servo_etat(nom)',
+            '    angle = max(etat[0], min(etat[1], int(angle)))',
+            '    _servo_impulsion(broche, 500 + angle * 2000 / 180, nom)',
+            '',
+            'def _servo_arreter(broche, nom):',
+            '    # On cesse d envoyer des impulsions : le servo reste ou il est.',
+            '    broche.write_analog(0)',
+            '',
+            'def _servo_continu(broche, nom, vitesse):',
+            '    etat = _servo_etat(nom)',
+            '    vitesse = max(-100, min(100, int(vitesse)))',
+            '    angle = etat[0] + (vitesse + 100) * (etat[1] - etat[0]) / 200',
+            '    angle = max(etat[0], min(etat[1], int(angle)))',
+            '    # Neutre calcule comme dans MakeCode : (maxi - mini) // 2.',
+            '    if etat[2] and angle == (etat[1] - etat[0]) // 2:',
+            '        _servo_arreter(broche, nom)',
+            '    else:',
+            '        _servo_angle(broche, nom, angle)',
+            '',
+            'def _servo_intervalle(nom, mini, maxi):',
+            '    etat = _servo_etat(nom)',
+            '    etat[0] = max(0, min(90, int(mini)))',
+            '    etat[1] = max(90, min(180, int(maxi)))',
+            '',
+            'def _servo_arret_neutre(nom, actif):',
+            '    _servo_etat(nom)[2] = bool(actif)',
+        ].join('\n') + '\n# <<< pilote servo';
+    }
+
+    Blockly.Blocks['servo_angle'] = { init: function() {
+        this.appendDummyInput().appendField("régler l'angle du servomoteur")
+            .appendField(menuBrocheServo(), "BROCHE").appendField("à");
+        this.appendValueInput("ANGLE").setCheck("Number");
+        this.appendDummyInput().appendField("°");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_SERVO);
+        this.setTooltip("De 0 à 180°, borné par l'intervalle défini pour cette broche.");
+    }};
+    P.forBlock['servo_angle'] = function(block) {
+        piloteServo();
+        const angle = P.valueToCode(block, 'ANGLE', P.ORDER_NONE) || '90';
+        return '_servo_angle(' + block.getFieldValue('BROCHE') +
+               ', "' + nomBroche(block) + '", ' + angle + ')\n';
+    };
+
+    Blockly.Blocks['servo_continu'] = { init: function() {
+        this.appendDummyInput().appendField("servomoteur")
+            .appendField(menuBrocheServo(), "BROCHE")
+            .appendField("à rotation continue fonctionne à");
+        this.appendValueInput("VITESSE").setCheck("Number");
+        this.appendDummyInput().appendField("%");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_SERVO);
+        this.setTooltip("De -100 à 100 %. 0 correspond à l'arrêt du mouvement.");
+    }};
+    P.forBlock['servo_continu'] = function(block) {
+        piloteServo();
+        const vitesse = P.valueToCode(block, 'VITESSE', P.ORDER_NONE) || '0';
+        return '_servo_continu(' + block.getFieldValue('BROCHE') +
+               ', "' + nomBroche(block) + '", ' + vitesse + ')\n';
+    };
+
+    Blockly.Blocks['servo_arreter'] = { init: function() {
+        this.appendDummyInput().appendField("arrêter le servomoteur")
+            .appendField(menuBrocheServo(), "BROCHE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_SERVO);
+        this.setTooltip("Cesse d'envoyer des impulsions : le servomoteur reste où il est.");
+    }};
+    P.forBlock['servo_arreter'] = function(block) {
+        piloteServo();
+        return '_servo_arreter(' + block.getFieldValue('BROCHE') +
+               ', "' + nomBroche(block) + '")\n';
+    };
+
+    Blockly.Blocks['servo_arret_neutre'] = { init: function() {
+        this.appendDummyInput().appendField("mettre l'arrêt au neutre du servomoteur")
+            .appendField(menuBrocheServo(), "BROCHE").appendField("à")
+            .appendField(new Blockly.FieldDropdown([["ON", "True"], ["OFF", "False"]]), "ETAT");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_SERVO);
+        this.setTooltip("Si actif, une vitesse nulle arrête le servomoteur au lieu de le maintenir.");
+    }};
+    P.forBlock['servo_arret_neutre'] = function(block) {
+        piloteServo();
+        return '_servo_arret_neutre("' + nomBroche(block) + '", ' +
+               block.getFieldValue('ETAT') + ')\n';
+    };
+
+    Blockly.Blocks['servo_intervalle'] = { init: function() {
+        this.appendDummyInput().appendField("définir l'intervalle du servomoteur")
+            .appendField(menuBrocheServo(), "BROCHE").appendField("de");
+        this.appendValueInput("MINI").setCheck("Number");
+        this.appendValueInput("MAXI").setCheck("Number").appendField("à");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_SERVO);
+        this.setTooltip("Le mini est ramené entre 0 et 90, le maxi entre 90 et 180.");
+    }};
+    P.forBlock['servo_intervalle'] = function(block) {
+        piloteServo();
+        const mini = P.valueToCode(block, 'MINI', P.ORDER_NONE) || '0';
+        const maxi = P.valueToCode(block, 'MAXI', P.ORDER_NONE) || '180';
+        return '_servo_intervalle("' + nomBroche(block) + '", ' + mini + ', ' + maxi + ')\n';
+    };
+
+    Blockly.Blocks['servo_impulsion'] = { init: function() {
+        this.appendDummyInput().appendField("régler la largeur d'impulsion du servomoteur")
+            .appendField(menuBrocheServo(), "BROCHE").appendField("à");
+        this.appendValueInput("MICROS").setCheck("Number");
+        this.appendDummyInput().appendField("µs");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_SERVO);
+        this.setTooltip("Bornée entre 500 et 2500 µs. 1500 µs correspond à la position centrale.");
+    }};
+    P.forBlock['servo_impulsion'] = function(block) {
+        piloteServo();
+        const micros = P.valueToCode(block, 'MICROS', P.ORDER_NONE) || '1500';
+        return '_servo_impulsion(' + block.getFieldValue('BROCHE') + ', ' + micros +
+               ', "' + nomBroche(block) + '")\n';
+    };
+
     // ---------- Grove ----------
     //
     // Les pilotes de ces modules ne sont pas dans le firmware : ils sont écrits
@@ -1860,6 +2023,22 @@ try {
             ]
           },
           {
+            "kind": "category", "name": "Servos", "colour": String(COULEUR_SERVO),
+            "contents": [
+              { "kind": "label", "text": "Positionnel" },
+              { "kind": "block", "type": "servo_angle", "inputs": { "ANGLE": { "shadow": { "type": "math_number", "fields": { "NUM": "90" } } } } },
+
+              { "kind": "label", "text": "En continu" },
+              { "kind": "block", "type": "servo_continu", "inputs": { "VITESSE": { "shadow": { "type": "math_number", "fields": { "NUM": "50" } } } } },
+              { "kind": "block", "type": "servo_arreter" },
+
+              { "kind": "label", "text": "Configuration" },
+              { "kind": "block", "type": "servo_arret_neutre" },
+              { "kind": "block", "type": "servo_intervalle", "inputs": { "MINI": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "MAXI": { "shadow": { "type": "math_number", "fields": { "NUM": "180" } } } } },
+              { "kind": "block", "type": "servo_impulsion", "inputs": { "MICROS": { "shadow": { "type": "math_number", "fields": { "NUM": "1500" } } } } }
+            ]
+          },
+          {
             // 37 blocs dans un seul tiroir demandaient plus de deux ecrans de
             // defilement : les derniers etaient introuvables en pratique. Un
             // sous-menu par module, chacun tenant d'un coup d'oeil.
@@ -2527,6 +2706,69 @@ try {
     let gesteGroveEnAttente = '';
     let tamponLcd = ['                ', '                '];
     let etatMoteurs = { 1: 'arrêt', 2: 'arrêt' };
+    const zoneServos = document.getElementById('grove-servos');
+    let etatServos = {};
+    const cadransServos = {};
+
+    /** Crée le cadran d'une broche, ou rend celui qui existe déjà. */
+    function cadranServo(nom) {
+        if (cadransServos[nom]) return cadransServos[nom];
+        const bloc = document.createElement('div');
+        bloc.className = 'servo';
+        bloc.innerHTML =
+            '<div class="servo-cadran"><div class="servo-rotor"><div class="servo-bras"></div></div>' +
+            '<div class="servo-axe"></div></div>' +
+            '<div class="servo-nom"></div><div class="servo-etat"></div>';
+        bloc.querySelector('.servo-nom').textContent = nom;
+        zoneServos.appendChild(bloc);
+        cadransServos[nom] = {
+            cadran: bloc.querySelector('.servo-cadran'),
+            rotor: bloc.querySelector('.servo-rotor'),
+            texte: bloc.querySelector('.servo-etat')
+        };
+        return cadransServos[nom];
+    }
+
+    function dessinerServos() {
+        if (!zoneServos) return;
+        const noms = Object.keys(etatServos).sort();
+
+        if (!noms.length) {
+            zoneServos.textContent = 'aucun';
+            for (const cle of Object.keys(cadransServos)) delete cadransServos[cle];
+            return;
+        }
+        // Le texte « aucun » n'est pas un cadran : on le retire avant d'en poser un.
+        if (zoneServos.firstChild && zoneServos.firstChild.nodeType === Node.TEXT_NODE) {
+            zoneServos.textContent = '';
+        }
+
+        for (const nom of noms) {
+            const info = etatServos[nom];
+            const c = cadranServo(nom);
+            // Le bras pointe vers le haut à 90° : l'angle du servo est donc
+            // décalé de 90° pour l'affichage.
+            const orientation = (Number(info.angle) || 0) - 90;
+
+            c.cadran.classList.toggle('arret', info.mode === 'arret');
+            if (info.mode === 'continu' && info.valeur !== 0) {
+                // Deux secondes par tour à 100 %, proportionnellement plus lent
+                // en dessous. Le sens vient du signe de la vitesse.
+                const duree = Math.min(20, 200 / Math.abs(info.valeur));
+                c.cadran.classList.add('continu');
+                c.cadran.classList.toggle('inverse', info.valeur < 0);
+                c.rotor.style.setProperty('--duree', duree.toFixed(2) + 's');
+                c.texte.textContent = info.valeur + ' %';
+            } else {
+                c.cadran.classList.remove('continu', 'inverse');
+                c.rotor.style.transform = 'rotate(' + orientation + 'deg)';
+                if (info.mode === 'arret') c.texte.textContent = 'arrêt';
+                else if (info.mode === 'impulsion') c.texte.textContent = info.valeur + ' µs';
+                else if (info.mode === 'continu') c.texte.textContent = '0 %';
+                else c.texte.textContent = info.valeur + '°';
+            }
+        }
+    }
 
     function dessinerLcd() {
         lignesLcd.forEach((l, i) => { if (l) l.textContent = tamponLcd[i]; });
@@ -2554,6 +2796,7 @@ try {
         ['grove-sec-co2',      /^grove_scd(30|41)_/],
         ['grove-sec-couleur',  /^grove_couleur_/],
         ['grove-sec-moteurs',  /^grove_moteur_/],
+        ['grove-sec-servos',   /^servo_/],
     ];
 
     function rafraichirPanneauGrove() {
@@ -2589,6 +2832,8 @@ try {
         dessinerLcd();
         etatMoteurs = { 1: 'arrêt', 2: 'arrêt' };
         dessinerMoteurs();
+        etatServos = {};
+        dessinerServos();
     }
 
     window.simu_rubanDefinir = function(nombre) {
@@ -2610,6 +2855,10 @@ try {
     };
     window.simu_moteur = function(canal, vitesse) {
         window.simuQueue.push({ type: 'moteur', canal: Number(canal), vitesse: vitesse });
+    };
+    window.simu_servo = function(broche, mode, valeur, angle) {
+        window.simuQueue.push({ type: 'servo', broche: String(broche), mode: String(mode),
+                                valeur: Math.round(Number(valeur)), angle: Number(angle) });
     };
 
     // Entrées : lues à l'instant où le programme les demande.
@@ -2692,6 +2941,7 @@ try {
     });
     dessinerLcd();
     dessinerMoteurs();
+    dessinerServos();
 
     window.simu_jouerMelodie = function(nom) {
         window.simuQueue.push({ type: 'son', notes: MELODIES[nom] || MELODIES.DADADADUM });
@@ -2808,6 +3058,11 @@ try {
                                 tamponLcd[y].slice(x + morceau.length)).slice(0, 16);
             }
             dessinerLcd();
+            window.simu_playQueue();
+        }
+        else if (action.type === 'servo') {
+            etatServos[action.broche] = { mode: action.mode, valeur: action.valeur, angle: action.angle };
+            dessinerServos();
             window.simu_playQueue();
         }
         else if (action.type === 'moteur') {
