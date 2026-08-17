@@ -62,10 +62,19 @@
     #simulator-container { flex: 0 0 24%; min-width: 250px; min-height: 0; height: 100%; background: #2c3e50; display: flex; flex-direction: column; align-items: center; padding: 20px; box-sizing: border-box; border-left: 2px solid #1a252f; overflow-y: auto;}
     #simulator-container h3 { margin-top: 0; color: #2ecc71; font-size: 14px; text-transform: uppercase; width: 100%; text-align: left;}
     
-    #microbit-board { 
-        width: 280px; height: 230px; background: #191919; border-radius: 15px 15px 25px 25px; 
-        position: relative; margin-top: 20px; box-shadow: 0px 15px 25px rgba(0,0,0,0.6);
+    /* Le cadre porte la place occupee, la carte porte l'echelle. Un transform
+       ne modifie pas la mise en page : sans ce cadre dont on ajuste la hauteur,
+       la carte reduite laisserait un vide, ou la carte agrandie deborderait. */
+    #carte-cadre { width: 100%; margin-top: 20px; display: flex; justify-content: center;
+                   flex: 0 0 auto; }
+    #microbit-board {
+        width: 280px; height: 230px; background: #191919; border-radius: 15px 15px 25px 25px;
+        position: relative; box-shadow: 0px 15px 25px rgba(0,0,0,0.6);
         overflow: hidden; user-select: none;
+        /* flex: 0 0 auto — sinon la colonne, en min-height: 0, ecrase la carte
+           des que son contenu deborde. */
+        flex: 0 0 auto;
+        transform-origin: top center;
     }
 
     #led-grid { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;}
@@ -232,6 +241,7 @@
     </div>
     <div id="simulator-container">
       <h3>Simulateur visuel</h3>
+      <div id="carte-cadre">
       <div id="microbit-board">
           <div class="mb-accent"></div>
           <div class="mb-logo" id="mb-logo"><div class="mb-logo-dot"></div><div class="mb-logo-dot"></div></div>
@@ -279,6 +289,7 @@
               <div class="mb-pin"><div class="mb-pin-hole"></div><span>3V</span></div>
               <div class="mb-pin"><div class="mb-pin-hole"></div><span>GND</span></div>
           </div>
+      </div>
       </div>
       <button id="btn-shake">🤚 Secouer la carte</button>
       <button id="run-sim">▶ Lancer la simulation</button>

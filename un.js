@@ -2250,6 +2250,7 @@ try {
         bouton.classList.toggle('inactif', replie);
         // Blockly ne s'apercoit pas tout seul qu'on lui a rendu de la place.
         Blockly.svgResize(window.workspace);
+        adapterEchelleSimulateur();
     }
 
     const btnVueCode = document.getElementById('btn-vue-code');
@@ -3221,6 +3222,34 @@ try {
 
     const btnLancer = document.getElementById('run-sim');
     const carte = document.getElementById('microbit-board');
+
+    // ------------------------------------------
+    // MISE A L'ECHELLE DU SIMULATEUR
+    // ------------------------------------------
+    // La carte est dessinee en pixels fixes. Plutot que de la laisser deborder
+    // ou flotter dans une colonne trop large, on l'agrandit ou on la reduit pour
+    // qu'elle occupe la largeur disponible.
+
+    const cadreCarte = document.getElementById('carte-cadre');
+    const LARGEUR_CARTE = 280;
+    const HAUTEUR_CARTE = 230;
+
+    function adapterEchelleSimulateur() {
+        if (!cadreCarte || !carte) return;
+        const disponible = cadreCarte.clientWidth;
+        // Panneau replie : largeur nulle, rien a calculer.
+        if (!disponible) return;
+        const echelle = Math.max(0.55, Math.min(1.5, disponible / LARGEUR_CARTE));
+        carte.style.transform = 'scale(' + echelle.toFixed(3) + ')';
+        // Un transform ne modifie pas la place occupee : le cadre s'en charge.
+        cadreCarte.style.height = Math.round(HAUTEUR_CARTE * echelle) + 'px';
+    }
+
+    window.addEventListener('resize', adapterEchelleSimulateur);
+    if (window.ResizeObserver && cadreCarte) {
+        new ResizeObserver(adapterEchelleSimulateur).observe(cadreCarte);
+    }
+    adapterEchelleSimulateur();
 
     /**
      * Remet la simulation dans son état de départ.
