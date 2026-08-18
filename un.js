@@ -1113,6 +1113,51 @@ try {
     const menuBroche = () => new Blockly.FieldDropdown(BROCHES_GROVE);
     const menuCouleur = () => new Blockly.FieldDropdown(COULEURS_GROVE);
 
+    // --- LED simple sur une broche ---
+    //
+    // Aucun pilote ici : une LED se commande directement par la broche, et
+    // c'est justement ce qu'il faut montrer a l'eleve. Le code produit est
+    // celui qu'on ecrirait a la main.
+
+    Blockly.Blocks['grove_led_etat'] = { init: function() {
+        this.appendDummyInput().appendField("[LED] contrôler la LED à")
+            .appendField(new Blockly.FieldDropdown([
+                ["HAUT (1)", "1"], ["BAS (0)", "0"]
+            ]), "ETAT")
+            .appendField("sur la broche").appendField(menuBroche(), "BROCHE");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Allume (HAUT) ou éteint (BAS) la LED. Tout ou rien.");
+    }};
+    P.forBlock['grove_led_etat'] = function(block) {
+        importerMicrobit();
+        return block.getFieldValue('BROCHE') + '.write_digital(' +
+               block.getFieldValue('ETAT') + ')\n';
+    };
+
+    Blockly.Blocks['grove_led_luminosite'] = { init: function() {
+        this.appendValueInput("NIVEAU").setCheck("Number")
+            .appendField("[LED] régler la luminosité à");
+        this.appendDummyInput().appendField("sur la broche")
+            .appendField(menuBroche(), "BROCHE");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("De 0 (éteinte) à 1023 (au maximum). La broche est " +
+                        "pilotée en modulation de largeur d'impulsion.");
+    }};
+    P.forBlock['grove_led_luminosite'] = function(block) {
+        importerMicrobit();
+        const niveau = P.valueToCode(block, 'NIVEAU', P.ORDER_NONE) || '1023';
+        // Bornage : write_analog leve une exception hors de 0-1023, ce qui
+        // arreterait le programme sur la carte sans rien afficher.
+        return block.getFieldValue('BROCHE') +
+               '.write_analog(max(0, min(1023, ' + niveau + ')))\n';
+    };
+
     /** Enrobe un pilote des marqueurs que le simulateur reconnaît. */
     function pilote(nom, lignes) {
         // Le nom figure dans le marqueur : c'est lui qui sert d'intitule au
@@ -2271,6 +2316,13 @@ try {
             "kind": "category", "name": "Grove", "colour": String(COULEUR_GROVE),
             "contents": [
             {
+            "kind": "category", "name": "LED", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_led_etat" },
+              { "kind": "block", "type": "grove_led_luminosite", "inputs": { "NIVEAU": { "shadow": { "type": "math_number", "fields": { "NUM": "1023" } } } } }
+            ]
+            },
+            {
             "kind": "category", "name": "Ruban RGB (WS2813)", "colour": String(COULEUR_GROVE),
             "contents": [
               { "kind": "block", "type": "grove_ruban_definir" },
@@ -3208,8 +3260,10 @@ try {
     const curseurCo2 = document.getElementById('grove-co2');
     const selecteurCouleur = document.getElementById('grove-couleur');
     const zoneMoteurs = document.getElementById('grove-moteurs');
+    const zoneLeds = document.getElementById('grove-leds');
 
     let ledsRuban = [];
+    let etatLeds = {};
     let gesteGroveEnAttente = '';
     let tamponLcd = ['                ', '                '];
     let etatMoteurs = { 1: 'arrêt', 2: 'arrêt' };
@@ -3316,10 +3370,42 @@ try {
         }
     }
 
+    /**
+     * LED simples : une pastille par broche effectivement pilotée.
+     *
+     * Rien n'est affiché tant que le programme n'a rien écrit — on ne sait pas
+     * d'avance sur quelle broche la LED est câblée, et montrer les neuf broches
+     * ferait un mur de pastilles éteintes.
+     */
+    function dessinerLeds() {
+        if (!zoneLeds) return;
+        const broches = Object.keys(etatLeds);
+        if (!broches.length) {
+            zoneLeds.innerHTML = '<span class="grove-vide">aucune broche pilotée</span>';
+            return;
+        }
+        // Ordre des broches : celui du menu, pas celui des écritures, sinon
+        // les pastilles sauteraient d'une exécution à l'autre.
+        broches.sort((a, b) => Number(a) - Number(b));
+        zoneLeds.innerHTML = broches.map(broche => {
+            const niveau = etatLeds[broche];
+            const f = niveau / 1023;
+            // La luminosité perçue ne suit pas le rapport cyclique : une racine
+            // rapproche l'affichage de ce que voit l'œil.
+            const eclat = niveau ? 0.15 + 0.85 * Math.sqrt(f) : 0;
+            return '<div class="led-broche">' +
+                   '<span class="led-socle"><span class="led-pastille" style="opacity:' +
+                   eclat.toFixed(3) + '"></span></span>' +
+                   '<span class="led-nom">P' + broche + '</span>' +
+                   '<span class="led-val">' + niveau + '</span></div>';
+        }).join('');
+    }
+
     // Chaque section du panneau Grove n'apparaît que si un bloc du module
     // correspondant est posé dans le programme : sur un projet qui n'utilise
     // qu'un ruban, les neuf autres n'ont rien à faire à l'écran.
     const SECTIONS_GROVE = [
+        ['grove-sec-led',      /^grove_led_/],
         ['grove-sec-ruban',    /^grove_ruban_/],
         ['grove-sec-4digit',   /^grove_4d_/],
         ['grove-sec-ultrason', /^grove_ultrason_/],
@@ -3369,6 +3455,8 @@ try {
         dessinerLcd();
         etatMoteurs = { 1: 'arrêt', 2: 'arrêt' };
         dessinerMoteurs();
+        etatLeds = {};
+        dessinerLeds();
         etatServos = {};
         dessinerServos();
     }
@@ -3384,6 +3472,10 @@ try {
     };
     window.simu_afficheurLuminosite = function(niveau) {
         window.simuQueue.push({ type: 'afficheurLum', niveau: Number(niveau) });
+    };
+
+    window.simu_led = function(broche, niveau) {
+        window.simuQueue.push({ type: 'led', broche: String(broche), niveau: Number(niveau) });
     };
 
     window.simu_lcd = function(action, texte, x, y) {
@@ -3585,6 +3677,11 @@ try {
         }
         else if (action.type === 'afficheur') {
             afficher7Segments(action.motifs, action.points);
+            window.simu_playQueue();
+        }
+        else if (action.type === 'led') {
+            etatLeds[action.broche] = Math.max(0, Math.min(1023, action.niveau));
+            dessinerLeds();
             window.simu_playQueue();
         }
         else if (action.type === 'lcd') {

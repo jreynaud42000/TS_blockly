@@ -218,6 +218,22 @@
                           transition: background 0.08s; }
     .digit7-points.on span { background: #24e8c6; box-shadow: 0 0 4px rgba(36, 232, 198, 0.9); }
 
+    /* LED simples : une pastille par broche pilotee. L'eclat suit la valeur
+       ecrite ; la pastille eteinte reste visible, comme une LED au repos. */
+    #grove-leds { display: flex; flex-wrap: wrap; gap: 8px; }
+    .led-broche { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+    /* Le socle sombre porte l'apparence de la LED au repos ; la pastille, elle,
+       porte l'eclat. Ils sont separes parce que l'opacite s'applique a tous les
+       descendants : une pastille eteinte emporterait son propre socle. */
+    .led-socle { position: relative; width: 13px; height: 13px; border-radius: 50%;
+                 background: #3a3527; box-shadow: inset 0 0 0 1px #55503c; }
+    .led-pastille { position: absolute; inset: 0; border-radius: 50%;
+                    background: radial-gradient(circle at 35% 30%, #fff6a8, #ffcf2e 45%, #d99400);
+                    box-shadow: 0 0 7px rgba(255, 200, 40, 0.85);
+                    transition: opacity 0.1s; }
+    .led-nom { color: #9fb3c8; }
+    .led-val { color: #7f8c8d; }
+
     /* Ecran LCD 1602 : cadre noir, retro-eclairage bleu, caracteres clairs.
        Chaque caractere occupe sa propre cellule, comme sur le composant : le
        texte s'aligne donc en colonnes, et une cellule vide reste visible.
@@ -403,6 +419,11 @@
           <button id="grove-geste-btn">Déclencher le geste</button>
         </div>
 
+        <div class="grove-bloc" id="grove-sec-led">
+          <span class="grove-titre">LED sur broche</span>
+          <div id="grove-leds"><span class="grove-vide">aucune broche pilotée</span></div>
+        </div>
+
         <div class="grove-bloc" id="grove-sec-lcd">
           <span class="grove-titre">Écran LCD 16x2</span>
           <div id="grove-lcd-module">
@@ -577,10 +598,15 @@
             if self.id_pin == '2': return window.simu_pin2_pressed
             return False
         # Necessaire aux blocs Grove : le joystick lit une valeur analogique,
-        # les autres pilotes ecrivent sur la broche sans effet visible ici.
+        # les autres pilotes ecrivent sur la broche.
         def read_analog(self): return int(window.simu_lireAnalogique(self.id_pin))
-        def write_analog(self, valeur): pass
-        def write_digital(self, valeur): pass
+        # Les ecritures sont reportees au panneau des LED. Elles y figurent
+        # quelle qu'en soit l'origine : sur la carte aussi, une LED cablee sur
+        # une broche s'allume des qu'on y ecrit, servomoteur compris.
+        def write_analog(self, valeur):
+            window.simu_led(self.id_pin, int(valeur))
+        def write_digital(self, valeur):
+            window.simu_led(self.id_pin, 1023 if int(valeur) else 0)
         def read_digital(self): return 0
         def set_pull(self, valeur): pass
         def set_analog_period(self, periode): pass
