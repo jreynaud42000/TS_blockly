@@ -643,6 +643,174 @@ try {
         return branche.replace(new RegExp('^' + P.INDENT, 'gm'), '');
     };
 
+    // ---------- Radio ----------
+    //
+    // MicroPython n'envoie que du texte : radio.send(chaine). MakeCode, lui,
+    // encode des paquets binaires types. Les deux ne s'entendent donc PAS sur
+    // les ondes. On adopte une convention texte simple, lisible et symetrique :
+    //   un nombre      -> "42"
+    //   un couple      -> "temperature=21"
+    //   une chaine     -> "bonjour"
+    // La reception decide du type d'apres la forme du message recu.
+
+    const COULEUR_RADIO = 120;
+
+    function piloteRadio() {
+        importerMicrobit();
+        importerModule('radio');
+        pilote('radio', [
+            '_radio_dernier = ["", "", "", 0]   # texte, nom, valeur, force du signal',
+            '',
+            'def _radio_nombre(texte):',
+            '    try:',
+            '        return int(texte)',
+            '    except:',
+            '        pass',
+            '    try:',
+            '        return float(texte)',
+            '    except:',
+            '        return None',
+            '',
+            'def _radio_traiter():',
+            '    paquet = radio.receive_full()',
+            '    if paquet is None:',
+            '        return',
+            '    message = str(paquet[0], "utf-8")',
+            '    _radio_dernier[0] = message',
+            '    _radio_dernier[3] = paquet[1]',
+            '    g = globals()',
+            '    if "=" in message:',
+            '        nom, _, valeur = message.partition("=")',
+            '        _radio_dernier[1] = nom',
+            '        _radio_dernier[2] = valeur',
+            '        if "on_radio_valeur" in g:',
+            '            g["on_radio_valeur"]()',
+            '            return',
+            '    nombre = _radio_nombre(message)',
+            '    if nombre is not None and "on_radio_nombre" in g:',
+            '        g["on_radio_nombre"]()',
+            '        return',
+            '    if "on_radio_texte" in g:',
+            '        g["on_radio_texte"]()',
+        ]);
+    }
+
+    Blockly.Blocks['radio_groupe'] = { init: function() {
+        this.appendValueInput("GROUPE").setCheck("Number").appendField("radio : définir le groupe");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_RADIO);
+        this.setTooltip("De 0 à 255. Seules les cartes du même groupe s'entendent.");
+    }};
+    P.forBlock['radio_groupe'] = function(block) {
+        piloteRadio();
+        return 'radio.config(group=' + (P.valueToCode(block, 'GROUPE', P.ORDER_NONE) || '1') + ')\n';
+    };
+
+    Blockly.Blocks['radio_envoyer_nombre'] = { init: function() {
+        this.appendValueInput("NOMBRE").setCheck("Number").appendField("envoyer le nombre");
+        this.appendDummyInput().appendField("par radio");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_RADIO);
+    }};
+    P.forBlock['radio_envoyer_nombre'] = function(block) {
+        piloteRadio();
+        return 'radio.send(str(' + (P.valueToCode(block, 'NOMBRE', P.ORDER_NONE) || '0') + '))\n';
+    };
+
+    Blockly.Blocks['radio_envoyer_valeur'] = { init: function() {
+        this.appendValueInput("NOM").appendField("envoyer la valeur");
+        this.appendValueInput("VALEUR").appendField("=");
+        this.appendDummyInput().appendField("par radio");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_RADIO);
+        this.setTooltip("Envoie « nom=valeur », que la réception sait relire.");
+    }};
+    P.forBlock['radio_envoyer_valeur'] = function(block) {
+        piloteRadio();
+        return 'radio.send(' + versTexte(block, 'NOM') + ' + "=" + ' +
+               versTexte(block, 'VALEUR') + ')\n';
+    };
+
+    // --- Reception ---
+
+    const TYPES_RADIO = [
+        ["un nombre", "nombre"], ["une valeur nommée", "valeur"], ["du texte", "texte"]
+    ];
+
+    Blockly.Blocks['radio_quand_recu'] = { init: function() {
+        this.appendDummyInput().appendField("quand la radio reçoit")
+            .appendField(new Blockly.FieldDropdown(TYPES_RADIO), "TYPE");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(COULEUR_RADIO);
+        this.setTooltip("Le type est déduit du message reçu : « 42 » est un nombre, " +
+                        "« nom=valeur » une valeur nommée, le reste du texte.");
+    }};
+    P.forBlock['radio_quand_recu'] = function(block) {
+        piloteRadio();
+        return declarerGestionnaire('on_radio_' + block.getFieldValue('TYPE'),
+                                    P.statementToCode(block, 'DO'));
+    };
+
+    // Valeurs distinctes obligatoires : deux options de meme valeur rendent le
+    // menu ambigu, Blockly resolvant toujours vers la premiere.
+    const LECTURES_RADIO = [
+        ["le nombre reçu", "nombre"], ["le nom reçu", "nom"],
+        ["la valeur reçue", "valeur"], ["le texte reçu", "texte"],
+        ["la force du signal", "force"]
+    ];
+    const RANGS_RADIO = { texte: 0, nom: 1, valeur: 2, force: 3 };
+
+    Blockly.Blocks['radio_lecture'] = { init: function() {
+        this.appendDummyInput().appendField("radio :")
+            .appendField(new Blockly.FieldDropdown(LECTURES_RADIO), "QUOI");
+        this.setOutput(true, null);
+        this.setColour(COULEUR_RADIO);
+        this.setTooltip("À utiliser dans un bloc « quand la radio reçoit ».");
+    }};
+    P.forBlock['radio_lecture'] = function(block) {
+        piloteRadio();
+        const quoi = block.getFieldValue('QUOI');
+        // Le message circule en texte : le nombre est reconverti a la lecture.
+        if (quoi === 'nombre') return ['_radio_nombre(_radio_dernier[0])', P.ORDER_FUNCTION_CALL];
+        return ['_radio_dernier[' + RANGS_RADIO[quoi] + ']', P.ORDER_MEMBER];
+    };
+
+    // --- Reglages avances ---
+
+    Blockly.Blocks['radio_puissance'] = { init: function() {
+        this.appendValueInput("NIVEAU").setCheck("Number")
+            .appendField("radio : puissance d'émission");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_RADIO);
+        this.setTooltip("De 0 (portée minimale) à 7 (maximale).");
+    }};
+    P.forBlock['radio_puissance'] = function(block) {
+        piloteRadio();
+        return 'radio.config(power=' + (P.valueToCode(block, 'NIVEAU', P.ORDER_NONE) || '7') + ')\n';
+    };
+
+    Blockly.Blocks['radio_canal'] = { init: function() {
+        this.appendValueInput("CANAL").setCheck("Number")
+            .appendField("radio : bande de fréquence");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_RADIO);
+        this.setTooltip("De 0 à 83. Deux bandes différentes ne se gênent pas.");
+    }};
+    P.forBlock['radio_canal'] = function(block) {
+        piloteRadio();
+        return 'radio.config(channel=' + (P.valueToCode(block, 'CANAL', P.ORDER_NONE) || '7') + ')\n';
+    };
+
     Blockly.Blocks['boucle_infinie'] = { init: function() {
         this.appendDummyInput().appendField("Répéter indéfiniment");
         this.appendStatementInput("DO").setCheck(null);
@@ -947,8 +1115,10 @@ try {
 
     /** Enrobe un pilote des marqueurs que le simulateur reconnaît. */
     function pilote(nom, lignes) {
+        // Le nom figure dans le marqueur : c'est lui qui sert d'intitule au
+        // resume replie de la transcription.
         P.definitions_['grove_' + nom] =
-            '# >>> pilote grove\n' + lignes.join('\n') + '\n# <<< pilote grove';
+            '# >>> pilote ' + nom + '\n' + lignes.join('\n') + '\n# <<< pilote ' + nom;
     }
 
     /**
@@ -2047,8 +2217,35 @@ try {
           {
             "kind": "category", "name": "Communication", "colour": "120",
             "contents": [
+            {
+            "kind": "category", "name": "Groupe", "colour": "120",
+            "contents": [
               { "kind": "block", "type": "radio_activer" },
+              { "kind": "block", "type": "radio_groupe", "inputs": { "GROUPE": { "shadow": { "type": "math_number", "fields": { "NUM": "1" } } } } }
+            ]
+            },
+            {
+            "kind": "category", "name": "Envoi", "colour": "120",
+            "contents": [
+              { "kind": "block", "type": "radio_envoyer_nombre", "inputs": { "NOMBRE": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "radio_envoyer_valeur", "inputs": { "NOM": { "shadow": { "type": "text", "fields": { "TEXT": "nom" } } }, "VALEUR": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
               { "kind": "block", "type": "radio_envoyer_texte", "inputs": { "MESSAGE": { "shadow": { "type": "text", "fields": { "TEXT": "salut" } } } } }
+            ]
+            },
+            {
+            "kind": "category", "name": "Réception", "colour": "120",
+            "contents": [
+              { "kind": "block", "type": "radio_quand_recu" },
+              { "kind": "block", "type": "radio_lecture" }
+            ]
+            },
+            {
+            "kind": "category", "name": "Plus", "colour": "120",
+            "contents": [
+              { "kind": "block", "type": "radio_puissance", "inputs": { "NIVEAU": { "shadow": { "type": "math_number", "fields": { "NUM": "7" } } } } },
+              { "kind": "block", "type": "radio_canal", "inputs": { "CANAL": { "shadow": { "type": "math_number", "fields": { "NUM": "7" } } } } }
+            ]
+            }
             ]
           },
           {
@@ -2197,6 +2394,13 @@ try {
             "kind": "category", "name": "Variables", "custom": "VARIABLE", "colour": "330"
           },
           {
+            // Categorie dynamique de Blockly : elle fournit la definition, la
+            // definition avec retour, le retour conditionnel, et un bloc d'appel
+            // par fonction creee. Les fonctions sont emises via definitions_,
+            // donc placees avant tout code executable.
+            "kind": "category", "name": "Fonctions", "custom": "PROCEDURE", "colour": "290"
+          },
+          {
             "kind": "category", "name": "Maths", "colour": "280",
             "contents": [
               { "kind": "block", "type": "math_number", "fields": { "NUM": "0" } },
@@ -2237,6 +2441,140 @@ try {
             { type: 'boucle_infinie', x: 40, y: 190 }
         ]}}, window.workspace);
     }
+
+    // ------------------------------------------
+    // ORDRE DES CATEGORIES
+    // ------------------------------------------
+    // Blockly conserve la definition de la boite a outils dans
+    // options.languageTree, et updateToolbox la remplace a chaud. Reordonner
+    // revient donc a permuter un tableau, sans toucher au code de la boite.
+
+    const CLE_ORDRE = 'blockly_ts_ordre_categories';
+    const ORDRE_DEFAUT = window.workspace.options.languageTree.contents.map(c => c.name);
+    const CATEGORIES = new Map(
+        window.workspace.options.languageTree.contents.map(c => [c.name, c]));
+
+    function ordreEnregistre() {
+        try {
+            const brut = localStorage.getItem(CLE_ORDRE);
+            return brut ? JSON.parse(brut) : null;
+        } catch (erreur) { return null; }
+    }
+
+    function appliquerOrdre(noms, memoriser) {
+        const restantes = new Map(CATEGORIES);
+        const contenus = [];
+        for (const nom of noms) {
+            if (restantes.has(nom)) { contenus.push(restantes.get(nom)); restantes.delete(nom); }
+        }
+        // Une categorie ajoutee depuis le dernier enregistrement reprend sa
+        // place a la fin plutot que de disparaitre.
+        for (const c of restantes.values()) contenus.push(c);
+
+        window.workspace.updateToolbox({ kind: 'categoryToolbox', contents: contenus });
+        Blockly.svgResize(window.workspace);
+        if (memoriser) {
+            try { localStorage.setItem(CLE_ORDRE, JSON.stringify(contenus.map(c => c.name))); }
+            catch (erreur) { /* stockage indisponible : l'ordre vaut pour la session */ }
+        }
+        return contenus.map(c => c.name);
+    }
+
+    let ordreCourant = ordreEnregistre() || ORDRE_DEFAUT.slice();
+    if (ordreEnregistre()) ordreCourant = appliquerOrdre(ordreCourant, false);
+
+    // --- Le panneau d'options ---
+
+    let voileOptions = null;
+    let listeCategories = null;
+
+    function construireOptions() {
+        if (voileOptions) return;
+        voileOptions = document.createElement('div');
+        voileOptions.id = 'voile-options';
+        const panneau = document.createElement('div');
+        panneau.id = 'panneau-options';
+        panneau.innerHTML =
+            '<h3>Ordre des catégories</h3>' +
+            '<p>Faites glisser une catégorie pour la déplacer. L’ordre est conservé ' +
+            'd’une session à l’autre.</p><ul id="liste-categories"></ul>' +
+            '<div class="actions">' +
+            '<button id="btn-ordre-fermer">Fermer</button>' +
+            '<button id="btn-ordre-defaut">Ordre par défaut</button></div>';
+        voileOptions.appendChild(panneau);
+        document.body.appendChild(voileOptions);
+        listeCategories = panneau.querySelector('#liste-categories');
+
+        // Fermer en cliquant a cote, jamais en cliquant dans le panneau.
+        voileOptions.addEventListener('click', e => {
+            if (e.target === voileOptions) fermerOptions();
+        });
+        panneau.querySelector('#btn-ordre-fermer').addEventListener('click', fermerOptions);
+        panneau.querySelector('#btn-ordre-defaut').addEventListener('click', () => {
+            ordreCourant = appliquerOrdre(ORDRE_DEFAUT, true);
+            remplirListe();
+        });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && voileOptions.classList.contains('ouvert')) fermerOptions();
+        });
+    }
+
+    let attrapee = null;
+
+    function remplirListe() {
+        listeCategories.textContent = '';
+        for (const nom of ordreCourant) {
+            const ligne = document.createElement('li');
+            ligne.textContent = nom;
+            ligne.draggable = true;
+            ligne.dataset.nom = nom;
+
+            ligne.addEventListener('dragstart', () => {
+                attrapee = ligne;
+                ligne.classList.add('attrape');
+            });
+            ligne.addEventListener('dragend', () => {
+                ligne.classList.remove('attrape');
+                attrapee = null;
+                [...listeCategories.children].forEach(l => l.classList.remove('survol'));
+                enregistrerOrdreAffiche();
+            });
+            ligne.addEventListener('dragover', e => {
+                e.preventDefault();
+                if (!attrapee || attrapee === ligne) return;
+                ligne.classList.add('survol');
+                // On insere avant ou apres selon le cote survole.
+                const boite = ligne.getBoundingClientRect();
+                const apres = e.clientY > boite.top + boite.height / 2;
+                listeCategories.insertBefore(attrapee, apres ? ligne.nextSibling : ligne);
+            });
+            ligne.addEventListener('dragleave', () => ligne.classList.remove('survol'));
+            ligne.addEventListener('drop', e => e.preventDefault());
+
+            listeCategories.appendChild(ligne);
+        }
+    }
+
+    function enregistrerOrdreAffiche() {
+        ordreCourant = appliquerOrdre(
+            [...listeCategories.children].map(l => l.dataset.nom), true);
+    }
+
+    function ouvrirOptions() {
+        construireOptions();
+        remplirListe();
+        voileOptions.classList.add('ouvert');
+    }
+
+    function fermerOptions() {
+        if (voileOptions) voileOptions.classList.remove('ouvert');
+    }
+
+    const btnOptions = document.getElementById('btn-options');
+    if (btnOptions) btnOptions.addEventListener('click', ouvrirOptions);
+
+    // Expose pour les verifications : le glisser-deposer ne se simule pas.
+    window.reordonnerCategories = noms => (ordreCourant = appliquerOrdre(noms, true));
 
     // ------------------------------------------
     // REPLI DES PANNEAUX
@@ -2513,7 +2851,76 @@ try {
         ['def on_gesture_down(',      "if accelerometer.was_gesture('down'): on_gesture_down()"],
         ['def on_sound_LOUD(',        'if microphone.was_event(SoundEvent.LOUD): on_sound_LOUD()'],
         ['def on_sound_QUIET(',       'if microphone.was_event(SoundEvent.QUIET): on_sound_QUIET()'],
+        // La radio n'a pas d'interruption : on releve la boite aux lettres a
+        // chaque tour, et le pilote appelle le gestionnaire qui convient.
+        ['def on_radio_',             '_radio_traiter()'],
     ];
+
+    // ------------------------------------------
+    // AFFICHAGE DE LA TRANSCRIPTION
+    // ------------------------------------------
+    // Les pilotes des modules Grove et des servos font plusieurs dizaines de
+    // lignes et noyaient le programme de l'eleve. Ils sont replies derriere un
+    // resume depliable. Le code envoye a la carte, lui, est complet : seul
+    // l'affichage change.
+
+    const pilotesOuverts = new Set();
+
+    function afficherTranscription(code) {
+        const zone = document.getElementById('code-display');
+        if (!zone) return;
+        if (!code) {
+            zone.textContent = '# Glissez des blocs pour voir le code...';
+            return;
+        }
+        zone.textContent = '';
+        const motif = /# >>> pilote (\S+)\r?\n([\s\S]*?)\r?\n# <<< pilote \S+\r?\n?/g;
+        let position = 0;
+        let premier = true;
+        let trouve;
+        while ((trouve = motif.exec(code)) !== null) {
+            // Un resume replie occupe deja sa propre ligne : les sauts de ligne
+            // qui l'entouraient dans le code sont donc en trop a l'affichage.
+            let avant = resserrer(code.slice(position, trouve.index));
+            if (!premier) avant = avant.replace(/^\n+/, '\n');
+            avant = avant.replace(/\n+$/, '');
+            if (avant) zone.appendChild(document.createTextNode(avant));
+            zone.appendChild(replierPilote(trouve[1], trouve[2]));
+            premier = false;
+            position = trouve.index + trouve[0].length;
+        }
+        let reste = resserrer(code.slice(position));
+        if (!premier) reste = reste.replace(/^\n+/, '\n');
+        if (reste) zone.appendChild(document.createTextNode(reste));
+    }
+
+    /** Retirer un pilote laisse un trou de lignes vides : on le resserre. */
+    function resserrer(texte) {
+        return texte.replace(/\n{3,}/g, '\n\n');
+    }
+
+    function replierPilote(nom, corps) {
+        const bloc = document.createElement('details');
+        bloc.className = 'pilote-replie';
+        // On garde ouvert ce que l'utilisateur avait deplie : la transcription
+        // est reconstruite a chaque modification du programme.
+        bloc.open = pilotesOuverts.has(nom);
+        bloc.addEventListener('toggle', () => {
+            if (bloc.open) pilotesOuverts.add(nom); else pilotesOuverts.delete(nom);
+        });
+
+        const resume = document.createElement('summary');
+        const nbLignes = corps.split('\n').length;
+        resume.textContent = 'pilote ' + nom + ' — ' + nbLignes +
+                             (nbLignes > 1 ? ' lignes' : ' ligne');
+        const contenu = document.createElement('div');
+        contenu.className = 'pilote-corps';
+        contenu.textContent = corps;
+
+        bloc.appendChild(resume);
+        bloc.appendChild(contenu);
+        return bloc;
+    }
 
     function updatePythonCode() {
         let codePython = Blockly.Python.workspaceToCode(window.workspace);
@@ -2546,8 +2953,8 @@ try {
 
         if (panneauGrovePret) rafraichirPanneauGrove();
 
-        document.getElementById('code-display').textContent =
-            codePython || "# Glissez des blocs pour voir le code...";
+        afficherTranscription(codePython);
+
 
         const wrapAB = document.getElementById('wrap-ab');
         if (wrapAB) {
@@ -2897,6 +3304,7 @@ try {
         ['grove-sec-couleur',  /^grove_couleur_/],
         ['grove-sec-moteurs',  /^grove_moteur_/],
         ['grove-sec-servos',   /^servo_/],
+        ['grove-sec-radio',    /^radio_quand_recu$/],
     ];
 
     function rafraichirPanneauGrove() {
@@ -2956,6 +3364,15 @@ try {
     window.simu_moteur = function(canal, vitesse) {
         window.simuQueue.push({ type: 'moteur', canal: Number(canal), vitesse: vitesse });
     };
+    // Un seul message est delivre par declenchement, comme une vraie boite aux
+    // lettres qu'on vide : sans cela le meme message reviendrait a chaque tour.
+    let messageRadioEnAttente = '';
+    window.simu_radioRecevoir = function() {
+        const m = messageRadioEnAttente;
+        messageRadioEnAttente = '';
+        return m;
+    };
+
     window.simu_servo = function(broche, mode, valeur, angle) {
         window.simuQueue.push({ type: 'servo', broche: String(broche), mode: String(mode),
                                 valeur: Math.round(Number(valeur)), angle: Number(angle) });
@@ -3326,6 +3743,16 @@ try {
     // désarme. Le tout est synchrone — le gestionnaire Brython de #run-sim
     // s'exécute pendant l'appel à click() — donc le geste est bien vu par le
     // programme, et par lui seul.
+    const btnRadio = document.getElementById('grove-radio-envoi');
+    if (btnRadio) {
+        btnRadio.addEventListener('click', () => {
+            const champ = document.getElementById('grove-radio-msg');
+            messageRadioEnAttente = champ ? champ.value : '';
+            btnLancer.click();
+            messageRadioEnAttente = '';
+        });
+    }
+
     const btnSecouer = document.getElementById('btn-shake');
     if (btnSecouer) {
         btnSecouer.addEventListener('click', () => {

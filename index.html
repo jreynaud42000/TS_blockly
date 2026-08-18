@@ -29,6 +29,29 @@
     .btn-vue { background: #34495e; font-weight: normal; font-size: 13px; padding: 7px 12px; }
     .btn-vue:hover { background: #415b76; }
     .btn-vue.inactif { background: #22303d; color: #7f8c8d; }
+    #btn-options { font-size: 16px; padding: 5px 11px; }
+
+    /* Menu d'options : reorganisation des categories par glisser-deposer. */
+    #voile-options { position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+                     display: none; align-items: center; justify-content: center; z-index: 1000; }
+    #voile-options.ouvert { display: flex; }
+    #panneau-options { background: #22303d; color: #d6e0ea; border-radius: 8px;
+                       padding: 18px 20px; min-width: 300px; max-height: 80vh; overflow-y: auto;
+                       box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
+    #panneau-options h3 { margin: 0 0 4px 0; color: #2ecc71; font-size: 14px;
+                          text-transform: uppercase; }
+    #panneau-options p { margin: 0 0 12px 0; font-size: 12px; color: #9fb3c8; max-width: 34ch; }
+    #liste-categories { list-style: none; margin: 0 0 14px 0; padding: 0; }
+    #liste-categories li { background: #2c3e50; border: 1px solid #3d566e; border-radius: 4px;
+                           padding: 7px 10px; margin-bottom: 4px; cursor: grab; font-size: 13px;
+                           display: flex; align-items: center; gap: 9px; user-select: none; }
+    #liste-categories li::before { content: '\2261'; color: #7f8c8d; }
+    #liste-categories li.attrape { opacity: 0.35; }
+    #liste-categories li.survol { border-color: #2ecc71; }
+    #panneau-options .actions { display: flex; gap: 8px; }
+    #panneau-options .actions button { margin: 0; font-size: 13px; padding: 7px 12px; }
+    #btn-ordre-defaut { background: #7f8c8d; }
+    #btn-ordre-defaut:hover { background: #616a6b; }
 
     /* Le zoom vit dans la barre, pas dans le canevas : les controles internes de
        Blockly sont dessines a l'interieur de l'espace de travail, ou ils peuvent
@@ -58,6 +81,19 @@
     #code-container { flex: 0 0 24%; min-width: 240px; min-height: 0; height: 100%; background: #1e1e1e; color: #d4d4d4; padding: 15px; box-sizing: border-box; overflow-y: auto; border-left: 2px solid #2c3e50;}
     #code-container h3 { margin-top: 0; color: #569cd6; font-size: 14px; text-transform: uppercase; }
     #code-display { white-space: pre-wrap; font-family: Consolas, monospace; font-size: 13px; line-height: 1.5; }
+
+    /* Les pilotes des modules sont replies : ils occupaient plus de place que
+       le programme lui-meme. Le .hex et le .py, eux, les contiennent toujours. */
+    .pilote-replie { margin: 2px 0; }
+    .pilote-replie > summary { cursor: pointer; color: #6a9955; font-style: italic;
+                               list-style: none; outline: none; }
+    .pilote-replie > summary::-webkit-details-marker { display: none; }
+    .pilote-replie > summary::before { content: '\25B8  '; }
+    .pilote-replie[open] > summary::before { content: '\25BE  '; }
+    .pilote-replie > summary:hover { color: #8fce9b; }
+    .pilote-replie > .pilote-corps { margin: 3px 0 3px 10px; padding-left: 9px;
+                                     border-left: 2px solid #3a3a3a; color: #8a8a8a;
+                                     white-space: pre-wrap; }
     
     #simulator-container { flex: 0 0 24%; min-width: 250px; min-height: 0; height: 100%; background: #2c3e50; display: flex; flex-direction: column; align-items: center; padding: 20px; box-sizing: border-box; border-left: 2px solid #1a252f; overflow-y: auto;}
     #simulator-container h3 { margin-top: 0; color: #2ecc71; font-size: 14px; text-transform: uppercase; width: 100%; text-align: left;}
@@ -222,6 +258,7 @@
     <button id="download-btn">⬇ Télécharger le fichier .hex</button>
     <button id="download-py-btn">⬇ Télécharger le script .py</button>
     <button id="btn-envoyer" title="Écrire le programme sur le lecteur MICROBIT">📤 Envoyer sur la carte</button>
+    <button id="btn-options" class="btn-vue" title="Réorganiser les catégories">⚙</button>
     <button id="btn-vue-code" class="btn-vue" title="Afficher ou masquer la transcription MicroPython">Code</button>
     <button id="btn-vue-simu" class="btn-vue" title="Afficher ou masquer le simulateur">Simulateur</button>
     <span id="zoom-groupe">
@@ -237,7 +274,7 @@
     <div id="blocklyDiv"></div>
     <div id="code-container">
       <h3>Transcription MicroPython</h3>
-      <pre id="code-display">Le code s'affichera ici...</pre>
+      <div id="code-display">Le code s'affichera ici...</div>
     </div>
     <div id="simulator-container">
       <h3>Simulateur visuel</h3>
@@ -361,6 +398,14 @@
         <div class="grove-bloc" id="grove-sec-moteurs">
           <span class="grove-titre">Moteurs (DRV8830)</span>
           <div id="grove-moteurs">canal 1 : arrêt · canal 2 : arrêt</div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-radio">
+          <span class="grove-titre">Radio : message à recevoir</span>
+          <label class="grove-case"><input type="text" id="grove-radio-msg" value="42"
+                 style="width:100%; padding:4px; font:inherit; font-size:12px;"></label>
+          <button id="grove-radio-envoi" style="width:100%; margin:5px 0 0 0; font-size:13px;
+                  padding:6px; background:#c2185b;">Simuler la réception</button>
         </div>
 
         <div class="grove-bloc" id="grove-sec-servos">
@@ -689,6 +734,19 @@
 
     # La radio manquait a l'environnement : tout programme l'utilisant
     # s'arretait sur "name 'radio' is not defined".
+    # Radio : le pilote reel est retire, ces substituts prennent sa place.
+    # Aucun message n'arrive tant qu'on n'en injecte pas depuis le panneau.
+    _radio_dernier = ["", "", "", 0]
+
+    def _radio_nombre(texte):
+        try:
+            return int(texte)
+        except:
+            pass
+        try:
+            return float(texte)
+        except:
+            return None
     class RadioMock:
         def on(self): pass
         def off(self): pass
@@ -730,6 +788,7 @@
             'microphone': MicrophoneMock(), 'SoundEvent': SoundEventMock(),
             'audio': AudioMock(), 'Sound': SoundMock(),
             'music': MusicMock(), 'speech': SpeechMock(), 'radio': RadioMock(),
+            '_radio_dernier': _radio_dernier, '_radio_nombre': _radio_nombre,
             'pin_logo': PinMock('logo'), 'pin0': PinMock('0'), 'pin1': PinMock('1'), 'pin2': PinMock('2'),
             'pin8': PinMock('8'), 'pin12': PinMock('12'), 'pin13': PinMock('13'),
             'pin14': PinMock('14'), 'pin15': PinMock('15'), 'pin16': PinMock('16'),
@@ -760,6 +819,32 @@
             '_servo_continu': _servo_continu, '_servo_intervalle': _servo_intervalle,
             '_servo_arret_neutre': _servo_arret_neutre
         }
+
+        # Le dispatcher radio est defini ICI, et non au niveau du module : il
+        # doit chercher les gestionnaires dans env, la ou exec les cree. Sur la
+        # carte tout vit dans un seul module, la question ne se pose pas.
+        def _radio_traiter():
+            message = window.simu_radioRecevoir()
+            if not message:
+                return
+            message = str(message)
+            _radio_dernier[0] = message
+            _radio_dernier[3] = -42          # force du signal plausible
+            if '=' in message:
+                nom, _, valeur = message.partition('=')
+                _radio_dernier[1] = nom
+                _radio_dernier[2] = valeur
+                if 'on_radio_valeur' in env:
+                    env['on_radio_valeur']()
+                    return
+            nombre = _radio_nombre(message)
+            if nombre is not None and 'on_radio_nombre' in env:
+                env['on_radio_nombre']()
+                return
+            if 'on_radio_texte' in env:
+                env['on_radio_texte']()
+
+        env['_radio_traiter'] = _radio_traiter
 
         try:
             exec(code, env)
