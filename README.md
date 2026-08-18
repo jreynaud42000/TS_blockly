@@ -240,8 +240,17 @@ La categorie "Grove" se deplie en dix sous-menus, un par module. Ses 37 blocs
 tenaient auparavant dans un seul tiroir de plus de deux ecrans de haut, ou les
 derniers etaient introuvables en pratique.
 
-Elle couvre onze modules Seeed :
+Elle couvre douze modules Seeed :
 
+- LED simple sur une broche. Deux blocs : "controler la LED a HAUT/BAS" ecrit
+  tout ou rien (write_digital), "regler la luminosite a 0-1023" module la
+  broche (write_analog). C'est le seul module SANS pilote : une LED se commande
+  directement par la broche, et le code produit est celui qu'on ecrirait a la
+  main. La valeur est bornee a 0-1023 dans le code genere, car write_analog
+  leve une exception hors de cette plage et arreterait le programme sur la
+  carte, sans rien afficher.
+  A savoir : c'est le tiroir le plus large de l'application (452 px). Replier
+  le panneau du code rend cette place a la zone de blocs.
 - Ruban RGB WS2813 : s'appuie sur le module neopixel, integre au firmware.
   Le module n'a pas de reglage de luminosite : le bloc "luminosite" attenue
   les couleurs avant envoi.
@@ -308,6 +317,13 @@ joystick avec sa case "bouton enfonce", et un menu de gestes avec son bouton
 "Declencher". Comme le capteur reel, le geste est consomme a la lecture.
 S'y ajoutent l'ecran LCD 16x2, l'etat des deux canaux moteur, trois curseurs
 (temperature, humidite, CO2) et un selecteur de couleur pour le VEML6040.
+
+La section "LED sur broche" montre une pastille par broche effectivement
+pilotee, avec la valeur ecrite. Rien n'est affiche tant que le programme n'a
+rien ecrit : on ne sait pas d'avance ou la LED est cablee. L'eclat suit la
+racine carree du rapport cyclique, ce qui rapproche l'affichage de ce que voit
+l'oeil. A noter : toute ecriture sur une broche y figure, servomoteur compris —
+c'est ce qui se passerait avec une LED reellement cablee sur cette broche.
 
 L'ecran LCD est dessine comme le vrai module 1602 : cadre noir, retro-eclairage
 bleu, caracteres clairs. Chaque caractere occupe sa propre cellule de 5x8 points
@@ -432,6 +448,5 @@ Apres toute modification des fichiers du projet :
 
 Les dossiers build/ et dist/ sont regeneres. dist/app.exe embarque index.html,
 un.js, deux.js, trois.js et firmware.hex.
-
 
 
