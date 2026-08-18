@@ -79,10 +79,15 @@ navigateur, c'est que le serveur a ete lance depuis un autre dossier.
   telechargeable qui fonctionne seul.
 - Panneau de droite : le simulateur. Les boutons A, B, le logo et les broches
   sont cliquables ; "Lancer la simulation" execute cinq tours de boucle.
-  La carte s'adapte a la largeur de la colonne : elle grandit quand on replie
-  le panneau du code, retrecit quand la fenetre est etroite, entre 55 % et
-  150 % de sa taille de reference. Les proportions sont conservees et les
-  zones cliquables suivent.
+  La carte s'adapte a la largeur de la colonne : elle retrecit quand la fenetre
+  est etroite, grandit quand elle est large, et reste dessinee a 75 % de la
+  place disponible pour laisser respirer les sections placees au-dessous.
+  Les proportions sont conservees et les zones cliquables suivent.
+
+  A noter : replier le panneau du code n'agrandit PAS la carte. Les deux
+  panneaux de droite ont chacun une largeur fixe de 24 % ; la place liberee va
+  a la zone de blocs, ce qui est bien le but recherche. Seule la taille de la
+  fenetre change l'echelle de la carte.
   "Secouer la carte" declenche le geste et lance la simulation dans la foulee.
   Comme sur la carte, was_gesture("shake") ne repond vrai qu'une seule fois par
   secousse, tandis que is_gesture("shake") reste vrai pendant l'execution.
@@ -304,6 +309,14 @@ joystick avec sa case "bouton enfonce", et un menu de gestes avec son bouton
 S'y ajoutent l'ecran LCD 16x2, l'etat des deux canaux moteur, trois curseurs
 (temperature, humidite, CO2) et un selecteur de couleur pour le VEML6040.
 
+L'ecran LCD est dessine comme le vrai module 1602 : cadre noir, retro-eclairage
+bleu, caracteres clairs. Chaque caractere occupe sa propre cellule de 5x8 points
+(10 x 16 px), et une trame sombre au pas du point est posee par-dessus le texte
+pour donner l'aspect matriciel. Le texte s'aligne donc en colonnes, exactement
+comme sur le composant : ecrire a la colonne 4 laisse quatre cellules vides,
+visibles. Eteindre le retro-eclairage fait virer l'ecran au gris-vert et laisse
+le texte faiblement lisible, comme sur le vrai module.
+
 Ce panneau n'affiche que les modules effectivement utilises : chaque section
 apparait des qu'un bloc du module correspondant est pose dans le programme, et
 disparait quand on le retire. Sans aucun bloc Grove, le panneau entier est
@@ -419,4 +432,6 @@ Apres toute modification des fichiers du projet :
 
 Les dossiers build/ et dist/ sont regeneres. dist/app.exe embarque index.html,
 un.js, deux.js, trois.js et firmware.hex.
+
+
 
