@@ -95,7 +95,12 @@
                                      border-left: 2px solid #3a3a3a; color: #8a8a8a;
                                      white-space: pre-wrap; }
     
-    #simulator-container { flex: 0 0 24%; min-width: 250px; min-height: 0; height: 100%; background: #2c3e50; display: flex; flex-direction: column; align-items: center; padding: 20px; box-sizing: border-box; border-left: 2px solid #1a252f; overflow-y: auto;}
+    /* scrollbar-gutter: stable — la place de la barre de defilement est
+       reservee en permanence. Sans cela, l'echelle de la carte et la presence
+       de la barre s'influencent l'une l'autre : une carte plus petite fait
+       disparaitre la barre, ce qui elargit le cadre, ce qui reagrandit la
+       carte, ce qui ramene la barre. */
+    #simulator-container { flex: 0 0 24%; min-width: 250px; min-height: 0; height: 100%; background: #2c3e50; display: flex; flex-direction: column; align-items: center; padding: 20px; box-sizing: border-box; border-left: 2px solid #1a252f; overflow-y: auto; scrollbar-gutter: stable;}
     #simulator-container h3 { margin-top: 0; color: #2ecc71; font-size: 14px; text-transform: uppercase; width: 100%; text-align: left;}
     
     /* Le cadre porte la place occupee, la carte porte l'echelle. Un transform
@@ -213,10 +218,35 @@
                           transition: background 0.08s; }
     .digit7-points.on span { background: #24e8c6; box-shadow: 0 0 4px rgba(36, 232, 198, 0.9); }
 
-    #grove-lcd { background: #0f3d2e; border-radius: 4px; padding: 6px 8px;
-                 font-family: Consolas, monospace; font-size: 13px; color: #7dffb2;
-                 letter-spacing: 1px; white-space: pre; line-height: 1.5; }
-    #grove-lcd.eteint { opacity: 0.25; }
+    /* Ecran LCD 1602 : cadre noir, retro-eclairage bleu, caracteres clairs.
+       Chaque caractere occupe sa propre cellule, comme sur le composant : le
+       texte s'aligne donc en colonnes, et une cellule vide reste visible.
+       Le pas de la trame est de 2 px, soit une cellule de 5x8 points = 10x16. */
+    #grove-lcd-module { display: inline-block; padding: 7px; border-radius: 5px;
+                        background: #0b0b0b;
+                        box-shadow: inset 0 0 0 1px #3d3d3d, 0 2px 5px rgba(0,0,0,0.55); }
+    #grove-lcd { position: relative; padding: 6px; border-radius: 2px;
+                 background: linear-gradient(180deg, #3059ea 0%, #1f41c9 55%, #1a35ad 100%);
+                 box-shadow: inset 0 0 9px rgba(0,0,0,0.45); }
+    .lcd-ligne { display: flex; gap: 2px; }
+    .lcd-ligne + .lcd-ligne { margin-top: 2px; }
+    .lcd-cell { width: 10px; height: 16px; overflow: hidden;
+                background: rgba(255,255,255,0.055);
+                font-family: Consolas, "DejaVu Sans Mono", monospace;
+                font-size: 14px; line-height: 16px; text-align: center;
+                color: #f4f8ff; text-shadow: 0 0 3px rgba(215,232,255,0.8); }
+    /* La trame est une grille sombre au pas du point, posee PAR-DESSUS le
+       texte : elle decoupe les jambages en points et donne l'aspect matriciel
+       sans avoir a redessiner une fonte 5x8 caractere par caractere. */
+    .lcd-trame { position: absolute; inset: 0; pointer-events: none; border-radius: 2px;
+                 background-image:
+                   repeating-linear-gradient(to right,  rgba(6,16,64,0.34) 0 1px, transparent 1px 2px),
+                   repeating-linear-gradient(to bottom, rgba(6,16,64,0.34) 0 1px, transparent 1px 2px); }
+    /* Retro-eclairage eteint : l'ecran devient gris-vert et le texte reste
+       faiblement lisible, comme sur le vrai module. */
+    #grove-lcd.eteint { background: linear-gradient(180deg, #55605c 0%, #454e4b 100%); }
+    #grove-lcd.eteint .lcd-cell { color: #99a5a1; text-shadow: none;
+                                  background: rgba(255,255,255,0.04); }
 
     #grove-couleur { width: 100%; height: 30px; padding: 0; border: 0; background: none; cursor: pointer; }
     #grove-moteurs, #grove-servos { background: #1b2a38; border-radius: 4px; padding: 6px 8px; font-size: 11px; }
@@ -375,7 +405,13 @@
 
         <div class="grove-bloc" id="grove-sec-lcd">
           <span class="grove-titre">Écran LCD 16x2</span>
-          <div id="grove-lcd"><div id="grove-lcd-l0">&nbsp;</div><div id="grove-lcd-l1">&nbsp;</div></div>
+          <div id="grove-lcd-module">
+            <div id="grove-lcd">
+              <div class="lcd-ligne" id="grove-lcd-l0"></div>
+              <div class="lcd-ligne" id="grove-lcd-l1"></div>
+              <div class="lcd-trame"></div>
+            </div>
+          </div>
         </div>
 
         <div class="grove-bloc" id="grove-sec-th">

@@ -3277,8 +3277,37 @@ try {
         }
     }
 
+    // Les 32 cellules sont creees une seule fois, puis seul leur contenu
+    // change : reconstruire le balisage a chaque ecriture ferait clignoter
+    // l'ecran, et le vrai afficheur ne se rafraichit pas ainsi.
+    const cellulesLcd = [];
+
+    function preparerLcd() {
+        if (cellulesLcd.length) return;
+        lignesLcd.forEach((ligne, i) => {
+            if (!ligne) return;
+            cellulesLcd[i] = [];
+            for (let c = 0; c < 16; c++) {
+                const cellule = document.createElement('span');
+                cellule.className = 'lcd-cell';
+                ligne.appendChild(cellule);
+                cellulesLcd[i].push(cellule);
+            }
+        });
+    }
+
     function dessinerLcd() {
-        lignesLcd.forEach((l, i) => { if (l) l.textContent = tamponLcd[i]; });
+        preparerLcd();
+        cellulesLcd.forEach((ligne, i) => {
+            const texte = tamponLcd[i] || '';
+            ligne.forEach((cellule, c) => {
+                const caractere = texte.charAt(c) || ' ';
+                // Une espace laisse la cellule vide : son fond suffit a la
+                // rendre visible, comme les points eteints du composant.
+                const contenu = caractere === ' ' ? '' : caractere;
+                if (cellule.textContent !== contenu) cellule.textContent = contenu;
+            });
+        });
     }
 
     function dessinerMoteurs() {
@@ -3650,13 +3679,18 @@ try {
     const cadreCarte = document.getElementById('carte-cadre');
     const LARGEUR_CARTE = 280;
     const HAUTEUR_CARTE = 230;
+    // La carte ne remplit pas toute la largeur offerte : elle est volontairement
+    // reduite d'un quart, ce qui laisse respirer les sections du panneau
+    // (peripheriques Grove, radio, servomoteurs) placees au-dessous.
+    const REDUCTION = 0.75;
 
     function adapterEchelleSimulateur() {
         if (!cadreCarte || !carte) return;
         const disponible = cadreCarte.clientWidth;
         // Panneau replie : largeur nulle, rien a calculer.
         if (!disponible) return;
-        const echelle = Math.max(0.55, Math.min(1.5, disponible / LARGEUR_CARTE));
+        const echelle = REDUCTION *
+            Math.max(0.55, Math.min(1.5, disponible / LARGEUR_CARTE));
         carte.style.transform = 'scale(' + echelle.toFixed(3) + ')';
         // Un transform ne modifie pas la place occupee : le cadre s'en charge.
         cadreCarte.style.height = Math.round(HAUTEUR_CARTE * echelle) + 'px';
