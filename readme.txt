@@ -475,14 +475,16 @@ evite juste qu'un eleve tombe dessus par hasard.
 Le panneau a quatre onglets :
 
 - CATEGORIES : glisser pour reordonner, l'oeil masque une categorie aux
-  eleves, le crayon la renomme. "Tout reinitialiser" revient a l'etat
-  d'origine.
+  eleves, le crayon la renomme, la pastille de couleur en tete de ligne
+  change sa couleur (selecteur natif du navigateur). "Tout reinitialiser"
+  revient a l'etat d'origine (ordre, noms et couleurs compris).
 - SOUS-MENUS : on choisit une categorie dans la liste deroulante.
   - Communication et Grove ont deja des sous-menus (un par module) : ils se
-    reordonnent/masquent/renomment comme les categories.
+    reordonnent/masquent/renomment/recolorent comme les categories.
   - Les autres categories sont a plat : on peut regrouper des blocs choisis
-    dans un nouveau sous-menu (utile si une categorie s'allonge trop). Un
-    sous-menu supprime rend ses blocs au niveau superieur.
+    dans un nouveau sous-menu (utile si une categorie s'allonge trop), avec
+    lui aussi sa propre pastille de couleur. Un sous-menu supprime rend ses
+    blocs au niveau superieur.
 - LIBELLES : cherche un bloc par son nom technique ou par un mot de son
   texte affiche, puis modifie ce texte. Ca ne touche qu'a l'affichage, jamais
   au code Python genere ni au comportement du bloc.

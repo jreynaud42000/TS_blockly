@@ -73,6 +73,13 @@
     .panneau-admin-liste li .nom-ligne { flex: 1; }
     .panneau-admin-liste li input[type="text"] { flex: 1; background: #16212c; border: 1px solid #3d566e;
         color: #d6e0ea; border-radius: 3px; padding: 4px 6px; font-size: 13px; }
+    /* Le picker natif dessine un rectangle avec sa propre marge interne :
+       on la retire pour obtenir une pastille carree nette, au pas des icones. */
+    .panneau-admin-liste li input.pastille-couleur { flex: 0 0 auto; width: 22px; height: 22px;
+        padding: 0; border: 1px solid #3d566e; border-radius: 4px; background: none; cursor: pointer; }
+    .panneau-admin-liste li input.pastille-couleur::-webkit-color-swatch-wrapper { padding: 0; }
+    .panneau-admin-liste li input.pastille-couleur::-webkit-color-swatch { border: none; border-radius: 3px; }
+    .panneau-admin-liste li input.pastille-couleur::-moz-color-swatch { border: none; border-radius: 3px; }
     .icone-admin { background: none; border: none; color: #9fb3c8; cursor: pointer; padding: 2px 5px;
                    font-size: 14px; margin: 0; border-radius: 3px; }
     .icone-admin:hover { background: #3d566e; color: #fff; }

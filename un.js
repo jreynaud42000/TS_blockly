@@ -2441,7 +2441,7 @@ try {
     const CLE_CONFIG_ADMIN = 'blockly_ts_config_admin';
 
     function configAdminParDefaut() {
-        return { categories: { order: [], hidden: [], labels: {} }, groupes: {}, sousMenus: [], libellesBlocs: {} };
+        return { categories: { order: [], hidden: [], labels: {}, colors: {} }, groupes: {}, sousMenus: [], libellesBlocs: {} };
     }
 
     function chargerConfigAdmin() {
@@ -2450,12 +2450,19 @@ try {
             const brut = localStorage.getItem(CLE_CONFIG_ADMIN);
             if (!brut) return defaut;
             const lu = JSON.parse(brut);
-            return {
+            const config = {
                 categories: Object.assign(defaut.categories, lu.categories),
                 groupes: lu.groupes || {},
                 sousMenus: lu.sousMenus || [],
                 libellesBlocs: lu.libellesBlocs || {}
             };
+            // Config enregistree par une version anterieure aux couleurs : completer
+            // les champs manquants plutot que de planter au premier acces.
+            if (!config.categories.colors) config.categories.colors = {};
+            for (const parent in config.groupes) {
+                if (!config.groupes[parent].colors) config.groupes[parent].colors = {};
+            }
+            return config;
         } catch (erreur) { return defaut; }
     }
 
@@ -2873,17 +2880,18 @@ try {
     const SOUS_MENUS_MASQUES_PAR_DEFAUT = {};
 
     function groupesConfDefaut(nomParent) {
-        return { order: [], hidden: (SOUS_MENUS_MASQUES_PAR_DEFAUT[nomParent] || []).slice(), labels: {} };
+        return { order: [], hidden: (SOUS_MENUS_MASQUES_PAR_DEFAUT[nomParent] || []).slice(), labels: {}, colors: {} };
     }
 
     function construireCategorie(catOriginale) {
         const nomOrig = catOriginale.name;
         const nomAffiche = configAdmin.categories.labels[nomOrig] || nomOrig;
+        const couleurAffichee = configAdmin.categories.colors[nomOrig] || catOriginale.colour;
 
         if (!catOriginale.contents) {
             // Categorie dynamique (Variables, Fonctions) : Blockly la remplit
-            // lui-meme, seul le nom affiche peut etre change.
-            return Object.assign({}, catOriginale, { name: nomAffiche });
+            // lui-meme, seuls le nom affiche et la couleur peuvent etre changes.
+            return Object.assign({}, catOriginale, { name: nomAffiche, colour: couleurAffichee });
         }
 
         const sousNatives = catOriginale.contents.filter(e => e.kind === 'category');
@@ -2891,7 +2899,7 @@ try {
 
         if (sousNatives.length) {
             // Deja organisee en sous-menus (Communication, Grove) : on les
-            // reordonne / masque / renomme. Pas de creation ici, la
+            // reordonne / masque / renomme / recolore. Pas de creation ici, la
             // categorie a deja sa structure.
             const groupesConf = configAdmin.groupes[nomOrig] || groupesConfDefaut(nomOrig);
             const dispo = new Map(sousNatives.map(s => [s.name, s]));
@@ -2902,13 +2910,22 @@ try {
                 const s = dispo.get(nom);
                 dispo.delete(nom);
                 const label = groupesConf.labels[nom];
-                resultat.push(label ? Object.assign({}, s, { name: label }) : s);
+                const couleur = groupesConf.colors[nom];
+                resultat.push((label || couleur)
+                    ? Object.assign({}, s, label ? { name: label } : {}, couleur ? { colour: couleur } : {})
+                    : s);
             }
-            for (const [nom, s] of dispo) if (!groupesConf.hidden.includes(nom)) resultat.push(s);
+            for (const [nom, s] of dispo) {
+                if (groupesConf.hidden.includes(nom)) continue;
+                const couleur = groupesConf.colors[nom];
+                resultat.push(couleur ? Object.assign({}, s, { colour: couleur }) : s);
+            }
             contenuFinal = resultat;
         } else {
             // Categorie a plat : les blocs repris dans un sous-menu
-            // personnalise en sortent, le reste garde sa place d'origine.
+            // personnalise en sortent, le reste garde sa place d'origine. La
+            // couleur d'un sous-menu personnalise vit directement dans son
+            // entree (s.couleur), pas dans une table a part : rien a lire ici.
             const sousMenusIci = configAdmin.sousMenus.filter(s => s.parent === nomOrig);
             const typesExtraits = new Set(sousMenusIci.flatMap(s => s.blocs));
             const restants = catOriginale.contents.filter(e =>
@@ -2922,7 +2939,7 @@ try {
             contenuFinal = [...restants, ...sousPersonnalises];
         }
 
-        return { kind: 'category', name: nomAffiche, colour: catOriginale.colour, contents: contenuFinal };
+        return { kind: 'category', name: nomAffiche, colour: couleurAffichee, contents: contenuFinal };
     }
 
     function construireToolbox() {
@@ -2965,11 +2982,51 @@ try {
     let elementAttrape = null;
     let readmeCharge = false;
 
-    function construireLigneReordonnable(cle, texteAffiche, estMasque, onRenommer, onBasculerMasque) {
+    /**
+     * Convertit une teinte Blockly (0-360, comme "230") en hexadecimal, avec
+     * la meme saturation/valeur (0.45 / 0.65) que la palette par defaut de
+     * Blockly — sinon la pastille pre-remplie ne correspondrait pas a la
+     * couleur reellement affichee dans la boite a outils.
+     */
+    function teinteVersHex(teinte) {
+        const h = (((Number(teinte) || 0) % 360) + 360) % 360 / 360;
+        const s = 0.45, v = 0.65;
+        const i = Math.floor(h * 6);
+        const f = h * 6 - i;
+        const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+        let r, g, b;
+        switch (i % 6) {
+            case 0: r = v; g = t; b = p; break;
+            case 1: r = q; g = v; b = p; break;
+            case 2: r = p; g = v; b = t; break;
+            case 3: r = p; g = q; b = v; break;
+            case 4: r = t; g = p; b = v; break;
+            default: r = v; g = p; b = q;
+        }
+        const versHex = x => Math.round(x * 255).toString(16).padStart(2, '0');
+        return '#' + versHex(r) + versHex(g) + versHex(b);
+    }
+
+    /** La couleur d'origine est une teinte numerique ; une surcharge est deja en hex. */
+    function couleurEnHex(valeur) {
+        return (typeof valeur === 'string' && valeur.startsWith('#')) ? valeur : teinteVersHex(valeur);
+    }
+
+    function construireLigneReordonnable(cle, texteAffiche, estMasque, couleur, onRenommer, onBasculerMasque, onChangerCouleur) {
         const ligne = document.createElement('li');
         ligne.draggable = true;
         ligne.dataset.cle = cle;
         ligne.classList.toggle('masquee', estMasque);
+
+        const pastille = document.createElement('input');
+        pastille.type = 'color';
+        pastille.className = 'pastille-couleur';
+        pastille.value = couleurEnHex(couleur);
+        pastille.title = 'Changer la couleur';
+        pastille.addEventListener('click', e => e.stopPropagation());
+        pastille.addEventListener('mousedown', e => e.stopPropagation());
+        pastille.addEventListener('input', () => onChangerCouleur(pastille.value));
+        ligne.appendChild(pastille);
 
         const nomSpan = document.createElement('span');
         nomSpan.className = 'nom-ligne';
@@ -3144,7 +3201,9 @@ try {
         for (const nomOrig of ordre) {
             const masque = configAdmin.categories.hidden.includes(nomOrig);
             const texte = configAdmin.categories.labels[nomOrig] || nomOrig;
-            listeCategories.appendChild(construireLigneReordonnable(nomOrig, texte, masque,
+            const couleur = configAdmin.categories.colors[nomOrig] ||
+                TOOLBOX_ORIGINAL.find(c => c.name === nomOrig).colour;
+            listeCategories.appendChild(construireLigneReordonnable(nomOrig, texte, masque, couleur,
                 nouveauTexte => {
                     if (nouveauTexte && nouveauTexte !== nomOrig) configAdmin.categories.labels[nomOrig] = nouveauTexte;
                     else delete configAdmin.categories.labels[nomOrig];
@@ -3154,6 +3213,10 @@ try {
                     const i = configAdmin.categories.hidden.indexOf(nomOrig);
                     if (i === -1) configAdmin.categories.hidden.push(nomOrig); else configAdmin.categories.hidden.splice(i, 1);
                     sauvegarderConfigAdmin(); appliquerToolbox(); remplirOngletCategories();
+                },
+                nouvelleCouleur => {
+                    configAdmin.categories.colors[nomOrig] = nouvelleCouleur;
+                    sauvegarderConfigAdmin(); appliquerToolbox();
                 }));
         }
     }
@@ -3189,7 +3252,8 @@ try {
             for (const nom of ordre) {
                 const masque = groupesConf.hidden.includes(nom);
                 const texte = groupesConf.labels[nom] || nom;
-                ul.appendChild(construireLigneReordonnable(nom, texte, masque,
+                const couleur = groupesConf.colors[nom] || sousNatives.find(s => s.name === nom).colour;
+                ul.appendChild(construireLigneReordonnable(nom, texte, masque, couleur,
                     nv => {
                         if (nv && nv !== nom) groupesConf.labels[nom] = nv; else delete groupesConf.labels[nom];
                         sauvegarderConfigAdmin(); appliquerToolbox(); remplirZoneSousMenus(nomParent);
@@ -3198,6 +3262,10 @@ try {
                         const i = groupesConf.hidden.indexOf(nom);
                         if (i === -1) groupesConf.hidden.push(nom); else groupesConf.hidden.splice(i, 1);
                         sauvegarderConfigAdmin(); appliquerToolbox(); remplirZoneSousMenus(nomParent);
+                    },
+                    nouvelleCouleur => {
+                        groupesConf.colors[nom] = nouvelleCouleur;
+                        sauvegarderConfigAdmin(); appliquerToolbox();
                     }));
             }
             ul.addEventListener('dragend', () => {
@@ -3217,6 +3285,18 @@ try {
             for (const sm of existants) {
                 const ligne = document.createElement('li');
                 ligne.classList.add('sans-poignee');
+
+                const pastille = document.createElement('input');
+                pastille.type = 'color';
+                pastille.className = 'pastille-couleur';
+                pastille.value = couleurEnHex(sm.couleur);
+                pastille.title = 'Changer la couleur';
+                pastille.addEventListener('input', () => {
+                    sm.couleur = pastille.value;
+                    sauvegarderConfigAdmin(); appliquerToolbox();
+                });
+                ligne.appendChild(pastille);
+
                 const nomSpan = document.createElement('span');
                 nomSpan.className = 'nom-ligne';
                 nomSpan.textContent = sm.nom + ' (' + sm.blocs.length + ' bloc' + (sm.blocs.length > 1 ? 's' : '') + ')';
@@ -3425,6 +3505,15 @@ try {
             if (texte) configAdmin.categories.labels[nom] = texte; else delete configAdmin.categories.labels[nom];
             sauvegarderConfigAdmin(); appliquerToolbox();
         },
+        changerCouleurCategorie: (nom, hex) => {
+            if (hex) configAdmin.categories.colors[nom] = hex; else delete configAdmin.categories.colors[nom];
+            sauvegarderConfigAdmin(); appliquerToolbox();
+        },
+        changerCouleurSousMenu: (parent, nom, hex) => {
+            const groupesConf = configAdmin.groupes[parent] || (configAdmin.groupes[parent] = groupesConfDefaut(parent));
+            if (hex) groupesConf.colors[nom] = hex; else delete groupesConf.colors[nom];
+            sauvegarderConfigAdmin(); appliquerToolbox();
+        },
         creerSousMenu: (parent, nom, blocs) => {
             const original = TOOLBOX_ORIGINAL.find(c => c.name === parent);
             configAdmin.sousMenus.push({
@@ -3436,6 +3525,10 @@ try {
         supprimerSousMenu: id => {
             configAdmin.sousMenus = configAdmin.sousMenus.filter(s => s.id !== id);
             sauvegarderConfigAdmin(); appliquerToolbox();
+        },
+        changerCouleurSousMenuPersonnalise: (id, hex) => {
+            const sm = configAdmin.sousMenus.find(s => s.id === id);
+            if (sm && hex) { sm.couleur = hex; sauvegarderConfigAdmin(); appliquerToolbox(); }
         },
         renommerLibelleBloc: (type, index, texte) => {
             const cle = type + '#' + index;

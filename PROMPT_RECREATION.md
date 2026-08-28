@@ -903,19 +903,24 @@ clairement évite qu'on s'y fie à tort.
 
 ```js
 function configAdminParDefaut() {
-    return { categories: { order: [], hidden: [], labels: {} },
+    return { categories: { order: [], hidden: [], labels: {}, colors: {} },
              groupes: {}, sousMenus: [], libellesBlocs: {} };
 }
 ```
 
-- `categories` : ordre/masquage/renommage des catégories de premier niveau.
-  On repart toujours d'une table d'origine (`TOOLBOX_ORIGINAL`, clonée en
-  profondeur **une fois**, avant toute modification), jamais du tiroir
-  courant, et une catégorie absente de l'ordre enregistré se replace à la fin
-  plutôt que de disparaître — c'est ce qui permet d'ajouter une catégorie à
-  l'application sans la faire disparaître chez qui a déjà réordonné.
-- `groupes` : même triplet (order/hidden/labels), mais par catégorie parente,
-  pour ses **sous-catégories natives** (Communication, Grove).
+- `categories` : ordre/masquage/renommage/**couleur** des catégories de
+  premier niveau. On repart toujours d'une table d'origine
+  (`TOOLBOX_ORIGINAL`, clonée en profondeur **une fois**, avant toute
+  modification), jamais du tiroir courant, et une catégorie absente de
+  l'ordre enregistré se replace à la fin plutôt que de disparaître — c'est ce
+  qui permet d'ajouter une catégorie à l'application sans la faire disparaître
+  chez qui a déjà réordonné.
+- `groupes` : même quadruplet (order/hidden/labels/colors), mais par
+  catégorie parente, pour ses **sous-catégories natives** (Communication,
+  Grove). Une config sauvegardée par une version antérieure à l'ajout des
+  couleurs n'a pas cette clé : la compléter au chargement
+  (`config.groupes[parent].colors ||= {}`) plutôt que de laisser une
+  écriture ultérieure planter sur `undefined`.
 - `sousMenus` : liste de groupes **créés par l'admin**, chacun
   `{id, parent, nom, couleur, blocs: [types...]}` — n'existe que pour les
   catégories qui n'ont pas déjà de sous-catégories natives (pas de nesting à
@@ -956,12 +961,24 @@ deuxième fois suffit à annuler le masquage.
 
 - **Catégories** : liste réordonnable (`draggable`), une icône œil masque, un
   crayon renomme (remplace le texte par un `<input>`, valide sur `blur` ou
-  Entrée, annule sur Échap).
+  Entrée, annule sur Échap), une pastille `<input type="color">` recolore.
+  La couleur d'origine d'une catégorie est une **teinte Blockly** (0-360,
+  ex. `"230"`), pas un hex : pour pré-remplir le sélecteur natif avec la
+  couleur réellement affichée, la convertir avec la même saturation/valeur
+  que la palette par défaut de Blockly (`S=0.45`, `V=0.65`), sinon la
+  pastille montre une couleur différente de celle du tiroir tant qu'elle n'a
+  pas été touchée. La surcharge, elle, est stockée directement en hex — un
+  `colour` Blockly accepte les deux formats, aucune conversion n'est
+  nécessaire pour l'appliquer.
 - **Sous-menus** : un `<select>` des catégories qui ont un `contents` (donc
   pas Variables/Fonctions). Si la catégorie a déjà des sous-catégories
-  natives, même liste réordonnable que l'onglet Catégories. Sinon, formulaire
-  de création : cases à cocher sur les blocs encore à plat, un nom, un bouton
-  qui pousse dans `sousMenus`.
+  natives, même liste réordonnable (et recolorable) que l'onglet Catégories.
+  Sinon, formulaire de création : cases à cocher sur les blocs encore à plat,
+  un nom, un bouton qui pousse dans `sousMenus` — sa couleur hérite de celle
+  de la catégorie parente à la création, puis se change directement sur
+  l'entrée (`sousMenu.couleur`), sans table de surcharge séparée : elle n'a
+  qu'un seul possesseur, contrairement à une catégorie ou une sous-catégorie
+  native qui existent indépendamment de toute personnalisation.
 - **Libellés** : chaque `appendField("texte")` sans nom crée un `FieldLabel`
   anonyme. On le repère par sa **position parmi les seuls `FieldLabel` du
   bloc** (ordre des `appendField` dans `init`) : une clé `type#index` stable
