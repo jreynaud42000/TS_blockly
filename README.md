@@ -16,6 +16,7 @@ Tous ces fichiers doivent rester ensemble dans le meme dossier :
 - deux.js           (Ecriture du programme dans le systeme de fichiers embarque)
 - trois.js          (Emballage au format Universal Hex)
 - firmware.hex      (Image MicroPython officielle de la micro:bit)
+- readme.txt        (Ce fichier : affiche dans l'onglet Aide du panneau administrateur, §13)
 - lancer_projet.bat (Demarrage du serveur local)
 - app.py / app.spec (Version empaquetee en .exe avec PyInstaller)
 
@@ -461,7 +462,7 @@ Apres toute modification des fichiers du projet :
    pyinstaller app.spec
 
 Les dossiers build/ et dist/ sont regeneres. dist/app.exe embarque index.html,
-un.js, deux.js, trois.js et firmware.hex.
+un.js, deux.js, trois.js, firmware.hex et readme.txt.
 
 ---------------------------------------------------------
 13. LE PANNEAU ADMINISTRATEUR
@@ -471,7 +472,7 @@ bouton ⚙ est invisible tant que ce raccourci n'a pas ete utilise. Ce n'est pas
 une vraie protection (l'app est 100% cliente, sans compte ni serveur) : ca
 evite juste qu'un eleve tombe dessus par hasard.
 
-Le panneau a trois onglets :
+Le panneau a quatre onglets :
 
 - CATEGORIES : glisser pour reordonner, l'oeil masque une categorie aux
   eleves, le crayon la renomme. "Tout reinitialiser" revient a l'etat
@@ -485,8 +486,36 @@ Le panneau a trois onglets :
 - LIBELLES : cherche un bloc par son nom technique ou par un mot de son
   texte affiche, puis modifie ce texte. Ca ne touche qu'a l'affichage, jamais
   au code Python genere ni au comportement du bloc.
+- AIDE : le contenu de ce readme.txt, charge depuis le serveur local au
+  premier clic sur l'onglet. Un lien l'ouvre aussi dans un nouvel onglet du
+  navigateur.
 
 Tout est memorise en localStorage, donc propre a chaque navigateur/poste :
 pas de fichier de config partageable entre les postes d'une salle pour
 l'instant. Reglages perdus si le cache du navigateur est vide.
+
+---------------------------------------------------------
+14. ÉDITION MANUELLE DU CODE
+---------------------------------------------------------
+Bouton "✎ Éditer" au-dessus de la transcription MicroPython : bascule le
+panneau en zone de texte modifiable.
+
+Blockly sait transformer des blocs en Python, jamais l'inverse de façon
+fiable : du code tape a la main ne peut donc pas revenir en blocs. Les deux
+ne peuvent pas rester synchronises, alors ce mode est exclusif plutot que de
+laisser deriver l'un des deux sans le dire :
+
+- Entrer en edition manuelle GELE le canevas Blockly (voile visible dessus,
+  qui bloque aussi les clics) : impossible de modifier les blocs tant qu'on
+  est en train de taper du code.
+- Ce qui est tape remplace en direct le code utilise par le simulateur, le
+  bouton .hex, le bouton .py et "Envoyer sur la carte".
+- "↩ Revenir aux blocs" ABANDONNE la saisie manuelle et restaure le code tel
+  que les blocs le decrivent a cet instant (pas celui d'avant l'edition, s'ils
+  ont continue d'exister en arriere-plan).
+
+Rien n'est sauvegarde d'une session a l'autre : recharger la page perd la
+saisie manuelle, exactement comme elle perd deja l'espace de travail Blockly
+lui-meme. Telecharger le .py avant de recharger si le texte tape doit etre
+garde.
 
