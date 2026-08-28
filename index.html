@@ -32,7 +32,11 @@
     /* Le bouton du panneau administrateur reste cache tant que le raccourci
        secret (Ctrl+Alt+Maj+A) n'a pas ete utilise : voir activerAdmin() dans
        un.js. Pas une vraie protection, juste evite qu'un eleve tombe dessus. */
-    #btn-options { font-size: 16px; padding: 5px 11px; display: none; }
+    /* Rouge et non le gris des autres boutons btn-vue : puisqu'il ne
+       s'affiche que pour l'administrateur, autant qu'il saute aux yeux plutot
+       que de se fondre avec le reste de la barre. */
+    #btn-options { font-size: 16px; padding: 5px 11px; display: none; background: #e74c3c; }
+    #btn-options:hover { background: #c0392b; }
 
     /* Panneau administrateur : categories, sous-menus, libelles de blocs. */
     #voile-options { position: fixed; inset: 0; background: rgba(0,0,0,0.55);

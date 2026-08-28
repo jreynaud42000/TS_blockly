@@ -7,7 +7,7 @@ Ce fichier dit **où on en est** : ce qui a été vérifié, ce qui ne peut l'ê
 sans matériel, et ce qui a été écarté. Les deux autres documents complètent :
 
 - `readme.txt` — mode d'emploi et pièges d'usage
-- `PROMPT_RECREATION.md` — tout reconstruire de zéro, avec les 18 pièges connus
+- `PROMPT_RECREATION.md` — tout reconstruire de zéro, avec les 29 pièges connus (nº 0 à nº 28)
 
 ---
 
