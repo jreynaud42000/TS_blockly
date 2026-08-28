@@ -449,4 +449,30 @@ Apres toute modification des fichiers du projet :
 Les dossiers build/ et dist/ sont regeneres. dist/app.exe embarque index.html,
 un.js, deux.js, trois.js et firmware.hex.
 
+---------------------------------------------------------
+13. LE PANNEAU ADMINISTRATEUR
+---------------------------------------------------------
+Raccourci Ctrl+Alt+Maj+A : active ou desactive le mode administrateur. Le
+bouton ⚙ est invisible tant que ce raccourci n'a pas ete utilise. Ce n'est pas
+une vraie protection (l'app est 100% cliente, sans compte ni serveur) : ca
+evite juste qu'un eleve tombe dessus par hasard.
+
+Le panneau a trois onglets :
+
+- CATEGORIES : glisser pour reordonner, l'oeil masque une categorie aux
+  eleves, le crayon la renomme. "Tout reinitialiser" revient a l'etat
+  d'origine.
+- SOUS-MENUS : on choisit une categorie dans la liste deroulante.
+  - Communication et Grove ont deja des sous-menus (un par module) : ils se
+    reordonnent/masquent/renomment comme les categories.
+  - Les autres categories sont a plat : on peut regrouper des blocs choisis
+    dans un nouveau sous-menu (utile si une categorie s'allonge trop). Un
+    sous-menu supprime rend ses blocs au niveau superieur.
+- LIBELLES : cherche un bloc par son nom technique ou par un mot de son
+  texte affiche, puis modifie ce texte. Ca ne touche qu'a l'affichage, jamais
+  au code Python genere ni au comportement du bloc.
+
+Tout est memorise en localStorage, donc propre a chaque navigateur/poste :
+pas de fichier de config partageable entre les postes d'une salle pour
+l'instant. Reglages perdus si le cache du navigateur est vide.
 
