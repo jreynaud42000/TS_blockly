@@ -81,6 +81,12 @@
     .bloc-libelle .type-bloc { font-size: 11px; color: #7f8c8d; margin-bottom: 5px; font-family: monospace; }
     .bloc-libelle .champ-libelle { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 
+    #lien-readme { display: inline-block; margin-bottom: 10px; color: #5dade2; font-size: 12px; }
+    #lien-readme:hover { color: #85c1e9; }
+    #zone-aide { white-space: pre-wrap; font-family: Consolas, monospace; font-size: 12px; line-height: 1.5;
+        background: #16212c; border: 1px solid #3d566e; border-radius: 4px; padding: 10px 12px;
+        max-height: 55vh; overflow-y: auto; margin: 0; color: #d6e0ea; }
+
     #toast-admin { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
         background: #2ecc71; color: #12281e; padding: 8px 16px; border-radius: 4px; font-size: 13px;
         font-weight: bold; opacity: 0; pointer-events: none; transition: opacity 0.25s; z-index: 1100; }
@@ -108,12 +114,39 @@
     /* La zone de blocs prend tout ce que les deux panneaux laissent, au lieu
        d'une part fixe de 50 % : en zoomant, ou en repliant un panneau, elle
        s'elargit au lieu d'etre etranglee par le tiroir de la boite a outils. */
-    #blocklyDiv { flex: 1 1 auto; min-width: 260px; min-height: 0; height: 100%; }
+    /* Enrobe blocklyDiv pour pouvoir poser un voile par-dessus (édition
+       manuelle du code) sans toucher au conteneur que Blockly gère lui-même. */
+    #blockly-wrapper { position: relative; flex: 1 1 auto; min-width: 260px; min-height: 0; height: 100%; }
+    #blocklyDiv { width: 100%; height: 100%; }
     .replie { display: none !important; }
 
-    #code-container { flex: 0 0 24%; min-width: 240px; min-height: 0; height: 100%; background: #1e1e1e; color: #d4d4d4; padding: 15px; box-sizing: border-box; overflow-y: auto; border-left: 2px solid #2c3e50;}
+    /* Les blocs et le code tapé à la main ne peuvent pas rester synchronisés
+       (voir editerCode() dans un.js) : geler le canevas pendant l'édition
+       manuelle l'annonce clairement plutôt que de laisser dériver l'un des
+       deux sans le dire. */
+    #voile-blocs-figes { position: absolute; inset: 0; background: rgba(20, 30, 40, 0.55);
+                          display: none; align-items: center; justify-content: center; z-index: 50; }
+    #voile-blocs-figes.visible { display: flex; }
+    #voile-blocs-figes span { background: #22303d; color: #ffcc80; padding: 10px 18px; border-radius: 6px;
+                               font-size: 13px; font-weight: bold; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+
+    #code-container { flex: 0 0 24%; min-width: 240px; min-height: 0; height: 100%; background: #1e1e1e; color: #d4d4d4; padding: 15px; box-sizing: border-box; overflow-y: auto; border-left: 2px solid #2c3e50; display: flex; flex-direction: column;}
     #code-container h3 { margin-top: 0; color: #569cd6; font-size: 14px; text-transform: uppercase; }
+    .code-entete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .code-entete h3 { margin: 0; }
+    #btn-editer-code { font-size: 12px; padding: 5px 10px; margin: 0; background: #34495e; flex: 0 0 auto; }
+    #btn-editer-code:hover { background: #415b76; }
+    #btn-editer-code.actif { background: #e67e22; }
+    #btn-editer-code.actif:hover { background: #d35400; }
     #code-display { white-space: pre-wrap; font-family: Consolas, monospace; font-size: 13px; line-height: 1.5; }
+
+    #banniere-edition-code { display: none; margin: 10px 0; padding: 8px 10px; background: #4a3418;
+        border-left: 3px solid #e67e22; color: #ffcc80; font-size: 12px; border-radius: 3px; }
+    #banniere-edition-code.visible { display: block; }
+    #code-edit { display: none; width: 100%; box-sizing: border-box; flex: 1 1 auto; min-height: 200px;
+        background: #16212c; color: #d4d4d4; font-family: Consolas, monospace; font-size: 13px; line-height: 1.5;
+        border: 1px solid #3d566e; border-radius: 4px; padding: 10px; resize: none; }
+    #code-edit.visible { display: block; }
 
     /* Les pilotes des modules sont replies : ils occupaient plus de place que
        le programme lui-meme. Le .hex et le .py, eux, les contiennent toujours. */
@@ -350,10 +383,19 @@
   </div>
   
   <div id="main-container">
-    <div id="blocklyDiv"></div>
+    <div id="blockly-wrapper">
+      <div id="blocklyDiv"></div>
+      <div id="voile-blocs-figes"><span>✎ Blocs figés — édition manuelle du code en cours</span></div>
+    </div>
     <div id="code-container">
-      <h3>Transcription MicroPython</h3>
+      <div class="code-entete">
+        <h3>Transcription MicroPython</h3>
+        <button id="btn-editer-code" class="btn-vue" title="Saisir du code MicroPython à la main">✎ Éditer</button>
+      </div>
+      <p id="banniere-edition-code">Code modifié à la main : les blocs sont figés et ne sont plus
+        synchronisés avec ce qui s'affiche ici. « Revenir aux blocs » abandonne ces modifications.</p>
       <div id="code-display">Le code s'affichera ici...</div>
+      <textarea id="code-edit" spellcheck="false"></textarea>
     </div>
     <div id="simulator-container">
       <h3>Simulateur visuel</h3>

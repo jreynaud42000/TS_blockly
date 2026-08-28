@@ -28,7 +28,8 @@ se fiant à l'absence d'erreur.
 | Servos | bornes, intervalle, rotation continue, arrêt au neutre, animation des cadrans |
 | Mise en page | canevas synchronisé avec Blockly dans 9 situations, corbeille et zoom toujours visibles |
 | Envoi sur la carte | écriture simulée avec un faux lecteur : 1 877 004 octets, tous les cas d'erreur |
-| Panneau administrateur | Ctrl+Alt+Maj+A active/désactive, bouton ⚙ caché sinon. Réordonner/masquer/renommer une catégorie, idem pour les sous-menus natifs (Communication, Grove), création d'un sous-menu personnalisé avec extraction des blocs choisis, renommage d'un libellé de bloc appliqué aux blocs déjà posés et aux nouveaux. Persisté en localStorage, testé via `window.adminTest` (voir un.js) faute de pouvoir simuler un glisser-déposer |
+| Panneau administrateur | Ctrl+Alt+Maj+A active/désactive, bouton ⚙ caché sinon. Réordonner/masquer/renommer une catégorie, idem pour les sous-menus natifs (Communication, Grove), création d'un sous-menu personnalisé avec extraction des blocs choisis, renommage d'un libellé de bloc appliqué aux blocs déjà posés et aux nouveaux, onglet Aide qui charge `readme.txt` par `fetch()` (28 420 caractères reçus, testé aussi après un blocage transitoire du serveur mono-thread — voir « détail agaçant » plus bas). Persisté en localStorage (sauf l'onglet Aide, sans état), testé via `window.adminTest` (voir un.js) faute de pouvoir simuler un glisser-déposer |
+| Édition manuelle du code | Bouton « ✎ Éditer » : bascule vers un `<textarea>`, gèle le canevas Blockly (voile visuel qui capte aussi les clics), la saisie remplace `window.currentPythonCode` en direct — vérifié que `.hex`/`.py`/simulateur le lisent bien à cet instant. « Revenir aux blocs » restaure le code généré et dégèle. Testé via `window.editionCodeTest` (voir un.js), non persisté (perdu au rechargement, comme l'espace de travail lui-même) |
 
 ## À vérifier avec du matériel — je n'ai pas de carte
 
@@ -109,3 +110,13 @@ pour la mise en page, comparer les dimensions au conteneur.
 Le navigateur garde `un.js`, `deux.js` et `firmware.hex` en cache. Après toute
 modification, recharger par **Ctrl+Maj+R**, sinon on teste l'ancienne version.
 Le firmware est désormais lu en `no-store`, mais pas les scripts.
+
+`app.py` utilise `socketserver.TCPServer`, **mono-thread** : une requête qui ne
+se termine pas (onglet resté ouvert sur une vieille page, connexion coupée en
+plein téléchargement du `.hex`...) bloque tout le serveur derrière elle, y
+compris de nouveaux onglets. Symptôme : le navigateur charge indéfiniment,
+même `index.html` ne répond plus. Rencontré une fois en testant l'onglet Aide
+après une session de tests intensive. Redémarrer `app.py` suffit ; passer à
+`socketserver.ThreadingTCPServer` l'éviterait mais n'a pas été fait, pour ne
+pas complexifier `deux.js` (accès concurrent au même lecteur de carte) sans
+besoin démontré en usage normal (un seul élève, un seul onglet).

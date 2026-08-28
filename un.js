@@ -2961,7 +2961,9 @@ try {
     let zoneSousMenus = null;
     let champRecherche = null;
     let zoneLibelles = null;
+    let zoneAide = null;
     let elementAttrape = null;
+    let readmeCharge = false;
 
     function construireLigneReordonnable(cle, texteAffiche, estMasque, onRenommer, onBasculerMasque) {
         const ligne = document.createElement('li');
@@ -3033,6 +3035,7 @@ try {
             '<button class="onglet-admin" data-onglet="categories">Catégories</button>' +
             '<button class="onglet-admin" data-onglet="sousmenus">Sous-menus</button>' +
             '<button class="onglet-admin" data-onglet="libelles">Libellés</button>' +
+            '<button class="onglet-admin" data-onglet="aide">Aide</button>' +
             '</div>' +
             '<div class="vue-admin" data-vue="categories">' +
             '<p>Glissez pour réordonner. L’œil masque une catégorie aux élèves, le crayon renomme ' +
@@ -3052,6 +3055,11 @@ try {
             '<p>Change le texte affiché sur un bloc, sans toucher au code généré.</p>' +
             '<input id="recherche-libelles" type="text" placeholder="Filtrer (ex: attendre, afficher)">' +
             '<div id="zone-libelles"></div>' +
+            '</div>' +
+            '<div class="vue-admin" data-vue="aide">' +
+            '<p>Contenu de <code>readme.txt</code>, le mode d’emploi complet du projet.</p>' +
+            '<a id="lien-readme" href="readme.txt" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet ↗</a>' +
+            '<pre id="zone-aide">Chargement…</pre>' +
             '</div>';
         voileOptions.appendChild(panneauOptions);
         document.body.appendChild(voileOptions);
@@ -3061,6 +3069,7 @@ try {
         zoneSousMenus = panneauOptions.querySelector('#zone-sousmenus');
         champRecherche = panneauOptions.querySelector('#recherche-libelles');
         zoneLibelles = panneauOptions.querySelector('#zone-libelles');
+        zoneAide = panneauOptions.querySelector('#zone-aide');
 
         // Fermer en cliquant a cote, jamais en cliquant dans le panneau.
         voileOptions.addEventListener('click', e => {
@@ -3080,7 +3089,10 @@ try {
         });
 
         panneauOptions.querySelectorAll('.onglet-admin').forEach(bouton => {
-            bouton.addEventListener('click', () => activerOnglet(bouton.dataset.onglet));
+            bouton.addEventListener('click', () => {
+                activerOnglet(bouton.dataset.onglet);
+                if (bouton.dataset.onglet === 'aide') chargerAide();
+            });
         });
 
         listeCategories.addEventListener('dragend', () => {
@@ -3097,6 +3109,28 @@ try {
     function activerOnglet(nom) {
         panneauOptions.querySelectorAll('.onglet-admin').forEach(b => b.classList.toggle('actif', b.dataset.onglet === nom));
         panneauOptions.querySelectorAll('.vue-admin').forEach(v => v.classList.toggle('active', v.dataset.vue === nom));
+    }
+
+    // --- Onglet Aide ---
+    // readme.txt est servi comme fichier statique par app.py, a cote
+    // d'index.html : un simple fetch suffit, pas besoin de l'embarquer.
+
+    function chargerAide() {
+        if (readmeCharge) return;
+        readmeCharge = true;
+        zoneAide.textContent = 'Chargement…';
+        fetch('readme.txt', { cache: 'no-store' })
+            .then(reponse => {
+                if (!reponse.ok) throw new Error('HTTP ' + reponse.status);
+                return reponse.text();
+            })
+            .then(texte => { zoneAide.textContent = texte; })
+            .catch(erreur => {
+                readmeCharge = false; // permet de reessayer au prochain clic sur l'onglet
+                zoneAide.textContent = 'Impossible de charger readme.txt (' + erreur.message + ').\n' +
+                    "Verifier qu'il est bien a cote d'index.html, ou l'ouvrir directement : " +
+                    new URL('readme.txt', location.href).href;
+            });
     }
 
     // --- Onglet Catégories ---
@@ -3376,6 +3410,7 @@ try {
         etat: () => cloneProfond(configAdmin),
         ouvrirPanneau: ouvrirOptions,
         fermerPanneau: fermerOptions,
+        ouvrirAide: () => { ouvrirOptions(); activerOnglet('aide'); chargerAide(); },
         reordonnerCategories: noms => {
             configAdmin.categories.order = noms.slice();
             sauvegarderConfigAdmin(); appliquerToolbox();
@@ -3761,7 +3796,12 @@ try {
         return bloc;
     }
 
-    function updatePythonCode() {
+    // Declaree avant usage : updatePythonCode() (appelee tout de suite plus
+    // bas) la lit, avant que la section EDITION MANUELLE ne soit atteinte.
+    let editionManuelleActive = false;
+
+    /** Le code tel que les blocs le decrivent, scrutation des evenements comprise. */
+    function genererCodeDepuisBlocs() {
         let codePython = Blockly.Python.workspaceToCode(window.workspace);
 
         const appels = GESTIONNAIRES
@@ -3787,13 +3827,19 @@ try {
                     P.INDENT + 'sleep(100)\n';
             }
         }
+        return codePython;
+    }
 
+    /**
+     * Met a jour tout ce qui depend du code actuellement actif — qu'il vienne
+     * des blocs ou d'une saisie manuelle (voir la section EDITION MANUELLE
+     * plus bas) : la variable globale que lisent le simulateur et les
+     * telechargements, le panneau Grove et le porte-broches A+B.
+     */
+    function definirCodeActuel(codePython) {
         window.currentPythonCode = codePython;
 
         if (panneauGrovePret) rafraichirPanneauGrove();
-
-        afficherTranscription(codePython);
-
 
         const wrapAB = document.getElementById('wrap-ab');
         if (wrapAB) {
@@ -3802,8 +3848,80 @@ try {
                  codePython.includes('_ab()')) ? 'flex' : 'none';
         }
     }
+
+    function updatePythonCode() {
+        const codePython = genererCodeDepuisBlocs();
+        // Pendant l'edition manuelle, les blocs restent geles (voile-blocs-figes)
+        // donc ce listener ne devrait pas se declencher — filet de securite au
+        // cas ou un evenement de workspace echapperait au gel.
+        if (editionManuelleActive) return;
+        definirCodeActuel(codePython);
+        afficherTranscription(codePython);
+    }
     window.workspace.addChangeListener(updatePythonCode);
     updatePythonCode();
+
+    // ------------------------------------------
+    // ÉDITION MANUELLE DU CODE
+    // ------------------------------------------
+    // Blockly sait transformer des blocs en Python, jamais l'inverse de façon
+    // fiable : du code tapé à la main ne peut donc pas revenir en blocs. Le
+    // compromis retenu est un mode exclusif — soit les blocs pilotent le code
+    // (comme avant), soit une saisie manuelle le remplace entièrement, jamais
+    // les deux en même temps. « Revenir aux blocs » abandonne la saisie et
+    // resynchronise sur ce que les blocs décrivent à cet instant.
+
+    const btnEditerCode = document.getElementById('btn-editer-code');
+    const zoneCodeAffichage = document.getElementById('code-display');
+    const zoneCodeTexte = document.getElementById('code-edit');
+    const banniereEdition = document.getElementById('banniere-edition-code');
+    const voileBlocsFiges = document.getElementById('voile-blocs-figes');
+
+    function entrerEditionManuelle() {
+        editionManuelleActive = true;
+        zoneCodeAffichage.style.display = 'none';
+        zoneCodeTexte.classList.add('visible');
+        zoneCodeTexte.value = window.currentPythonCode;
+        banniereEdition.classList.add('visible');
+        voileBlocsFiges.classList.add('visible');
+        btnEditerCode.textContent = '↩ Revenir aux blocs';
+        btnEditerCode.classList.add('actif');
+        btnEditerCode.title = 'Abandonner la saisie manuelle et revenir au code généré par les blocs';
+        zoneCodeTexte.focus();
+    }
+
+    function sortirEditionManuelle() {
+        editionManuelleActive = false;
+        zoneCodeTexte.classList.remove('visible');
+        zoneCodeAffichage.style.display = '';
+        banniereEdition.classList.remove('visible');
+        voileBlocsFiges.classList.remove('visible');
+        btnEditerCode.textContent = '✎ Éditer';
+        btnEditerCode.classList.remove('actif');
+        btnEditerCode.title = 'Saisir du code MicroPython à la main';
+
+        const codePython = genererCodeDepuisBlocs();
+        definirCodeActuel(codePython);
+        afficherTranscription(codePython);
+    }
+
+    if (btnEditerCode) {
+        btnEditerCode.addEventListener('click', () => {
+            if (editionManuelleActive) sortirEditionManuelle(); else entrerEditionManuelle();
+        });
+    }
+    if (zoneCodeTexte) {
+        zoneCodeTexte.addEventListener('input', () => definirCodeActuel(zoneCodeTexte.value));
+    }
+
+    // Expose pour les verifications : taper dans un textarea ne se simule pas
+    // depuis la console comme un clic.
+    window.editionCodeTest = {
+        activer: entrerEditionManuelle,
+        desactiver: sortirEditionManuelle,
+        estActif: () => editionManuelleActive,
+        saisir: texte => { zoneCodeTexte.value = texte; definirCodeActuel(texte); }
+    };
 
     // ==========================================
     // 5. FONCTIONS GRAPHIQUES POUR LE SIMULATEUR (AVEC ANIMATION TEXTE)
