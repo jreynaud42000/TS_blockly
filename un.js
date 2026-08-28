@@ -2163,6 +2163,91 @@ try {
     };
 
     // ==========================================
+    // 1 bis. PROFIL ADMINISTRATEUR — configuration et libellés
+    // ==========================================
+    // Chargee et cablee AVANT l'injection de Blockly : les deux blocs de
+    // depart (au_demarrage, boucle_infinie) sont crees juste apres l'inject,
+    // et doivent deja beneficier des libelles personnalises s'il y en a.
+
+    const CLE_CONFIG_ADMIN = 'blockly_ts_config_admin';
+
+    function configAdminParDefaut() {
+        return { categories: { order: [], hidden: [], labels: {} }, groupes: {}, sousMenus: [], libellesBlocs: {} };
+    }
+
+    function chargerConfigAdmin() {
+        const defaut = configAdminParDefaut();
+        try {
+            const brut = localStorage.getItem(CLE_CONFIG_ADMIN);
+            if (!brut) return defaut;
+            const lu = JSON.parse(brut);
+            return {
+                categories: Object.assign(defaut.categories, lu.categories),
+                groupes: lu.groupes || {},
+                sousMenus: lu.sousMenus || [],
+                libellesBlocs: lu.libellesBlocs || {}
+            };
+        } catch (erreur) { return defaut; }
+    }
+
+    function sauvegarderConfigAdmin() {
+        try { localStorage.setItem(CLE_CONFIG_ADMIN, JSON.stringify(configAdmin)); }
+        catch (erreur) { /* stockage indisponible : la config vaut pour la session */ }
+    }
+
+    let configAdmin = chargerConfigAdmin();
+
+    // Chaque appendField("texte") sans nom cree un FieldLabel anonyme. On le
+    // repere par sa position parmi les seuls FieldLabel du bloc (ordre des
+    // appendField dans init) : une cle stable tant que le bloc n'est pas
+    // reecrit, sans avoir a nommer a la main les centaines de libelles.
+    function texteChampsLibelle(bloc) {
+        const textes = [];
+        for (const entree of bloc.inputList) {
+            for (const champ of entree.fieldRow) {
+                if (champ instanceof Blockly.FieldLabel) textes.push(champ.getValue());
+            }
+        }
+        return textes;
+    }
+
+    function appliquerLibellesBloc(bloc) {
+        let index = 0;
+        for (const entree of bloc.inputList) {
+            for (const champ of entree.fieldRow) {
+                if (champ instanceof Blockly.FieldLabel) {
+                    const voulu = configAdmin.libellesBlocs[bloc.type + '#' + index];
+                    if (voulu !== undefined && champ.getValue() !== voulu) champ.setValue(voulu);
+                    index++;
+                }
+            }
+        }
+    }
+
+    // Espace de travail invisible, jamais injecte dans la page : sert
+    // uniquement a instancier chaque type de bloc une fois pour relever ses
+    // libelles d'origine, avant que la surcouche ne les modifie.
+    const LIBELLES_DEFAUT = {};
+    const espaceSonde = new Blockly.Workspace();
+    for (const type in Blockly.Blocks) {
+        const definition = Blockly.Blocks[type];
+        if (!definition || typeof definition.init !== 'function') continue;
+        const initOrigine = definition.init;
+
+        try {
+            const sonde = espaceSonde.newBlock(type);
+            LIBELLES_DEFAUT[type] = texteChampsLibelle(sonde);
+            sonde.dispose();
+        } catch (erreur) { /* bloc dynamique ou mutateur incompatible hors atelier : ignore */ }
+
+        definition.init = function() {
+            initOrigine.call(this);
+            appliquerLibellesBloc(this);
+        };
+    }
+    espaceSonde.dispose();
+
+    // ==========================================
     // 2. CRÉATION DE L'INTERFACE (TOOLBOX)
     // ==========================================
     window.workspace = Blockly.inject('blocklyDiv', {
@@ -2495,126 +2580,465 @@ try {
     }
 
     // ------------------------------------------
-    // ORDRE DES CATEGORIES
+    // PANNEAU ADMINISTRATEUR — categories, sous-menus, libelles
     // ------------------------------------------
     // Blockly conserve la definition de la boite a outils dans
-    // options.languageTree, et updateToolbox la remplace a chaud. Reordonner
-    // revient donc a permuter un tableau, sans toucher au code de la boite.
+    // options.languageTree ; on la lit une seule fois ici (TOOLBOX_ORIGINAL)
+    // et on la reconstruit a chaque changement plutot que de la modifier en
+    // place, pour toujours pouvoir revenir a l'etat d'origine.
 
-    const CLE_ORDRE = 'blockly_ts_ordre_categories';
-    const ORDRE_DEFAUT = window.workspace.options.languageTree.contents.map(c => c.name);
-    const CATEGORIES = new Map(
-        window.workspace.options.languageTree.contents.map(c => [c.name, c]));
+    function cloneProfond(x) { return JSON.parse(JSON.stringify(x)); }
 
-    function ordreEnregistre() {
-        try {
-            const brut = localStorage.getItem(CLE_ORDRE);
-            return brut ? JSON.parse(brut) : null;
-        } catch (erreur) { return null; }
+    const TOOLBOX_ORIGINAL = cloneProfond(window.workspace.options.languageTree.contents);
+
+    function construireCategorie(catOriginale) {
+        const nomOrig = catOriginale.name;
+        const nomAffiche = configAdmin.categories.labels[nomOrig] || nomOrig;
+
+        if (!catOriginale.contents) {
+            // Categorie dynamique (Variables, Fonctions) : Blockly la remplit
+            // lui-meme, seul le nom affiche peut etre change.
+            return Object.assign({}, catOriginale, { name: nomAffiche });
+        }
+
+        const sousNatives = catOriginale.contents.filter(e => e.kind === 'category');
+        let contenuFinal;
+
+        if (sousNatives.length) {
+            // Deja organisee en sous-menus (Communication, Grove) : on les
+            // reordonne / masque / renomme. Pas de creation ici, la
+            // categorie a deja sa structure.
+            const groupesConf = configAdmin.groupes[nomOrig] || { order: [], hidden: [], labels: {} };
+            const dispo = new Map(sousNatives.map(s => [s.name, s]));
+            const ordre = groupesConf.order.length ? groupesConf.order : [...dispo.keys()];
+            const resultat = [];
+            for (const nom of ordre) {
+                if (!dispo.has(nom) || groupesConf.hidden.includes(nom)) { dispo.delete(nom); continue; }
+                const s = dispo.get(nom);
+                dispo.delete(nom);
+                const label = groupesConf.labels[nom];
+                resultat.push(label ? Object.assign({}, s, { name: label }) : s);
+            }
+            for (const [nom, s] of dispo) if (!groupesConf.hidden.includes(nom)) resultat.push(s);
+            contenuFinal = resultat;
+        } else {
+            // Categorie a plat : les blocs repris dans un sous-menu
+            // personnalise en sortent, le reste garde sa place d'origine.
+            const sousMenusIci = configAdmin.sousMenus.filter(s => s.parent === nomOrig);
+            const typesExtraits = new Set(sousMenusIci.flatMap(s => s.blocs));
+            const restants = catOriginale.contents.filter(e =>
+                e.kind === 'label' || !typesExtraits.has(e.type));
+            const sousPersonnalises = sousMenusIci.map(s => ({
+                kind: 'category', name: s.nom, colour: s.couleur,
+                contents: s.blocs
+                    .map(type => catOriginale.contents.find(e => e.kind === 'block' && e.type === type))
+                    .filter(Boolean)
+            }));
+            contenuFinal = [...restants, ...sousPersonnalises];
+        }
+
+        return { kind: 'category', name: nomAffiche, colour: catOriginale.colour, contents: contenuFinal };
     }
 
-    function appliquerOrdre(noms, memoriser) {
-        const restantes = new Map(CATEGORIES);
-        const contenus = [];
-        for (const nom of noms) {
-            if (restantes.has(nom)) { contenus.push(restantes.get(nom)); restantes.delete(nom); }
+    function construireToolbox() {
+        const dispo = new Map(TOOLBOX_ORIGINAL.map(c => [c.name, c]));
+        const ordre = configAdmin.categories.order.length
+            ? configAdmin.categories.order : [...dispo.keys()];
+        const resultat = [];
+        for (const nom of ordre) {
+            if (!dispo.has(nom)) continue;
+            const cat = dispo.get(nom);
+            dispo.delete(nom);
+            if (!configAdmin.categories.hidden.includes(nom)) resultat.push(construireCategorie(cat));
         }
-        // Une categorie ajoutee depuis le dernier enregistrement reprend sa
-        // place a la fin plutot que de disparaitre.
-        for (const c of restantes.values()) contenus.push(c);
+        for (const [nom, cat] of dispo) {
+            if (!configAdmin.categories.hidden.includes(nom)) resultat.push(construireCategorie(cat));
+        }
+        return resultat;
+    }
 
-        window.workspace.updateToolbox({ kind: 'categoryToolbox', contents: contenus });
+    function appliquerToolbox() {
+        window.workspace.updateToolbox({ kind: 'categoryToolbox', contents: construireToolbox() });
         Blockly.svgResize(window.workspace);
-        if (memoriser) {
-            try { localStorage.setItem(CLE_ORDRE, JSON.stringify(contenus.map(c => c.name))); }
-            catch (erreur) { /* stockage indisponible : l'ordre vaut pour la session */ }
-        }
-        return contenus.map(c => c.name);
     }
 
-    let ordreCourant = ordreEnregistre() || ORDRE_DEFAUT.slice();
-    if (ordreEnregistre()) ordreCourant = appliquerOrdre(ordreCourant, false);
+    const CONFIG_PAR_DEFAUT = JSON.stringify(configAdminParDefaut());
+    if (JSON.stringify(configAdmin) !== CONFIG_PAR_DEFAUT) appliquerToolbox();
 
-    // --- Le panneau d'options ---
+    // --- Le panneau : construction commune (onglets) ---
 
     let voileOptions = null;
+    let panneauOptions = null;
     let listeCategories = null;
+    let selecteurParent = null;
+    let zoneSousMenus = null;
+    let champRecherche = null;
+    let zoneLibelles = null;
+    let elementAttrape = null;
+
+    function construireLigneReordonnable(cle, texteAffiche, estMasque, onRenommer, onBasculerMasque) {
+        const ligne = document.createElement('li');
+        ligne.draggable = true;
+        ligne.dataset.cle = cle;
+        ligne.classList.toggle('masquee', estMasque);
+
+        const nomSpan = document.createElement('span');
+        nomSpan.className = 'nom-ligne';
+        nomSpan.textContent = texteAffiche;
+        ligne.appendChild(nomSpan);
+
+        const btnMasquer = document.createElement('button');
+        btnMasquer.className = 'icone-admin';
+        btnMasquer.title = estMasque ? 'Afficher aux élèves' : 'Masquer aux élèves';
+        btnMasquer.textContent = estMasque ? '🚫' : '👁';
+        btnMasquer.addEventListener('click', e => { e.stopPropagation(); onBasculerMasque(); });
+        ligne.appendChild(btnMasquer);
+
+        const btnRenommer = document.createElement('button');
+        btnRenommer.className = 'icone-admin';
+        btnRenommer.title = 'Renommer';
+        btnRenommer.textContent = '✎';
+        btnRenommer.addEventListener('click', e => {
+            e.stopPropagation();
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = texteAffiche;
+            nomSpan.replaceWith(input);
+            input.focus();
+            input.select();
+            input.addEventListener('blur', () => onRenommer(input.value.trim() || null));
+            input.addEventListener('keydown', e2 => {
+                if (e2.key === 'Enter') input.blur();
+                if (e2.key === 'Escape') { input.value = texteAffiche; input.blur(); }
+            });
+        });
+        ligne.appendChild(btnRenommer);
+
+        ligne.addEventListener('dragstart', () => { elementAttrape = ligne; ligne.classList.add('attrape'); });
+        ligne.addEventListener('dragend', () => {
+            ligne.classList.remove('attrape');
+            elementAttrape = null;
+            if (ligne.parentElement) [...ligne.parentElement.children].forEach(l => l.classList.remove('survol'));
+        });
+        ligne.addEventListener('dragover', e => {
+            e.preventDefault();
+            if (!elementAttrape || elementAttrape === ligne) return;
+            ligne.classList.add('survol');
+            const boite = ligne.getBoundingClientRect();
+            const apres = e.clientY > boite.top + boite.height / 2;
+            ligne.parentElement.insertBefore(elementAttrape, apres ? ligne.nextSibling : ligne);
+        });
+        ligne.addEventListener('dragleave', () => ligne.classList.remove('survol'));
+        ligne.addEventListener('drop', e => e.preventDefault());
+
+        return ligne;
+    }
 
     function construireOptions() {
         if (voileOptions) return;
         voileOptions = document.createElement('div');
         voileOptions.id = 'voile-options';
-        const panneau = document.createElement('div');
-        panneau.id = 'panneau-options';
-        panneau.innerHTML =
-            '<h3>Ordre des catégories</h3>' +
-            '<p>Faites glisser une catégorie pour la déplacer. L’ordre est conservé ' +
-            'd’une session à l’autre.</p><ul id="liste-categories"></ul>' +
+        panneauOptions = document.createElement('div');
+        panneauOptions.id = 'panneau-options';
+        panneauOptions.innerHTML =
+            '<h3>Panneau administrateur</h3>' +
+            '<div class="onglets-admin">' +
+            '<button class="onglet-admin" data-onglet="categories">Catégories</button>' +
+            '<button class="onglet-admin" data-onglet="sousmenus">Sous-menus</button>' +
+            '<button class="onglet-admin" data-onglet="libelles">Libellés</button>' +
+            '</div>' +
+            '<div class="vue-admin" data-vue="categories">' +
+            '<p>Glissez pour réordonner. L’œil masque une catégorie aux élèves, le crayon renomme ' +
+            'son intitulé. Conservé d’une session à l’autre.</p>' +
+            '<ul id="liste-categories" class="panneau-admin-liste"></ul>' +
             '<div class="actions">' +
             '<button id="btn-ordre-fermer">Fermer</button>' +
-            '<button id="btn-ordre-defaut">Ordre par défaut</button></div>';
-        voileOptions.appendChild(panneau);
+            '<button id="btn-ordre-defaut">Tout réinitialiser</button></div>' +
+            '</div>' +
+            '<div class="vue-admin" data-vue="sousmenus">' +
+            '<p>Choisissez une catégorie : ses sous-menus existants se réorganisent, ou de nouveaux ' +
+            'se créent en regroupant des blocs.</p>' +
+            '<select id="selecteur-parent-sousmenu"></select>' +
+            '<div id="zone-sousmenus"></div>' +
+            '</div>' +
+            '<div class="vue-admin" data-vue="libelles">' +
+            '<p>Change le texte affiché sur un bloc, sans toucher au code généré.</p>' +
+            '<input id="recherche-libelles" type="text" placeholder="Filtrer (ex: attendre, afficher)">' +
+            '<div id="zone-libelles"></div>' +
+            '</div>';
+        voileOptions.appendChild(panneauOptions);
         document.body.appendChild(voileOptions);
-        listeCategories = panneau.querySelector('#liste-categories');
+
+        listeCategories = panneauOptions.querySelector('#liste-categories');
+        selecteurParent = panneauOptions.querySelector('#selecteur-parent-sousmenu');
+        zoneSousMenus = panneauOptions.querySelector('#zone-sousmenus');
+        champRecherche = panneauOptions.querySelector('#recherche-libelles');
+        zoneLibelles = panneauOptions.querySelector('#zone-libelles');
 
         // Fermer en cliquant a cote, jamais en cliquant dans le panneau.
         voileOptions.addEventListener('click', e => {
             if (e.target === voileOptions) fermerOptions();
         });
-        panneau.querySelector('#btn-ordre-fermer').addEventListener('click', fermerOptions);
-        panneau.querySelector('#btn-ordre-defaut').addEventListener('click', () => {
-            ordreCourant = appliquerOrdre(ORDRE_DEFAUT, true);
-            remplirListe();
-        });
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape' && voileOptions.classList.contains('ouvert')) fermerOptions();
         });
+
+        panneauOptions.querySelector('#btn-ordre-fermer').addEventListener('click', fermerOptions);
+        panneauOptions.querySelector('#btn-ordre-defaut').addEventListener('click', () => {
+            configAdmin = configAdminParDefaut();
+            sauvegarderConfigAdmin();
+            appliquerToolbox();
+            remplirOngletCategories();
+            remplirSelecteurParent();
+        });
+
+        panneauOptions.querySelectorAll('.onglet-admin').forEach(bouton => {
+            bouton.addEventListener('click', () => activerOnglet(bouton.dataset.onglet));
+        });
+
+        listeCategories.addEventListener('dragend', () => {
+            configAdmin.categories.order = [...listeCategories.children].map(li => li.dataset.cle);
+            sauvegarderConfigAdmin();
+            appliquerToolbox();
+        });
+        selecteurParent.addEventListener('change', () => remplirZoneSousMenus(selecteurParent.value));
+        champRecherche.addEventListener('input', () => remplirOngletLibelles(champRecherche.value));
+
+        activerOnglet('categories');
     }
 
-    let attrapee = null;
+    function activerOnglet(nom) {
+        panneauOptions.querySelectorAll('.onglet-admin').forEach(b => b.classList.toggle('actif', b.dataset.onglet === nom));
+        panneauOptions.querySelectorAll('.vue-admin').forEach(v => v.classList.toggle('active', v.dataset.vue === nom));
+    }
 
-    function remplirListe() {
+    // --- Onglet Catégories ---
+
+    function remplirOngletCategories() {
         listeCategories.textContent = '';
-        for (const nom of ordreCourant) {
-            const ligne = document.createElement('li');
-            ligne.textContent = nom;
-            ligne.draggable = true;
-            ligne.dataset.nom = nom;
-
-            ligne.addEventListener('dragstart', () => {
-                attrapee = ligne;
-                ligne.classList.add('attrape');
-            });
-            ligne.addEventListener('dragend', () => {
-                ligne.classList.remove('attrape');
-                attrapee = null;
-                [...listeCategories.children].forEach(l => l.classList.remove('survol'));
-                enregistrerOrdreAffiche();
-            });
-            ligne.addEventListener('dragover', e => {
-                e.preventDefault();
-                if (!attrapee || attrapee === ligne) return;
-                ligne.classList.add('survol');
-                // On insere avant ou apres selon le cote survole.
-                const boite = ligne.getBoundingClientRect();
-                const apres = e.clientY > boite.top + boite.height / 2;
-                listeCategories.insertBefore(attrapee, apres ? ligne.nextSibling : ligne);
-            });
-            ligne.addEventListener('dragleave', () => ligne.classList.remove('survol'));
-            ligne.addEventListener('drop', e => e.preventDefault());
-
-            listeCategories.appendChild(ligne);
+        const noms = TOOLBOX_ORIGINAL.map(c => c.name);
+        const ordre = configAdmin.categories.order.length
+            ? configAdmin.categories.order.filter(n => noms.includes(n))
+            : noms;
+        for (const nomOrig of ordre) {
+            const masque = configAdmin.categories.hidden.includes(nomOrig);
+            const texte = configAdmin.categories.labels[nomOrig] || nomOrig;
+            listeCategories.appendChild(construireLigneReordonnable(nomOrig, texte, masque,
+                nouveauTexte => {
+                    if (nouveauTexte && nouveauTexte !== nomOrig) configAdmin.categories.labels[nomOrig] = nouveauTexte;
+                    else delete configAdmin.categories.labels[nomOrig];
+                    sauvegarderConfigAdmin(); appliquerToolbox(); remplirOngletCategories(); remplirSelecteurParent();
+                },
+                () => {
+                    const i = configAdmin.categories.hidden.indexOf(nomOrig);
+                    if (i === -1) configAdmin.categories.hidden.push(nomOrig); else configAdmin.categories.hidden.splice(i, 1);
+                    sauvegarderConfigAdmin(); appliquerToolbox(); remplirOngletCategories();
+                }));
         }
     }
 
-    function enregistrerOrdreAffiche() {
-        ordreCourant = appliquerOrdre(
-            [...listeCategories.children].map(l => l.dataset.nom), true);
+    // --- Onglet Sous-menus ---
+
+    function remplirSelecteurParent() {
+        const valeurCourante = selecteurParent.value;
+        selecteurParent.innerHTML = '';
+        for (const c of TOOLBOX_ORIGINAL.filter(c => c.contents)) {
+            const option = document.createElement('option');
+            option.value = c.name;
+            option.textContent = configAdmin.categories.labels[c.name] || c.name;
+            selecteurParent.appendChild(option);
+        }
+        selecteurParent.value = [...selecteurParent.options].some(o => o.value === valeurCourante)
+            ? valeurCourante : (selecteurParent.options[0] ? selecteurParent.options[0].value : '');
+        remplirZoneSousMenus(selecteurParent.value);
+    }
+
+    function remplirZoneSousMenus(nomParent) {
+        zoneSousMenus.textContent = '';
+        const original = TOOLBOX_ORIGINAL.find(c => c.name === nomParent);
+        if (!original) return;
+        const sousNatives = original.contents.filter(e => e.kind === 'category');
+
+        if (sousNatives.length) {
+            const ul = document.createElement('ul');
+            ul.className = 'panneau-admin-liste';
+            const groupesConf = configAdmin.groupes[nomParent] || (configAdmin.groupes[nomParent] = { order: [], hidden: [], labels: {} });
+            const nomsNatifs = sousNatives.map(s => s.name);
+            const ordre = groupesConf.order.length ? groupesConf.order.filter(n => nomsNatifs.includes(n)) : nomsNatifs;
+            for (const nom of ordre) {
+                const masque = groupesConf.hidden.includes(nom);
+                const texte = groupesConf.labels[nom] || nom;
+                ul.appendChild(construireLigneReordonnable(nom, texte, masque,
+                    nv => {
+                        if (nv && nv !== nom) groupesConf.labels[nom] = nv; else delete groupesConf.labels[nom];
+                        sauvegarderConfigAdmin(); appliquerToolbox(); remplirZoneSousMenus(nomParent);
+                    },
+                    () => {
+                        const i = groupesConf.hidden.indexOf(nom);
+                        if (i === -1) groupesConf.hidden.push(nom); else groupesConf.hidden.splice(i, 1);
+                        sauvegarderConfigAdmin(); appliquerToolbox(); remplirZoneSousMenus(nomParent);
+                    }));
+            }
+            ul.addEventListener('dragend', () => {
+                groupesConf.order = [...ul.children].map(li => li.dataset.cle);
+                sauvegarderConfigAdmin(); appliquerToolbox();
+            });
+            zoneSousMenus.appendChild(ul);
+            return;
+        }
+
+        // Categorie a plat : sous-menus personnalises existants, puis le
+        // formulaire de creation avec les blocs restants.
+        const existants = configAdmin.sousMenus.filter(s => s.parent === nomParent);
+        if (existants.length) {
+            const ul = document.createElement('ul');
+            ul.className = 'panneau-admin-liste';
+            for (const sm of existants) {
+                const ligne = document.createElement('li');
+                ligne.classList.add('sans-poignee');
+                const nomSpan = document.createElement('span');
+                nomSpan.className = 'nom-ligne';
+                nomSpan.textContent = sm.nom + ' (' + sm.blocs.length + ' bloc' + (sm.blocs.length > 1 ? 's' : '') + ')';
+                ligne.appendChild(nomSpan);
+                const btnSuppr = document.createElement('button');
+                btnSuppr.className = 'icone-admin';
+                btnSuppr.title = 'Supprimer ce sous-menu (les blocs reviennent au niveau supérieur)';
+                btnSuppr.textContent = '🗑';
+                btnSuppr.addEventListener('click', () => {
+                    configAdmin.sousMenus = configAdmin.sousMenus.filter(s => s !== sm);
+                    sauvegarderConfigAdmin(); appliquerToolbox(); remplirZoneSousMenus(nomParent);
+                });
+                ligne.appendChild(btnSuppr);
+                ul.appendChild(ligne);
+            }
+            zoneSousMenus.appendChild(ul);
+        }
+
+        const blocsRestants = original.contents.filter(e => e.kind === 'block' &&
+            !configAdmin.sousMenus.some(s => s.parent === nomParent && s.blocs.includes(e.type)));
+        if (!blocsRestants.length) return;
+
+        const indication = document.createElement('p');
+        indication.style.cssText = 'margin:10px 0 6px;font-size:12px;color:#9fb3c8;';
+        indication.textContent = 'Regrouper des blocs dans un nouveau sous-menu :';
+        zoneSousMenus.appendChild(indication);
+
+        const champNom = document.createElement('input');
+        champNom.type = 'text';
+        champNom.id = 'champ-nom-sousmenu';
+        champNom.placeholder = 'Nom du sous-menu';
+        zoneSousMenus.appendChild(champNom);
+
+        const listeCases = document.createElement('div');
+        listeCases.style.cssText = 'max-height:160px;overflow-y:auto;margin:8px 0;';
+        for (const bloc of blocsRestants) {
+            const label = document.createElement('label');
+            label.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0;font-family:monospace;';
+            const case_ = document.createElement('input');
+            case_.type = 'checkbox';
+            case_.value = bloc.type;
+            label.appendChild(case_);
+            label.appendChild(document.createTextNode(bloc.type));
+            listeCases.appendChild(label);
+        }
+        zoneSousMenus.appendChild(listeCases);
+
+        const btnCreer = document.createElement('button');
+        btnCreer.textContent = 'Créer le sous-menu';
+        btnCreer.style.cssText = 'font-size:13px;padding:7px 12px;margin:0;';
+        btnCreer.addEventListener('click', () => {
+            const nom = champNom.value.trim();
+            const coches = [...listeCases.querySelectorAll('input:checked')].map(c => c.value);
+            if (!nom || !coches.length) return;
+            configAdmin.sousMenus.push({
+                id: 'sm_' + Date.now().toString(36), parent: nomParent, nom,
+                couleur: original.colour, blocs: coches
+            });
+            sauvegarderConfigAdmin(); appliquerToolbox(); remplirZoneSousMenus(nomParent);
+        });
+        zoneSousMenus.appendChild(btnCreer);
+    }
+
+    // --- Onglet Libellés ---
+
+    function texteEffectifChamp(type, index, defaut) {
+        const cle = type + '#' + index;
+        return configAdmin.libellesBlocs[cle] !== undefined ? configAdmin.libellesBlocs[cle] : defaut;
+    }
+
+    function appliquerLibellesSurCanevas(type) {
+        for (const bloc of window.workspace.getAllBlocks(false)) {
+            if (bloc.type === type) appliquerLibellesBloc(bloc);
+        }
+    }
+
+    function remplirOngletLibelles(filtre) {
+        zoneLibelles.textContent = '';
+        const f = (filtre || '').toLowerCase().trim();
+        if (!f) {
+            const indication = document.createElement('p');
+            indication.style.cssText = 'font-size:12px;color:#9fb3c8;';
+            indication.textContent = 'Tapez un mot pour retrouver un bloc (ex: "attendre", "afficher").';
+            zoneLibelles.appendChild(indication);
+            return;
+        }
+        const types = Object.keys(LIBELLES_DEFAUT).filter(type => LIBELLES_DEFAUT[type].length && (
+            type.toLowerCase().includes(f) || LIBELLES_DEFAUT[type].some(t => t.toLowerCase().includes(f))
+        )).sort();
+
+        for (const type of types) {
+            const carte = document.createElement('div');
+            carte.className = 'bloc-libelle';
+            const titre = document.createElement('div');
+            titre.className = 'type-bloc';
+            titre.textContent = type;
+            carte.appendChild(titre);
+
+            LIBELLES_DEFAUT[type].forEach((defaut, index) => {
+                const ligne = document.createElement('div');
+                ligne.className = 'champ-libelle';
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = texteEffectifChamp(type, index, defaut);
+                input.addEventListener('change', () => {
+                    const cle = type + '#' + index;
+                    if (input.value === defaut) delete configAdmin.libellesBlocs[cle];
+                    else configAdmin.libellesBlocs[cle] = input.value;
+                    sauvegarderConfigAdmin();
+                    appliquerLibellesSurCanevas(type);
+                });
+                ligne.appendChild(input);
+
+                const btnReset = document.createElement('button');
+                btnReset.className = 'icone-admin';
+                btnReset.title = 'Revenir au texte par défaut';
+                btnReset.textContent = '↺';
+                btnReset.addEventListener('click', () => {
+                    input.value = defaut;
+                    delete configAdmin.libellesBlocs[type + '#' + index];
+                    sauvegarderConfigAdmin();
+                    appliquerLibellesSurCanevas(type);
+                });
+                ligne.appendChild(btnReset);
+                carte.appendChild(ligne);
+            });
+            zoneLibelles.appendChild(carte);
+        }
+
+        if (!types.length) {
+            const vide = document.createElement('p');
+            vide.style.cssText = 'font-size:12px;color:#9fb3c8;';
+            vide.textContent = 'Aucun bloc ne correspond.';
+            zoneLibelles.appendChild(vide);
+        }
     }
 
     function ouvrirOptions() {
         construireOptions();
-        remplirListe();
+        remplirOngletCategories();
+        remplirSelecteurParent();
+        remplirOngletLibelles('');
+        if (champRecherche) champRecherche.value = '';
         voileOptions.classList.add('ouvert');
     }
 
@@ -2622,11 +3046,87 @@ try {
         if (voileOptions) voileOptions.classList.remove('ouvert');
     }
 
+    // --- Activation du mode administrateur ---
+    // L'application est 100% cliente, sans serveur ni compte : il n'existe
+    // aucune authentification reelle possible. Ce raccourci ne sert qu'a
+    // eviter qu'un eleve tombe sur ces reglages par hasard, pas a proteger
+    // quoi que ce soit serieusement.
+
+    let adminActif = false;
     const btnOptions = document.getElementById('btn-options');
+
+    function afficherToastAdmin(texte) {
+        const toast = document.getElementById('toast-admin');
+        if (!toast) return;
+        toast.textContent = texte;
+        toast.classList.add('visible');
+        clearTimeout(afficherToastAdmin._t);
+        afficherToastAdmin._t = setTimeout(() => toast.classList.remove('visible'), 2200);
+    }
+
+    function activerAdmin(actif) {
+        adminActif = actif;
+        if (btnOptions) btnOptions.style.display = actif ? 'inline-block' : 'none';
+        if (!actif) fermerOptions();
+        afficherToastAdmin(actif ? 'Mode administrateur activé' : 'Mode administrateur désactivé');
+    }
+
+    document.addEventListener('keydown', e => {
+        if (e.ctrlKey && e.altKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+            e.preventDefault();
+            activerAdmin(!adminActif);
+        }
+    });
+
     if (btnOptions) btnOptions.addEventListener('click', ouvrirOptions);
 
-    // Expose pour les verifications : le glisser-deposer ne se simule pas.
-    window.reordonnerCategories = noms => (ordreCourant = appliquerOrdre(noms, true));
+    // Expose pour les verifications : le glisser-deposer et les raccourcis
+    // clavier ne se simulent pas depuis la console.
+    window.adminTest = {
+        activer: () => activerAdmin(true),
+        desactiver: () => activerAdmin(false),
+        estActif: () => adminActif,
+        etat: () => cloneProfond(configAdmin),
+        ouvrirPanneau: ouvrirOptions,
+        fermerPanneau: fermerOptions,
+        reordonnerCategories: noms => {
+            configAdmin.categories.order = noms.slice();
+            sauvegarderConfigAdmin(); appliquerToolbox();
+        },
+        masquerCategorie: (nom, masquer) => {
+            const i = configAdmin.categories.hidden.indexOf(nom);
+            if (masquer && i === -1) configAdmin.categories.hidden.push(nom);
+            if (!masquer && i !== -1) configAdmin.categories.hidden.splice(i, 1);
+            sauvegarderConfigAdmin(); appliquerToolbox();
+        },
+        renommerCategorie: (nom, texte) => {
+            if (texte) configAdmin.categories.labels[nom] = texte; else delete configAdmin.categories.labels[nom];
+            sauvegarderConfigAdmin(); appliquerToolbox();
+        },
+        creerSousMenu: (parent, nom, blocs) => {
+            const original = TOOLBOX_ORIGINAL.find(c => c.name === parent);
+            configAdmin.sousMenus.push({
+                id: 'sm_' + Date.now().toString(36), parent, nom,
+                couleur: original ? original.colour : '160', blocs: blocs.slice()
+            });
+            sauvegarderConfigAdmin(); appliquerToolbox();
+        },
+        supprimerSousMenu: id => {
+            configAdmin.sousMenus = configAdmin.sousMenus.filter(s => s.id !== id);
+            sauvegarderConfigAdmin(); appliquerToolbox();
+        },
+        renommerLibelleBloc: (type, index, texte) => {
+            const cle = type + '#' + index;
+            if (texte !== null) configAdmin.libellesBlocs[cle] = texte; else delete configAdmin.libellesBlocs[cle];
+            sauvegarderConfigAdmin();
+            appliquerLibellesSurCanevas(type);
+        },
+        libellesDefaut: type => (LIBELLES_DEFAUT[type] || []).slice(),
+        reinitialiser: () => {
+            configAdmin = configAdminParDefaut();
+            sauvegarderConfigAdmin(); appliquerToolbox();
+        }
+    };
 
     // ------------------------------------------
     // REPLI DES PANNEAUX

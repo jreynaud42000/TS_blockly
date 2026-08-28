@@ -29,29 +29,62 @@
     .btn-vue { background: #34495e; font-weight: normal; font-size: 13px; padding: 7px 12px; }
     .btn-vue:hover { background: #415b76; }
     .btn-vue.inactif { background: #22303d; color: #7f8c8d; }
-    #btn-options { font-size: 16px; padding: 5px 11px; }
+    /* Le bouton du panneau administrateur reste cache tant que le raccourci
+       secret (Ctrl+Alt+Maj+A) n'a pas ete utilise : voir activerAdmin() dans
+       un.js. Pas une vraie protection, juste evite qu'un eleve tombe dessus. */
+    #btn-options { font-size: 16px; padding: 5px 11px; display: none; }
 
-    /* Menu d'options : reorganisation des categories par glisser-deposer. */
+    /* Panneau administrateur : categories, sous-menus, libelles de blocs. */
     #voile-options { position: fixed; inset: 0; background: rgba(0,0,0,0.55);
                      display: none; align-items: center; justify-content: center; z-index: 1000; }
     #voile-options.ouvert { display: flex; }
     #panneau-options { background: #22303d; color: #d6e0ea; border-radius: 8px;
-                       padding: 18px 20px; min-width: 300px; max-height: 80vh; overflow-y: auto;
-                       box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
-    #panneau-options h3 { margin: 0 0 4px 0; color: #2ecc71; font-size: 14px;
+                       padding: 18px 20px; min-width: 380px; max-width: 460px; max-height: 80vh;
+                       overflow-y: auto; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
+    #panneau-options h3 { margin: 0 0 10px 0; color: #2ecc71; font-size: 14px;
                           text-transform: uppercase; }
-    #panneau-options p { margin: 0 0 12px 0; font-size: 12px; color: #9fb3c8; max-width: 34ch; }
-    #liste-categories { list-style: none; margin: 0 0 14px 0; padding: 0; }
-    #liste-categories li { background: #2c3e50; border: 1px solid #3d566e; border-radius: 4px;
-                           padding: 7px 10px; margin-bottom: 4px; cursor: grab; font-size: 13px;
-                           display: flex; align-items: center; gap: 9px; user-select: none; }
-    #liste-categories li::before { content: '\2261'; color: #7f8c8d; }
-    #liste-categories li.attrape { opacity: 0.35; }
-    #liste-categories li.survol { border-color: #2ecc71; }
+    #panneau-options p { margin: 0 0 12px 0; font-size: 12px; color: #9fb3c8; max-width: 40ch; }
     #panneau-options .actions { display: flex; gap: 8px; }
     #panneau-options .actions button { margin: 0; font-size: 13px; padding: 7px 12px; }
     #btn-ordre-defaut { background: #7f8c8d; }
     #btn-ordre-defaut:hover { background: #616a6b; }
+
+    .onglets-admin { display: flex; gap: 6px; margin-bottom: 12px; }
+    .onglet-admin { background: #34495e; font-size: 12px; padding: 6px 10px; margin: 0; }
+    .onglet-admin:hover { background: #415b76; }
+    .onglet-admin.actif { background: #2ecc71; color: #12281e; }
+    .vue-admin { display: none; }
+    .vue-admin.active { display: block; }
+
+    .panneau-admin-liste { list-style: none; margin: 0 0 14px 0; padding: 0; }
+    .panneau-admin-liste li { background: #2c3e50; border: 1px solid #3d566e; border-radius: 4px;
+                           padding: 7px 10px; margin-bottom: 4px; font-size: 13px;
+                           display: flex; align-items: center; gap: 8px; user-select: none; }
+    .panneau-admin-liste li[draggable="true"] { cursor: grab; }
+    .panneau-admin-liste li::before { content: '\2261'; color: #7f8c8d; }
+    .panneau-admin-liste li.sans-poignee::before { content: ''; }
+    .panneau-admin-liste li.attrape { opacity: 0.35; }
+    .panneau-admin-liste li.survol { border-color: #2ecc71; }
+    .panneau-admin-liste li.masquee { opacity: 0.45; }
+    .panneau-admin-liste li .nom-ligne { flex: 1; }
+    .panneau-admin-liste li input[type="text"] { flex: 1; background: #16212c; border: 1px solid #3d566e;
+        color: #d6e0ea; border-radius: 3px; padding: 4px 6px; font-size: 13px; }
+    .icone-admin { background: none; border: none; color: #9fb3c8; cursor: pointer; padding: 2px 5px;
+                   font-size: 14px; margin: 0; border-radius: 3px; }
+    .icone-admin:hover { background: #3d566e; color: #fff; }
+
+    #selecteur-parent-sousmenu, #recherche-libelles, #champ-nom-sousmenu {
+        width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 6px; border-radius: 4px;
+        background: #16212c; color: #d6e0ea; border: 1px solid #3d566e; font-size: 13px; }
+    .bloc-libelle { background: #2c3e50; border: 1px solid #3d566e; border-radius: 4px; padding: 8px 10px;
+        margin-bottom: 6px; }
+    .bloc-libelle .type-bloc { font-size: 11px; color: #7f8c8d; margin-bottom: 5px; font-family: monospace; }
+    .bloc-libelle .champ-libelle { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+
+    #toast-admin { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+        background: #2ecc71; color: #12281e; padding: 8px 16px; border-radius: 4px; font-size: 13px;
+        font-weight: bold; opacity: 0; pointer-events: none; transition: opacity 0.25s; z-index: 1100; }
+    #toast-admin.visible { opacity: 1; }
 
     /* Le zoom vit dans la barre, pas dans le canevas : les controles internes de
        Blockly sont dessines a l'interieur de l'espace de travail, ou ils peuvent
@@ -304,7 +337,7 @@
     <button id="download-btn">⬇ Télécharger le fichier .hex</button>
     <button id="download-py-btn">⬇ Télécharger le script .py</button>
     <button id="btn-envoyer" title="Écrire le programme sur le lecteur MICROBIT">📤 Envoyer sur la carte</button>
-    <button id="btn-options" class="btn-vue" title="Réorganiser les catégories">⚙</button>
+    <button id="btn-options" class="btn-vue" title="Panneau administrateur">⚙</button>
     <button id="btn-vue-code" class="btn-vue" title="Afficher ou masquer la transcription MicroPython">Code</button>
     <button id="btn-vue-simu" class="btn-vue" title="Afficher ou masquer le simulateur">Simulateur</button>
     <span id="zoom-groupe">
@@ -920,5 +953,6 @@
 
     document["run-sim"].bind("click", lancer_simulation)
   </script>
+  <div id="toast-admin"></div>
 </body>
 </html>
