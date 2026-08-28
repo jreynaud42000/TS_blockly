@@ -47,12 +47,25 @@ Rien de tout cela n'est douteux, mais rien n'est confirmé non plus.
    endroit où regarder.
 5. **Les servomoteurs** : conversion impulsion → `write_analog` jamais mesurée à
    l'oscilloscope.
+6. **Le DHT11 et le DHT22.** Même pilote assembleur ARM Thumb (repris de
+   rhubarbdog/microbit-dht11, MIT) pour capturer le signal, jamais exécuté sur
+   une vraie carte ; seul le décodage des 5 octets diffère entre les deux
+   capteurs, vérifié par calcul contre l'exemple du datasheet DHT22 (65,2 %,
+   35,1 °C) mais pas sur un capteur réel. Sur V1 la source amont est réputée
+   fonctionner ; sur V2 le pilote refuse volontairement la lecture (voir readme
+   §7) au lieu de deviner un décalage bit-à-bit non vérifié. Visibles par
+   défaut dans « Température & humidité », plus masqués séparément depuis que
+   le sous-menu dédié a été fusionné avec AHT20/DHT20 — seuls le tooltip et le
+   -1 renvoyé sur V2 avertissent maintenant. Si un V1 ou un DHT22 est
+   disponible : poser le bloc, vérifier `temperature()`/`humidite()` contre un
+   thermomètre, et surtout confirmer qu'un `write_digital`/`set_pull` répété ne
+   perturbe pas un autre module câblé en même temps (`_dht_birq`/`_ubirq`
+   coupent les interruptions le temps de la capture).
 
 ## Écarté volontairement
 
 | Module | Raison |
 | --- | --- |
-| **DHT11** | impulsions de 26 à 70 µs à distinguer 40 fois de suite ; une boucle MicroPython est trop lente. MakeCode l'implémente en C++. **Le DHT20 fait la même chose en I²C.** |
 | **Vision AI V2** | pile SSCMA complète, JSON transporté par blocs sur I²C. Un projet en soi. |
 | **UartWiFi** | initialiser l'UART sur des broches externes coupe la liaison série USB ; temporisations AT à régler avec le module en main. |
 | **Import dans MakeCode** | formats incompatibles par construction, voir `readme.txt` §4. |

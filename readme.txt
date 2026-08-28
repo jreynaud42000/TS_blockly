@@ -236,7 +236,7 @@ Deux points a savoir :
 ---------------------------------------------------------
 7. LES MODULES GROVE
 ---------------------------------------------------------
-La categorie "Grove" se deplie en dix sous-menus, un par module. Ses 37 blocs
+La categorie "Grove" se deplie en dix sous-menus, un par module. Ses blocs
 tenaient auparavant dans un seul tiroir de plus de deux ecrans de haut, ou les
 derniers etaient introuvables en pratique.
 
@@ -269,8 +269,13 @@ Elle couvre douze modules Seeed :
   a zero, c'est ce que teste le bloc "bouton du joystick".
 - Capteur de gestes PAJ7620 en I2C (adresse 0x73). Table d'initialisation reprise
   de la bibliotheque Seeed Gesture_PAJ7620.
-- Temperature & humidite AHT20 / DHT20 (0x38) : meme puce, un seul jeu de blocs.
-  Chaque mesure est controlee par son CRC ; -1 est renvoye si elle est fausse.
+- Temperature & humidite : quatre jeux de blocs dans le meme sous-menu.
+  - AHT20 / DHT20 (0x38, I2C) : meme puce, un seul jeu de blocs. Chaque
+    mesure est controlee par son CRC ; -1 est renvoye si elle est fausse.
+    Fiable sur V1 et V2.
+  - DHT11 et DHT22 (protocole 1 fil) : voir l'encadre juste apres cette
+    liste, ce sont les deux seuls blocs Grove qui NE fonctionnent QUE sur le
+    V1.
 - Ecran LCD 16x2 v1, puce JHD1802 (0x3E) : texte a une position, effacer,
   allumer et eteindre l'affichage.
 - Capteur de couleur VEML6040 (0x10) : canaux rouge, vert, bleu et blanc, en
@@ -284,10 +289,19 @@ Adresses, trames et formules reprises des bibliotheques Seeed pxt-grove
 (sensors/AHT20.ts, blocks/GroveLCD1602v1.ts, sensors/VEML6040.ts,
 sensors/DRV8830.ts, sensors/SCD30.ts, sensors/SCD41.ts).
 
+DHT11 / DHT22, visibles comme les autres blocs (pas masques) : protocole 1 fil
+aux impulsions de quelques dizaines de microsecondes, qu'une boucle MicroPython
+interpretee ne peut pas mesurer, d'ou un pilote commun en assembleur ARM Thumb
+(repris de rhubarbdog/microbit-dht11, MIT) ; seul le decodage des 5 octets
+recus differe entre les deux capteurs. Fiable sur le V1 (16 MHz) uniquement :
+sur le V2 (64 MHz), le meme code echantillonne trop vite, et le decalage
+bit-a-bit necessaire au V2 n'a jamais ete verifie sur du materiel reel. Plutot
+que de deviner, la lecture refuse proprement sur V2 (temperature() et
+humidite() renvoient -1 pour les deux capteurs) au lieu de donner une valeur
+fausse en silence. Utiliser AHT20/DHT20 a la place si la carte peut etre un V2
+— le tooltip de chaque bloc le rappelle.
+
 Ne sont PAS fournis, et pourquoi :
-- DHT11 : protocole 1 fil aux impulsions de quelques dizaines de microsecondes,
-  qu'une boucle MicroPython ne peut pas echantillonner de facon fiable (MakeCode
-  l'implemente en C++). Utiliser le DHT20, qui fait le meme travail en I2C.
 - Vision AI V2 : pile SSCMA complete (JSON transporte par blocs sur I2C), hors
   de portee d'un pilote embarque dans le programme genere.
 - UartWiFi : faisable, mais initialiser l'UART sur des broches externes coupe la

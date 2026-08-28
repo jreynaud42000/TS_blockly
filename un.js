@@ -1797,6 +1797,275 @@ try {
         return ['_grove_th().temperature()', P.ORDER_FUNCTION_CALL];
     };
 
+    // --- DHT11 et DHT22 : experimental, fiables uniquement sur micro:bit V1 ---
+    //
+    // Assemblage ARM Thumb repris de rhubarbdog/microbit-dht11 (MIT), seule
+    // implementation DHT11 connue pour micro:bit-MicroPython qui fonctionne
+    // reellement : le protocole une-seule-broche de ces capteurs exige de
+    // mesurer des impulsions de 26 a 70 microsecondes, hors de portee d'une
+    // boucle Python interpretee, d'ou l'assembleur. Le DHT22 utilise le meme
+    // schema de signal (mêmes durees d'impulsion), seul le decodage des 5
+    // octets differe : le meme _dht_grab sert aux deux capteurs.
+    //
+    // Sur V2 (nRF52833 a 64 MHz contre 16 MHz pour le V1), ce meme code
+    // echantillonne 4x trop vite et rate le signal. Un correctif communautaire
+    // existe pour le DHT11 (multiplier le delai par 4) mais son auteur le
+    // decrit lui-meme comme instable : une mesure valide toutes les ~20
+    // secondes environ (issue #93, depot micropython-microbit-v2 de la
+    // fondation micro:bit). Le decalage bit-a-bit ci-dessous (DHT_DECALAGE),
+    // lui, n'a jamais ete revalide pour le V2 par personne. Plutot que de
+    // deviner un decalage invisible dans un mauvais resultat, la lecture
+    // refuse proprement sur V2 (machine.freq() les distingue) : _mesurer()
+    // renvoie alors False et les blocs -1, plutot qu'une valeur fausse sans
+    // avertissement. Utiliser AHT20/DHT20 (en I²C, fiable sur V1 et V2) si la
+    // carte peut etre un V2.
+
+    const DHT_DECALAGE = {
+        pin0: 3, pin1: 2, pin2: 1, pin8: 18, pin12: 20,
+        pin13: 23, pin14: 22, pin15: 21, pin16: 16
+    };
+
+    function piloteDht() {
+        importerMicrobit();
+        importerModule('machine');
+        piloteRegistre();
+        pilote('dht', [
+            '@micropython.asm_thumb',
+            'def _dht_birq():',
+            "    cpsid('i')",
+            '',
+            '@micropython.asm_thumb',
+            'def _dht_ubirq():',
+            "    cpsie('i')",
+            '',
+            '# Echantillonne la broche pendant `limite` cycles et range 0/1 dans',
+            '# `tampon` : c\'est la seule partie du pilote assez rapide et reguliere',
+            '# pour suivre les impulsions du DHT11/DHT22. r0 = decalage bit GPIO,',
+            '# r1 = tampon, r2 = limite. Ne pas modifier sans banc de mesure : un',
+            '# decalage de delai casse silencieusement la lecture.',
+            '@micropython.asm_thumb',
+            'def _dht_grab(r0, r1, r2):',
+            '    b(DEBUT)',
+            '    label(DELAI)',
+            '    mov(r7, 0x2d)',
+            '    label(boucle_delai)',
+            '    sub(r7, 1)',
+            '    bne(boucle_delai)',
+            '    bx(lr)',
+            '    label(LIRE_BROCHE)',
+            '    mov(r3, 0x50)',
+            '    lsl(r3, r3, 16)',
+            '    add(r3, 0x05)',
+            '    lsl(r3, r3, 8)',
+            '    add(r3, 0x10)',
+            '    ldr(r4, [r3, 0])',
+            '    mov(r3, 0x01)',
+            '    lsl(r3, r0)',
+            '    and_(r4, r3)',
+            '    lsr(r4, r0)',
+            '    bx(lr)',
+            '    label(DEBUT)',
+            '    mov(r5, 0x00)',
+            '    label(boucle)',
+            '    mov(r6, 0x00)',
+            '    bl(LIRE_BROCHE)',
+            '    orr(r6, r4)',
+            '    bl(DELAI)',
+            '    bl(LIRE_BROCHE)',
+            '    lsl(r4, r4, 8)',
+            '    orr(r6, r4)',
+            '    bl(DELAI)',
+            '    bl(LIRE_BROCHE)',
+            '    lsl(r4, r4, 16)',
+            '    orr(r6, r4)',
+            '    bl(DELAI)',
+            '    bl(LIRE_BROCHE)',
+            '    lsl(r4, r4, 24)',
+            '    orr(r6, r4)',
+            '    bl(DELAI)',
+            '    add(r1, r1, r5)',
+            '    str(r6, [r1, 0])',
+            '    sub(r1, r1, r5)',
+            '    add(r5, r5, 4)',
+            '    sub(r4, r2, r5)',
+            '    bne(boucle)',
+            '    mov(r0, r5)',
+            '',
+            '# Le tampon capture par blocs de 4 cycles compresses sur 4 octets :',
+            "# on le redeplie en une liste de longueurs d'impulsions (des suites de",
+            '# 1 consecutifs).',
+            'def _dht_analyser(tampon):',
+            '    longueurs = bytearray(50)',
+            '    en_cours = 0',
+            '    indice = 0',
+            '    debut = True',
+            '    for valeur in tampon:',
+            '        if valeur == 1:',
+            '            en_cours += 1',
+            '        elif indice == 0 and en_cours == 0:',
+            '            pass',
+            '        elif debut:',
+            '            en_cours = 0',
+            '            debut = False',
+            '        elif indice >= 50:',
+            '            pass',
+            '        elif en_cours > 0:',
+            '            longueurs[indice] = en_cours',
+            '            en_cours = 0',
+            '            indice += 1',
+            '    if indice == 0:',
+            '        return None',
+            '    resultat = bytearray(indice)',
+            '    for i in range(indice):',
+            '        resultat[i] = longueurs[i]',
+            '    return resultat',
+            '',
+            "# Un bit court est un '0', un bit long est un '1' : le seuil est le",
+            '# milieu entre la plus courte et la plus longue impulsion mesurees.',
+            'def _dht_octets(impulsions):',
+            '    plus_courte, plus_longue = 1000, 0',
+            '    for l in impulsions:',
+            '        if l < plus_courte: plus_courte = l',
+            '        if l > plus_longue: plus_longue = l',
+            '    seuil = plus_courte + (plus_longue - plus_courte) / 2',
+            '    octets = bytearray(5)',
+            '    indice_octet = 0',
+            '    accumulateur = 0',
+            '    for i, l in enumerate(impulsions):',
+            '        accumulateur = (accumulateur << 1) & 0xFF',
+            '        if l > seuil:',
+            '            accumulateur |= 1',
+            '        if (i + 1) % 8 == 0:',
+            '            octets[indice_octet] = accumulateur',
+            '            indice_octet += 1',
+            '            accumulateur = 0',
+            '    return octets',
+            '',
+            '# Commun aux deux capteurs : signal de depart, capture, verification du',
+            '# nombre de bits recus. Renvoie les 5 octets bruts, ou None si la carte',
+            '# est un V2 ou si la mesure a echoue (capteur absent, bruit, ...).',
+            'def _dht_mesurer_octets(broche, decalage):',
+            '    if machine.freq() > 20000000:',
+            '        return None   # V2 : refus volontaire, voir en tete de pilote',
+            '    tampon = bytearray(320)',
+            '    limite = (len(tampon) // 4) * 4',
+            '    for i in range(limite, len(tampon)):',
+            '        tampon[i] = 1',
+            '    broche.write_digital(1)',
+            '    sleep(50)',
+            '    _dht_birq()',
+            '    broche.write_digital(0)',
+            '    sleep(20)',
+            '    broche.set_pull(broche.PULL_UP)',
+            '    capture = _dht_grab(decalage, tampon, limite)',
+            '    _dht_ubirq()',
+            '    if capture != limite:',
+            '        return None',
+            '    impulsions = _dht_analyser(tampon)',
+            '    del tampon',
+            '    if impulsions is None or len(impulsions) != 40:',
+            '        return None',
+            '    octets = _dht_octets(impulsions)',
+            '    if octets[4] != (octets[0] + octets[1] + octets[2] + octets[3]) & 0xFF:',
+            '        return None',
+            '    return octets',
+            '',
+            'class _CapteurDHT11:',
+            '    def __init__(self, broche, decalage):',
+            '        self._p, self._d = broche, decalage',
+            '        self.t, self.h = -1, -1',
+            '',
+            '    def _mesurer(self):',
+            '        octets = _dht_mesurer_octets(self._p, self._d)',
+            '        sleep(1000)   # le DHT11 refuse une nouvelle lecture avant ~1 s',
+            '        if octets is None:',
+            '            return False',
+            '        self.t = octets[2] + octets[3] / 10',
+            '        self.h = octets[0] + octets[1] / 10',
+            '        return True',
+            '',
+            '    def temperature(self):',
+            '        return self.t if self._mesurer() else -1',
+            '',
+            '    def humidite(self):',
+            '        return self.h if self._mesurer() else -1',
+            '',
+            '# Meme signal que le DHT11, mais 16 bits par grandeur (dixiemes de degre',
+            '# et de %) au lieu de deux octets entier+decimale : la temperature a un',
+            '# bit de signe (bit de poids fort du 3e octet).',
+            'class _CapteurDHT22:',
+            '    def __init__(self, broche, decalage):',
+            '        self._p, self._d = broche, decalage',
+            '        self.t, self.h = -1, -1',
+            '',
+            '    def _mesurer(self):',
+            '        octets = _dht_mesurer_octets(self._p, self._d)',
+            '        sleep(2000)   # le DHT22 refuse une nouvelle lecture avant ~2 s',
+            '        if octets is None:',
+            '            return False',
+            '        humidite_brute = (octets[0] << 8) | octets[1]',
+            '        temperature_brute = ((octets[2] & 0x7F) << 8) | octets[3]',
+            '        self.h = humidite_brute / 10',
+            '        self.t = -temperature_brute / 10 if octets[2] & 0x80 else temperature_brute / 10',
+            '        return True',
+            '',
+            '    def temperature(self):',
+            '        return self.t if self._mesurer() else -1',
+            '',
+            '    def humidite(self):',
+            '        return self.h if self._mesurer() else -1',
+            '',
+            'def _grove_dht11():',
+            '    return _grove_obj("dht11", lambda: _CapteurDHT11(pin1, 2))',
+            '',
+            'def _grove_dht22():',
+            '    return _grove_obj("dht22", lambda: _CapteurDHT22(pin1, 2))',
+        ]);
+    }
+
+    function blocDefinirDht(type, nomCapteur, nomVariable, classe) {
+        Blockly.Blocks[type] = { init: function() {
+            this.appendDummyInput().appendField("définir le " + nomCapteur + " sur")
+                .appendField(menuBroche(), "BROCHE");
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(COULEUR_GROVE);
+            this.setTooltip("Facultatif : sans ce bloc, le " + nomCapteur + " est pris sur P1. " +
+                "Fiable uniquement sur micro:bit V1 — sur V2, les mesures renvoient -1 (voir readme.txt §7).");
+        }};
+        P.forBlock[type] = function(block) {
+            piloteDht();
+            const broche = block.getFieldValue('BROCHE');
+            return '_grove_objets["' + nomVariable + '"] = ' + classe + '(' + broche + ', ' + DHT_DECALAGE[broche] + ')\n';
+        };
+    }
+
+    function blocMesurerDht(type, nomCapteur, accesseur) {
+        Blockly.Blocks[type] = { init: function() {
+            this.appendDummyInput().appendField(nomCapteur + " :")
+                .appendField(new Blockly.FieldDropdown([
+                    ["température (°C)", "c"], ["température (°F)", "f"], ["humidité (%)", "h"]
+                ]), "GRANDEUR");
+            this.setOutput(true, "Number");
+            this.setColour(COULEUR_GROVE);
+            this.setTooltip("Renvoie -1 sur micro:bit V2 : ce capteur n'est fiable que sur le V1, " +
+                "protocole minuté en assembleur incompatible avec l'horloge du V2. Utiliser AHT20/DHT20 " +
+                "(module I²C ci-dessus) à la place si la carte peut être un V2.");
+        }};
+        P.forBlock[type] = function(block) {
+            piloteDht();
+            const g = block.getFieldValue('GRANDEUR');
+            if (g === 'h') return [accesseur + '().humidite()', P.ORDER_FUNCTION_CALL];
+            if (g === 'f') return ['(' + accesseur + '().temperature() * 9 / 5 + 32)', P.ORDER_ATOMIC];
+            return [accesseur + '().temperature()', P.ORDER_FUNCTION_CALL];
+        };
+    }
+
+    blocDefinirDht('grove_dht11_definir', 'DHT11', 'dht11', '_CapteurDHT11');
+    blocMesurerDht('grove_dht11_mesure', 'DHT11', '_grove_dht11');
+    blocDefinirDht('grove_dht22_definir', 'DHT22', 'dht22', '_CapteurDHT22');
+    blocMesurerDht('grove_dht22_mesure', 'DHT22', '_grove_dht22');
+
     // --- Écran LCD 16x2 v1 (JHD1802) ---
 
     function piloteLcd() {
@@ -2464,6 +2733,10 @@ try {
             "contents": [
               { "kind": "block", "type": "grove_th_init" },
               { "kind": "block", "type": "grove_th_mesure" },
+              { "kind": "block", "type": "grove_dht11_definir" },
+              { "kind": "block", "type": "grove_dht11_mesure" },
+              { "kind": "block", "type": "grove_dht22_definir" },
+              { "kind": "block", "type": "grove_dht22_mesure" },
 
               ]
             },
@@ -2591,6 +2864,18 @@ try {
 
     const TOOLBOX_ORIGINAL = cloneProfond(window.workspace.options.languageTree.contents);
 
+    // Sous-menus masques la premiere fois que l'admin les rencontre (avant
+    // toute config sauvegardee pour ce parent). Rien aujourd'hui — le DHT11 et
+    // le DHT22 vivent dans « Température & humidité », visibles comme le
+    // reste : seuls le tooltip et le refus au runtime sur V2 (voir
+    // piloteDht()) les distinguent desormais. Mecanisme garde pour un usage
+    // futur.
+    const SOUS_MENUS_MASQUES_PAR_DEFAUT = {};
+
+    function groupesConfDefaut(nomParent) {
+        return { order: [], hidden: (SOUS_MENUS_MASQUES_PAR_DEFAUT[nomParent] || []).slice(), labels: {} };
+    }
+
     function construireCategorie(catOriginale) {
         const nomOrig = catOriginale.name;
         const nomAffiche = configAdmin.categories.labels[nomOrig] || nomOrig;
@@ -2608,7 +2893,7 @@ try {
             // Deja organisee en sous-menus (Communication, Grove) : on les
             // reordonne / masque / renomme. Pas de creation ici, la
             // categorie a deja sa structure.
-            const groupesConf = configAdmin.groupes[nomOrig] || { order: [], hidden: [], labels: {} };
+            const groupesConf = configAdmin.groupes[nomOrig] || groupesConfDefaut(nomOrig);
             const dispo = new Map(sousNatives.map(s => [s.name, s]));
             const ordre = groupesConf.order.length ? groupesConf.order : [...dispo.keys()];
             const resultat = [];
@@ -2662,8 +2947,10 @@ try {
         Blockly.svgResize(window.workspace);
     }
 
-    const CONFIG_PAR_DEFAUT = JSON.stringify(configAdminParDefaut());
-    if (JSON.stringify(configAdmin) !== CONFIG_PAR_DEFAUT) appliquerToolbox();
+    // Toujours reconstruite au demarrage, meme sans config sauvegardee : des
+    // sous-menus comme DHT11 sont masques par defaut (groupesConfDefaut) sans
+    // que ca passe par configAdmin, l'injection Blockly seule ne le sait pas.
+    appliquerToolbox();
 
     // --- Le panneau : construction commune (onglets) ---
 
@@ -2862,7 +3149,7 @@ try {
         if (sousNatives.length) {
             const ul = document.createElement('ul');
             ul.className = 'panneau-admin-liste';
-            const groupesConf = configAdmin.groupes[nomParent] || (configAdmin.groupes[nomParent] = { order: [], hidden: [], labels: {} });
+            const groupesConf = configAdmin.groupes[nomParent] || (configAdmin.groupes[nomParent] = groupesConfDefaut(nomParent));
             const nomsNatifs = sousNatives.map(s => s.name);
             const ordre = groupesConf.order.length ? groupesConf.order.filter(n => nomsNatifs.includes(n)) : nomsNatifs;
             for (const nom of ordre) {
