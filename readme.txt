@@ -554,6 +554,13 @@ la ligne (plus etroit, plus facile de la perdre) : pratique pour un
 suiveur de ligne plus exigeant. Non memorise d'une session a l'autre
 (revient a 26 px au rechargement, comme le choix du tracé).
 
+Un second curseur "Échelle du robot" (×1 a ×4) agrandit uniquement
+l'affichage du robot, sans rien changer a la simulation (position, cap,
+capteurs) : pratique pour voir le detail du chassis ou l'etat des
+capteurs de ligne sur le robot lui-meme (voir plus haut). A forte echelle,
+le robot peut deborder du cadre de la piste pres des bords - normal, la
+piste garde ses coordonnees internes inchangees.
+
 Une ligne "Ligne :" apparait sous la piste, avec un point par capteur
 REELLEMENT utilise par le programme (un bloc "capteur de ligne" pose sur
 l'espace de travail) : vert s'il est actuellement sur la piste, gris sinon.

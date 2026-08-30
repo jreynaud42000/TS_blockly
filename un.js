@@ -5901,6 +5901,13 @@ try {
     // exigeant) ; relu par les DEUX fonctions de dessin (normale et aperçu
     // d'édition), jamais recalculé ailleurs.
     let MQ_LARGEUR_LIGNE = 26;
+    // Réglable par le curseur "Échelle du robot" : purement visuel (transform
+    // scale, appliqué après translate/rotate), sans effet sur MQ.x/y/cap ni
+    // sur la position des capteurs — le robot peut donc paraître plus gros
+    // que la piste sans que la simulation en soit changée. La piste garde
+    // overflow:hidden : à forte échelle, le robot peut être rogné près des
+    // bords, c'est attendu.
+    let MQ_ECHELLE_ROBOT = 1;
 
     // Plusieurs tracés possibles pour la même piste (même fond, même trait
     // blanc dont la largeur se règle via MQ_LARGEUR_LIGNE) : chacun fournit
@@ -6244,7 +6251,8 @@ try {
         if (!robotMaqueenEl) return;
         robotMaqueenEl.style.left = (MQ.x / MQ_LARGEUR * 100) + '%';
         robotMaqueenEl.style.top = (MQ.y / MQ_HAUTEUR * 100) + '%';
-        robotMaqueenEl.style.transform = 'translate(-50%, -50%) rotate(' + MQ.cap + 'deg)';
+        robotMaqueenEl.style.transform =
+            'translate(-50%, -50%) rotate(' + MQ.cap + 'deg) scale(' + MQ_ECHELLE_ROBOT + ')';
         mettreAJourIndicateursLigneMaqueen();
     }
 
@@ -6785,6 +6793,17 @@ try {
             // n'est pas forcément refermé) ; sinon la piste normale suffit.
             if (modeEditionPisteMaqueen) redessinerApercuEditionPisteMaqueen();
             else dessinerPisteMaqueen();
+        });
+    }
+    const curseurEchelleRobotMaqueen = document.getElementById('maqueen-echelle-robot');
+    const valeurEchelleRobotMaqueen = document.getElementById('maqueen-echelle-robot-val');
+    if (curseurEchelleRobotMaqueen) {
+        curseurEchelleRobotMaqueen.addEventListener('input', () => {
+            MQ_ECHELLE_ROBOT = Number(curseurEchelleRobotMaqueen.value);
+            valeurEchelleRobotMaqueen.textContent = '×' + curseurEchelleRobotMaqueen.value;
+            // Purement visuel : pas de transition, le changement d'échelle
+            // doit être immédiat, pas glisser comme un déplacement.
+            deplacerRobotMaqueenInstantanement();
         });
     }
     const valeurDistanceKitrobot = document.getElementById('kitrobot-distance-val');
