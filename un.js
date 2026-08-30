@@ -5896,10 +5896,16 @@ try {
     const MQ_VITESSE_MAX = 70;        // px/s a vitesse moteur 255
     const MQ_AVANT_CAPTEURS = 12;     // distance des capteurs devant le centre du robot
     const MQ_DECALAGE_CAPTEUR = { L2: -16, L1: -8, M: 0, R1: 8, R2: 16 };
+    // Réglable par le curseur "Largeur de la piste" du panneau : plus étroit,
+    // plus facile de perdre la ligne (utile pour un suiveur de ligne plus
+    // exigeant) ; relu par les DEUX fonctions de dessin (normale et aperçu
+    // d'édition), jamais recalculé ailleurs.
+    let MQ_LARGEUR_LIGNE = 26;
 
     // Plusieurs tracés possibles pour la même piste (même fond, même trait
-    // blanc de 26 px) : chacun fournit son propre point de départ, un point
-    // qui a du sens sur SON tracé n'en a pas forcément sur un autre.
+    // blanc dont la largeur se règle via MQ_LARGEUR_LIGNE) : chacun fournit
+    // son propre point de départ, un point qui a du sens sur SON tracé n'en
+    // a pas forcément sur un autre.
     const PISTES_MAQUEEN = {
         ovale: {
             nom: 'Boucle ovale',
@@ -6049,7 +6055,7 @@ try {
         ctx.fillStyle = '#3aa66b';
         ctx.fillRect(0, 0, MQ_LARGEUR, MQ_HAUTEUR);
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 26;
+        ctx.lineWidth = MQ_LARGEUR_LIGNE;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         PISTES_MAQUEEN[pisteMaqueenActuelle].dessiner(ctx);
@@ -6095,7 +6101,7 @@ try {
         ctx.fillStyle = '#3aa66b';
         ctx.fillRect(0, 0, MQ_LARGEUR, MQ_HAUTEUR);
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 26;
+        ctx.lineWidth = MQ_LARGEUR_LIGNE;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         dessinerPolylineFermeeMaqueen(ctx, pointsEditionPisteMaqueen);
@@ -6739,6 +6745,18 @@ try {
     if (curseurDistanceMaqueen) {
         curseurDistanceMaqueen.addEventListener('input', () => {
             valeurDistanceMaqueen.textContent = curseurDistanceMaqueen.value;
+        });
+    }
+    const curseurLargeurPisteMaqueen = document.getElementById('maqueen-largeur-piste');
+    const valeurLargeurPisteMaqueen = document.getElementById('maqueen-largeur-piste-val');
+    if (curseurLargeurPisteMaqueen) {
+        curseurLargeurPisteMaqueen.addEventListener('input', () => {
+            MQ_LARGEUR_LIGNE = Number(curseurLargeurPisteMaqueen.value);
+            valeurLargeurPisteMaqueen.textContent = curseurLargeurPisteMaqueen.value;
+            // En édition, l'aperçu a sa propre fonction de dessin (le tracé
+            // n'est pas forcément refermé) ; sinon la piste normale suffit.
+            if (modeEditionPisteMaqueen) redessinerApercuEditionPisteMaqueen();
+            else dessinerPisteMaqueen();
         });
     }
     const valeurDistanceKitrobot = document.getElementById('kitrobot-distance-val');

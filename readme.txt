@@ -547,6 +547,13 @@ Une seule piste personnalisee a la fois, memorisee en localStorage (donc
 propre a chaque navigateur/poste, comme le reste des reglages). Le premier
 point pose devient le depart, oriente vers le deuxieme point.
 
+Un curseur "Largeur de la piste (px)" (8 a 40, 26 par defaut) regle
+l'epaisseur du trait blanc, pour les trois tracés predefinis comme pour la
+piste personnalisee. Se repercute immediatement sur la difficulte a suivre
+la ligne (plus etroit, plus facile de la perdre) : pratique pour un
+suiveur de ligne plus exigeant. Non memorise d'une session a l'autre
+(revient a 26 px au rechargement, comme le choix du tracé).
+
 Une ligne "Ligne :" apparait sous la piste, avec un point par capteur
 REELLEMENT utilise par le programme (un bloc "capteur de ligne" pose sur
 l'espace de travail) : vert s'il est actuellement sur la piste, gris sinon.
