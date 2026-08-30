@@ -15,6 +15,7 @@
   <style>
     body { margin: 0; padding: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f4f4f4;}
     #toolbar { padding: 10px; background-color: #2c3e50; color: white; display: flex; align-items: center;}
+    #copyright-toolbar { margin-left: auto; margin-right: 12px; color: #9fb3c8; font-size: 12px; white-space: nowrap; }
     button { padding: 8px 16px; cursor: pointer; font-weight: bold; border-radius: 4px; border: none; background: #3498db; color: white; transition: 0.2s; margin-right: 10px;}
     button:hover { background: #2980b9; }
     #download-py-btn { background: #9b59b6; }
@@ -300,36 +301,52 @@
     /* Deplacable a la souris/au doigt : voir le pointerdown/move/up dans un.js.
        touch-action: none empeche le navigateur de faire defiler la page au
        lieu de deplacer le robot sur un ecran tactile. */
-    /* Inspiré du vrai châssis Maqueen Plus : coque sombre à bord doré, vis
-       aux quatre coins, bouton d'alimentation orange au centre. Les deux
-       petites DEL reflètent l'état réel des DEL RGB du programme (voir
+    /* Inspiré d'une photo du vrai châssis Maqueen Plus (vue de dessus) :
+       coque sombre à bord doré, vis aux quatre coins, compartiment a pile
+       18650 (cylindre orange, "+" en haut) au lieu d'un simple bouton, et un
+       liseré de circuit imprimé vert cote broches. Les deux petites DEL
+       reflètent l'état réel des DEL RGB du programme (voir
        dessinerDelsMaqueen dans un.js) — pas juste décoratif. */
-    #maqueen-robot { position: absolute; width: 26px; height: 36px; left: 50%; top: 50%;
+    #maqueen-robot { position: absolute; width: 30px; height: 34px; left: 50%; top: 50%;
                      transform: translate(-50%, -50%); cursor: grab; touch-action: none; }
     #maqueen-robot:active { cursor: grabbing; }
     #maqueen-robot:hover .mq-corps { box-shadow: 0 0 0 2px rgba(255,255,255,0.65); }
     #maqueen-robot .mq-corps { position: absolute; inset: 0;
                                 background: linear-gradient(180deg, #2e3236, #16181a);
-                                border-radius: 5px; border: 1.5px solid #c9a227; }
+                                border-radius: 6px; border: 1.5px solid #c9a227; overflow: hidden; }
     #maqueen-robot .mq-vis { position: absolute; width: 2.5px; height: 2.5px; border-radius: 50%;
-                              background: #d8b559; box-shadow: 0 0 1px #000; }
+                              background: #d8b559; box-shadow: 0 0 1px #000; z-index: 2; }
     #maqueen-robot .mq-vis-1 { top: 2px; left: 2px; }
     #maqueen-robot .mq-vis-2 { top: 2px; right: 2px; }
     #maqueen-robot .mq-vis-3 { bottom: 2px; left: 2px; }
     #maqueen-robot .mq-vis-4 { bottom: 2px; right: 2px; }
-    #maqueen-robot .mq-bouton { position: absolute; top: 50%; left: 50%; width: 9px; height: 9px;
-                                 transform: translate(-50%, -50%);
-                                 background: linear-gradient(180deg, #ffb347, #e07b1a);
-                                 border-radius: 2px; box-shadow: 0 0 3px rgba(255, 150, 40, 0.75); }
-    #maqueen-robot .mq-sprite-del { position: absolute; top: 4px; width: 3px; height: 3px;
-                                     border-radius: 50%; background: #333; transition: background 0.15s; }
-    #maqueen-robot #maqueen-sprite-del-1 { left: 5px; }
-    #maqueen-robot #maqueen-sprite-del-2 { right: 5px; }
+    /* Compartiment a pile 18650 : puits sombre, cylindre orange visible,
+       "+" au sommet — le detail le plus reconnaissable de la vraie carte. */
+    #maqueen-robot .mq-pile-puits { position: absolute; top: 3px; bottom: 9px; left: 5px; width: 9px;
+                                     background: #131415; border-radius: 2px; border: 1px solid #000; }
+    #maqueen-robot .mq-pile { position: absolute; top: 1px; bottom: 1px; left: 1px; right: 1px;
+                               background: linear-gradient(90deg, #b9761f, #e8a33d 35%, #c97f1f);
+                               border-radius: 1.5px; }
+    #maqueen-robot .mq-pile-plus { position: absolute; top: 1px; left: 50%; transform: translateX(-50%);
+                                    font: 700 5px/1 sans-serif; color: #6b3f0a; }
+    /* Sous le compartiment a pile, ne chevauche plus les DEL. */
+    /* Liseré de circuit imprimé (vert) entrevu du côté broches, avec deux
+       petits connecteurs rouges comme sur la photo. */
+    #maqueen-robot .mq-pcb { position: absolute; top: 2px; bottom: 2px; right: 2px; width: 7px;
+                              background: linear-gradient(180deg, #2e7d32, #1b5e20); border-radius: 1px; }
+    #maqueen-robot .mq-pcb-connecteur { position: absolute; width: 3px; height: 2.5px; right: 1px;
+                                         background: #c62828; border-radius: 0.5px; }
+    #maqueen-robot .mq-pcb-connecteur-1 { top: 2px; }
+    #maqueen-robot .mq-pcb-connecteur-2 { bottom: 2px; }
+    #maqueen-robot .mq-sprite-del { position: absolute; bottom: 2.5px; width: 3px; height: 3px;
+                                     border-radius: 50%; background: #333; transition: background 0.15s; z-index: 2; }
+    #maqueen-robot #maqueen-sprite-del-1 { left: 6px; }
+    #maqueen-robot #maqueen-sprite-del-2 { left: 11px; }
     #maqueen-robot .mq-avant { position: absolute; top: 50%; right: -2px; width: 5px; height: 5px;
                                 background: #ff3b30; border-radius: 50%; transform: translateY(-50%);
-                                box-shadow: 0 0 3px #ff3b30; }
+                                box-shadow: 0 0 3px #ff3b30; z-index: 2; }
     #maqueen-robot .mq-roue { position: absolute; width: 6px; height: 12px; background: #0d0d0d; border-radius: 1px; }
-    #maqueen-robot .mq-roue-h { left: 5px; top: -3px; } #maqueen-robot .mq-roue-b { left: 5px; bottom: -3px; }
+    #maqueen-robot .mq-roue-h { left: 6px; top: -3px; } #maqueen-robot .mq-roue-b { left: 6px; bottom: -3px; }
     .maqueen-ligne { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; color: #d6e0ea; }
     .maqueen-phare { width: 10px; height: 10px; border-radius: 50%; background: #555; display: inline-block; }
     .maqueen-phare.allume { background: #fff8dc; box-shadow: 0 0 6px #fff8dc; }
@@ -503,6 +520,7 @@
     <button id="btn-options" class="btn-vue" title="Panneau administrateur">⚙</button>
     <button id="btn-vue-code" class="btn-vue" title="Afficher ou masquer la transcription MicroPython">Code</button>
     <button id="btn-vue-simu" class="btn-vue" title="Afficher ou masquer le simulateur">Simulateur</button>
+    <span id="copyright-toolbar">🄯 RAJ Editions</span>
     <span id="zoom-groupe">
       <button id="btn-zoom-moins" class="btn-zoom" title="Réduire les blocs">−</button>
       <span id="zoom-valeur">100 %</span>
@@ -697,11 +715,17 @@
             <div class="mq-roue mq-roue-h"></div>
             <div class="mq-roue mq-roue-b"></div>
             <div class="mq-corps">
+              <div class="mq-pcb">
+                <div class="mq-pcb-connecteur mq-pcb-connecteur-1"></div>
+                <div class="mq-pcb-connecteur mq-pcb-connecteur-2"></div>
+              </div>
+              <div class="mq-pile-puits">
+                <div class="mq-pile"><span class="mq-pile-plus">+</span></div>
+              </div>
               <div class="mq-vis mq-vis-1"></div>
               <div class="mq-vis mq-vis-2"></div>
               <div class="mq-vis mq-vis-3"></div>
               <div class="mq-vis mq-vis-4"></div>
-              <div class="mq-bouton"></div>
               <div class="mq-sprite-del" id="maqueen-sprite-del-1"></div>
               <div class="mq-sprite-del" id="maqueen-sprite-del-2"></div>
             </div>

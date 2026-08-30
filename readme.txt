@@ -583,9 +583,10 @@ Comme les autres modules, le pilote reel est ecrit dans le programme
 genere (marqueurs "# >>> pilote maqueen") : sur la carte, ce sont les
 memes lignes qui pilotent le vrai chassis.
 
-Le robot dessine s'inspire de l'allure du vrai chassis (coque sombre, bord
-dore, vis aux coins, bouton orange central) sans etre une image : tout est
-en CSS, comme le reste du simulateur. Les deux DEL visibles sur le robot
+Le robot dessine s'inspire d'une photo du vrai chassis (coque sombre, bord
+dore, vis aux coins, compartiment a pile 18650 avec son "+", liseré de
+circuit imprime vert cote broches) sans etre une image : tout est en CSS,
+comme le reste du simulateur. Les deux DEL visibles sur le robot
 refletent en direct les couleurs reellement programmees (blocs "DEL RGB"),
 pas juste decoratives.
 
