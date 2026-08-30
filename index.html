@@ -342,9 +342,28 @@
                                      border-radius: 50%; background: #333; transition: background 0.15s; z-index: 2; }
     #maqueen-robot #maqueen-sprite-del-1 { left: 6px; }
     #maqueen-robot #maqueen-sprite-del-2 { left: 11px; }
-    #maqueen-robot .mq-avant { position: absolute; top: 50%; right: -2px; width: 5px; height: 5px;
+    #maqueen-robot .mq-avant { position: absolute; top: 50%; right: -6px; width: 4px; height: 4px;
                                 background: #ff3b30; border-radius: 50%; transform: translateY(-50%);
                                 box-shadow: 0 0 3px #ff3b30; z-index: 2; }
+    /* Capteurs de ligne, sur le bord avant du robot (meme cote que .mq-avant),
+       dans l'ordre reel gauche->droite : L2 en haut, R2 en bas (voir
+       positionCapteurMaqueen dans un.js — decalage negatif = cote L, donc
+       "au-dessus" du robot quand il pointe vers la droite, cap=0). Cache par
+       defaut, comme la ligne d'indicateurs sous la piste : seuls les
+       capteurs reellement lus par le programme sont affiches (classe
+       "visible"), et passent au vert quand ils detectent la ligne (classe
+       "sur-ligne") — mise a jour au meme rythme que le reste du robot,
+       dans dessinerRobotMaqueen. */
+    #maqueen-robot .mq-capteur-sprite { position: absolute; right: -1px; width: 2.5px; height: 2.5px;
+                                         border-radius: 50%; background: #555; border: 0.5px solid #1a1a1a;
+                                         display: none; z-index: 2; }
+    #maqueen-robot .mq-capteur-sprite.visible { display: block; }
+    #maqueen-robot .mq-capteur-sprite.sur-ligne { background: #4caf50; box-shadow: 0 0 2px #4caf50; }
+    #maqueen-robot .mq-capteur-sprite-L2 { top: 1px; }
+    #maqueen-robot .mq-capteur-sprite-L1 { top: 8px; }
+    #maqueen-robot .mq-capteur-sprite-M  { top: 15px; }
+    #maqueen-robot .mq-capteur-sprite-R1 { top: 22px; }
+    #maqueen-robot .mq-capteur-sprite-R2 { top: 29px; }
     #maqueen-robot .mq-roue { position: absolute; width: 6px; height: 12px; background: #0d0d0d; border-radius: 1px; }
     #maqueen-robot .mq-roue-h { left: 6px; top: -3px; } #maqueen-robot .mq-roue-b { left: 6px; bottom: -3px; }
     .maqueen-ligne { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; color: #d6e0ea; }
@@ -733,6 +752,11 @@
               <div class="mq-sprite-del" id="maqueen-sprite-del-2"></div>
             </div>
             <div class="mq-avant"></div>
+            <div class="mq-capteur-sprite mq-capteur-sprite-L2" data-capteur="L2"></div>
+            <div class="mq-capteur-sprite mq-capteur-sprite-L1" data-capteur="L1"></div>
+            <div class="mq-capteur-sprite mq-capteur-sprite-M" data-capteur="M"></div>
+            <div class="mq-capteur-sprite mq-capteur-sprite-R1" data-capteur="R1"></div>
+            <div class="mq-capteur-sprite mq-capteur-sprite-R2" data-capteur="R2"></div>
           </div>
         </div>
         <div class="maqueen-ligne">

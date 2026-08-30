@@ -6041,6 +6041,15 @@ try {
             chipsCapteursLigneMaqueen[chip.dataset.capteur] = chip;
         });
     }
+    // Même capteurs, affichés directement sur le robot (bord avant) plutôt
+    // que seulement dans la ligne sous la piste — mêmes règles de
+    // visibilité/état, juste un second endroit où les lire d'un coup d'œil.
+    const chipsCapteursLigneSpriteMaqueen = {};
+    if (robotMaqueenEl) {
+        robotMaqueenEl.querySelectorAll('.mq-capteur-sprite').forEach(chip => {
+            chipsCapteursLigneSpriteMaqueen[chip.dataset.capteur] = chip;
+        });
+    }
     const btnEditerPisteMaqueen = document.getElementById('maqueen-piste-editer');
     const barreEditionPisteMaqueen = document.getElementById('maqueen-edition-barre');
     const btnTerminerPisteMaqueen = document.getElementById('maqueen-piste-terminer');
@@ -6247,6 +6256,11 @@ try {
             const point = chip.querySelector('.maqueen-capteur-point');
             if (point) point.classList.toggle('sur-ligne', window.simu_maqueenLigneEtat(capteur));
         }
+        for (const capteur in chipsCapteursLigneSpriteMaqueen) {
+            const chip = chipsCapteursLigneSpriteMaqueen[capteur];
+            if (!chip.classList.contains('visible')) continue;
+            chip.classList.toggle('sur-ligne', window.simu_maqueenLigneEtat(capteur));
+        }
     }
 
     /** Les capteurs L2/L1/M/R1/R2 effectivement lus par un bloc du programme. */
@@ -6355,6 +6369,9 @@ try {
         for (const capteur in chipsCapteursLigneMaqueen) {
             chipsCapteursLigneMaqueen[capteur].classList.toggle('visible', utilises.has(capteur));
         }
+        for (const capteur in chipsCapteursLigneSpriteMaqueen) {
+            chipsCapteursLigneSpriteMaqueen[capteur].classList.toggle('visible', utilises.has(capteur));
+        }
         mettreAJourIndicateursLigneMaqueen();
 
         Blockly.svgResize(window.workspace);
@@ -6431,6 +6448,17 @@ try {
                 etat[capteur] = {
                     visible: chip.classList.contains('visible'),
                     surLigne: chip.querySelector('.maqueen-capteur-point').classList.contains('sur-ligne')
+                };
+            }
+            return etat;
+        },
+        etatIndicateursLigneSprite: () => {
+            const etat = {};
+            for (const capteur in chipsCapteursLigneSpriteMaqueen) {
+                const chip = chipsCapteursLigneSpriteMaqueen[capteur];
+                etat[capteur] = {
+                    visible: chip.classList.contains('visible'),
+                    surLigne: chip.classList.contains('sur-ligne')
                 };
             }
             return etat;

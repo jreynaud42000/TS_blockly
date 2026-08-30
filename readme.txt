@@ -558,7 +558,10 @@ Une ligne "Ligne :" apparait sous la piste, avec un point par capteur
 REELLEMENT utilise par le programme (un bloc "capteur de ligne" pose sur
 l'espace de travail) : vert s'il est actuellement sur la piste, gris sinon.
 Se met a jour en direct, aussi bien pendant une simulation qu'en deplacant
-le robot a la souris.
+le robot a la souris. Les memes points sont aussi affiches directement sur
+le bord avant du robot (dans l'ordre L2/L1/M/R1/R2, de haut en bas quand il
+pointe vers la droite), pour voir l'etat des capteurs sans quitter le robot
+des yeux.
 
 Le robot se glisse-depose n'importe ou sur la piste, a la souris ou au doigt :
 c'est la nouvelle position de depart, conservee par "Reinitialiser la
