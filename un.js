@@ -11,6 +11,9 @@ try {
     // Le panneau Grove est câblé en section 5 ; tant que ce n'est pas fait, le
     // premier appel à updatePythonCode ne doit pas essayer de le rafraîchir.
     let panneauGrovePret = false;
+    let panneauMaqueenPret = false;
+    let panneauKitrobotPret = false;
+    let panneauLidarPret = false;
 
     /**
      * Déclare `from microbit import *`.
@@ -2431,6 +2434,1267 @@ try {
         return ['_grove_scd41().lire("' + block.getFieldValue('GRANDEUR') + '")', P.ORDER_FUNCTION_CALL];
     };
 
+    // ---------- Maqueen Plus (châssis robot DFRobot, I²C 0x10) ----------
+    //
+    // Protocole et registres repris d'un pilote MicroPython verifie
+    // (GBSL-Informatik/maqueen-plus-v2-mpy, base sur pxt-DFRobot-Maqueenplus) :
+    // moteurs sur les registres 0x00 (gauche) / 0x02 (droit), etat des cinq
+    // capteurs de ligne sur un seul octet (0x1D), leur valeur brute sur les
+    // registres 0x1E a 0x26, phares sur 0x0B / 0x0C. Les DEL RGB et le capteur
+    // a ultrason ne passent PAS par le registre I2C : ce sont des broches
+    // classiques (neopixel sur P15, trig/echo sur P13/P14), comme sur le
+    // chassis reel.
+
+    const COULEUR_MAQUEEN = 20;
+
+    function piloteMaqueen() {
+        importerMicrobit();
+        importerModule('neopixel');
+        importerModule('machine');
+        importerModule('utime');
+        pilote('maqueen', [
+            '_MQ_ADR = 0x10',
+            '',
+            'def _mq_ecrire(registre, *octets):',
+            '    i2c.write(_MQ_ADR, bytes([registre]) + bytes(octets))',
+            '',
+            'def _mq_lire(registre, n):',
+            '    i2c.write(_MQ_ADR, bytes([registre]))',
+            '    return i2c.read(_MQ_ADR, n)',
+            '',
+            '# vitesse : -255 (arriere) a 255 (avant). "les_deux" ecrit sur les',
+            '# deux registres moteur a la suite, comme le fait le pilote DFRobot.',
+            'def _mq_moteur(cote, vitesse):',
+            '    vitesse = max(-255, min(255, int(vitesse)))',
+            '    sens = 0 if vitesse >= 0 else 1',
+            '    v = abs(vitesse)',
+            '    if cote != "droit":',
+            '        _mq_ecrire(0x00, sens, v)',
+            '    if cote != "gauche":',
+            '        _mq_ecrire(0x02, sens, v)',
+            '',
+            '_MQ_BIT_LIGNE = {"L2": 0x10, "L1": 0x08, "M": 0x04, "R1": 0x02, "R2": 0x01}',
+            '',
+            'def _mq_ligne_etat(capteur):',
+            '    etat = _mq_lire(0x1D, 1)[0]',
+            '    return bool(etat & _MQ_BIT_LIGNE[capteur])',
+            '',
+            '_MQ_REG_ADC = {"L2": 0x1E, "L1": 0x20, "M": 0x22, "R1": 0x24, "R2": 0x26}',
+            '',
+            'def _mq_ligne_valeur(capteur):',
+            '    d = _mq_lire(_MQ_REG_ADC[capteur], 2)',
+            '    return d[1] << 8 | d[0]',
+            '',
+            'def _mq_phare(cote, etat):',
+            '    if cote != "droit":',
+            '        _mq_ecrire(0x0B, 1 if etat else 0)',
+            '    if cote != "gauche":',
+            '        _mq_ecrire(0x0C, 1 if etat else 0)',
+            '',
+            '_mq_neopixel = neopixel.NeoPixel(pin15, 4)',
+            '',
+            'def _mq_rgb(index, couleur):',
+            '    r = (couleur >> 16) & 0xFF',
+            '    v = (couleur >> 8) & 0xFF',
+            '    b = couleur & 0xFF',
+            '    if index == 4:',
+            '        _mq_neopixel.fill((r, v, b))',
+            '    else:',
+            '        _mq_neopixel[index] = (r, v, b)',
+            '    _mq_neopixel.show()',
+            '',
+            '# Trig P13, echo P14 : broches dediees du chassis, pas de choix a faire.',
+            'def _mq_distance():',
+            '    pin13.write_digital(0)',
+            '    utime.sleep_us(2)',
+            '    pin13.write_digital(1)',
+            '    utime.sleep_us(10)',
+            '    pin13.write_digital(0)',
+            '    pin14.set_pull(pin14.NO_PULL)',
+            '    duree = machine.time_pulse_us(pin14, 1, 30000)',
+            '    return 0 if duree < 0 else duree // 58',
+            '',
+            '# Extensions V3 : meme puce I2C 0x10, memes _mq_ecrire/_mq_lire — la V3',
+            '# reutilise la bibliotheque V2 (source : DFRobot/pxt-DFRobot_MaqueenPlus_v20,',
+            '# maqueenPlusV2.ts, blocs marques group="V3"). Suiveur de ligne et PID',
+            '# supposent un chassis V3 (codeur de roue, capteurs de carrefour) absent',
+            '# des chassis V1/V2 ; jamais confronte a un vrai chassis V3.',
+            'def _mq_v3_vitesse_suivi(vitesse):',
+            '    _mq_ecrire(63, int(vitesse))',
+            '',
+            'def _mq_v3_mode_carrefour(mode):',
+            '    _mq_ecrire(69, mode)',
+            '',
+            'def _mq_v3_mode_T(mode):',
+            '    _mq_ecrire(70, mode)',
+            '',
+            'def _mq_v3_mode_gauche(mode):',
+            '    _mq_ecrire(71, mode)',
+            '',
+            'def _mq_v3_mode_droite(mode):',
+            '    _mq_ecrire(72, mode)',
+            '',
+            'def _mq_v3_suiveur(actif):',
+            '    _mq_ecrire(60, (0x04 | 0x01) if actif else 0x08)',
+            '',
+            'def _mq_v3_intersection():',
+            '    return _mq_lire(61, 1)[0]',
+            '',
+            'def _mq_v3_luminosite(cote):',
+            '    d = _mq_lire(78, 4)',
+            '    return (d[0] << 8 | d[1]) if cote == "gauche" else (d[2] << 8 | d[3])',
+            '',
+            'def _mq_v3_vitesse_reelle(cote):',
+            '    d = _mq_lire(76, 2)',
+            '    return (d[0] if cote == "gauche" else d[1]) / 5',
+            '',
+            '# Vitesse PID interne fixee a 2 par le pilote DFRobot lui-meme (pas',
+            '# reglable depuis les blocs MakeCode d\'origine non plus).',
+            'def _mq_v3_pid_avancer(sens, distance_cm, attendre):',
+            '    distance_cm = int(distance_cm)',
+            '    if distance_cm >= 6000:',
+            '        distance_cm = 60000',
+            '    _mq_ecrire(64, 1 if sens == "avant" else 2)',
+            '    _mq_ecrire(85, 2)',
+            '    _mq_ecrire(65, (distance_cm >> 8) & 0xFF)',
+            '    _mq_ecrire(66, distance_cm & 0xFF)',
+            '    _mq_ecrire(60, 0x04 | 0x02)',
+            '    if attendre:',
+            '        while _mq_lire(87, 1)[0] == 1:',
+            '            sleep(10)',
+            '',
+            '# Sens gauche/droite non confirme sur un vrai chassis (la source ne',
+            '# distingue que le signe de l\'angle, pas une notion gauche/droite).',
+            'def _mq_v3_pid_tourner(sens, angle, attendre):',
+            '    angle = int(angle)',
+            '    _mq_ecrire(67, 1 if sens == "gauche" else 2)',
+            '    _mq_ecrire(86, 2)',
+            '    _mq_ecrire(68, abs(angle))',
+            '    _mq_ecrire(60, 0x04 | 0x02)',
+            '    if attendre:',
+            '        while _mq_lire(87, 1)[0] == 1:',
+            '            sleep(10)',
+            '',
+            'def _mq_v3_pid_stop():',
+            '    _mq_ecrire(60, 0x10)',
+            '',
+            '_MQ_V3_COULEUR = {"rouge": 1, "vert": 2, "jaune": 3, "bleu": 4,',
+            '                  "violet": 5, "cyan": 6, "blanc": 7, "eteint": 0}',
+            '',
+            'def _mq_v3_del_carrosserie(cote, couleur):',
+            '    valeur = _MQ_V3_COULEUR[couleur]',
+            '    if cote != "droit":',
+            '        _mq_ecrire(11, valeur)',
+            '    if cote != "gauche":',
+            '        _mq_ecrire(12, valeur)',
+        ]);
+    }
+
+    // Boutons de la telecommande DFRobot ("noire") : enum RemoteButton de
+    // pxt-DFRobot-Maqueenplus/enums.d.ts. L'adresse NEC de cette telecommande
+    // precise n'est pas documentee (le decodeur ne verifie donc que la
+    // commande, pas l'adresse) — jamais confronte a la vraie telecommande.
+    const IR_CODE_NOIRE = {
+        power: 0x00, vol_plus: 0x01, fonction: 0x02, precedent: 0x04, pause: 0x05, suivant: 0x06,
+        bas: 0x08, vol_moins: 0x09, haut: 0x0a, touche0: 0x0c, eq: 0x0d, repeter: 0x0e,
+        touche1: 0x10, touche2: 0x11, touche3: 0x12, touche4: 0x14, touche5: 0x15, touche6: 0x16,
+        touche7: 0x18, touche8: 0x19, touche9: 0x1a
+    };
+    const MENU_TOUCHE_NOIRE = [
+        ["Power", "power"], ["Vol +", "vol_plus"], ["Fonction/Stop", "fonction"],
+        ["◄◄", "precedent"], ["Pause", "pause"], ["►►", "suivant"],
+        ["Bas", "bas"], ["Vol -", "vol_moins"], ["Haut", "haut"],
+        ["0", "touche0"], ["EQ", "eq"], ["Répéter", "repeter"],
+        ["1", "touche1"], ["2", "touche2"], ["3", "touche3"], ["4", "touche4"], ["5", "touche5"],
+        ["6", "touche6"], ["7", "touche7"], ["8", "touche8"], ["9", "touche9"]
+    ];
+
+    // Telecommande grise "Car mp3 SE-020401", tres repandue (fournie dans de
+    // nombreux kits Arduino/micro:bit) : codes NEC releves sur
+    // https://gist.github.com/danyboy666/f342c1cca26e88e0e637ee071698ac56
+    // (adresse fixe 0x00FF, un octet de commande par touche).
+    const IR_CODE_GRISE = {
+        ch_moins: 0xA2, ch: 0x62, ch_plus: 0xE2, precedent: 0x22, suivant: 0x02, lecture: 0xC2,
+        moins: 0xE0, plus: 0xA8, eq: 0x90, touche0: 0x68, cent_plus: 0x98, deuxcent_plus: 0xB0,
+        touche1: 0x30, touche2: 0x18, touche3: 0x7A, touche4: 0x10, touche5: 0x38, touche6: 0x5A,
+        touche7: 0x42, touche8: 0x4A, touche9: 0x52
+    };
+    const MENU_TOUCHE_GRISE = [
+        ["CH-", "ch_moins"], ["CH", "ch"], ["CH+", "ch_plus"],
+        ["|◄◄", "precedent"], ["►►|", "suivant"], ["►❙❙", "lecture"],
+        ["-", "moins"], ["+", "plus"], ["EQ", "eq"],
+        ["0", "touche0"], ["100+", "cent_plus"], ["200+", "deuxcent_plus"],
+        ["1", "touche1"], ["2", "touche2"], ["3", "touche3"], ["4", "touche4"], ["5", "touche5"],
+        ["6", "touche6"], ["7", "touche7"], ["8", "touche8"], ["9", "touche9"]
+    ];
+
+    /** Dictionnaire Python {code: "slug"} à partir d'une table JS {slug: code}. */
+    function dictPythonDepuisTable(table) {
+        return '{' + Object.entries(table).map(([slug, code]) => code + ': "' + slug + '"').join(', ') + '}';
+    }
+
+    function piloteMaqueenIR() {
+        importerMicrobit();
+        importerModule('machine');
+        pilote('maqueen_ir', [
+            '_ir_broche = [pin0]',
+            '_ir_dernier = [-1]',
+            '_IR_NOIRE_NOM = ' + dictPythonDepuisTable(IR_CODE_NOIRE),
+            '_IR_GRISE_NOM = ' + dictPythonDepuisTable(IR_CODE_GRISE),
+            '',
+            '# Decodeur NEC standard (protocole public documente, pas le pilote',
+            '# DFRobot qui est du C++ natif compile dans le firmware MakeCode, non',
+            '# portable en MicroPython) : recepteur actif bas, chaque impulsion',
+            '# mesuree via machine.time_pulse_us, meme technique que le capteur',
+            '# ultrason plus haut. Pas de gestion des trames de repetition : un',
+            '# bouton maintenu ne redeclenche pas l\'evenement en boucle.',
+            'def _ir_lire_trame():',
+            '    broche = _ir_broche[0]',
+            '    if broche.read_digital() == 1:',
+            '        return None',
+            '    temps = []',
+            '    niveau = 0',
+            '    for _ in range(68):',
+            '        duree = machine.time_pulse_us(broche, niveau, 15000)',
+            '        if duree < 0:',
+            '            break',
+            '        temps.append(duree)',
+            '        niveau = 1 - niveau',
+            '    if len(temps) < 68:',
+            '        return None',
+            '    if not (8000 <= temps[0] <= 10000):',
+            '        return None',
+            '    if not (4000 <= temps[1] <= 5000):',
+            '        return None',
+            '    valeur = 0',
+            '    for i in range(2, 66, 2):',
+            '        valeur >>= 1',
+            '        if temps[i + 1] > 1120:',
+            '            valeur |= 0x80000000',
+            '    commande = (valeur >> 16) & 0xFF',
+            '    commande_inv = (valeur >> 24) & 0xFF',
+            '    if commande != (commande_inv ^ 0xFF):',
+            '        return None',
+            '    return commande',
+            '',
+            'def _ir_traiter():',
+            '    commande = _ir_lire_trame()',
+            '    if commande is None:',
+            '        return',
+            '    _ir_dernier[0] = commande',
+            '    g = globals()',
+            '    if commande in _IR_NOIRE_NOM:',
+            '        nom = "on_ir_noire_" + _IR_NOIRE_NOM[commande]',
+            '        if nom in g:',
+            '            g[nom]()',
+            '    if commande in _IR_GRISE_NOM:',
+            '        nom = "on_ir_grise_" + _IR_GRISE_NOM[commande]',
+            '        if nom in g:',
+            '            g[nom]()',
+        ]);
+    }
+
+    const MENU_COTE_MAQUEEN = [["gauche", "gauche"], ["droit", "droit"], ["les deux", "les_deux"]];
+    const MENU_CAPTEUR_LIGNE = [
+        ["extrême gauche (L2)", "L2"], ["gauche (L1)", "L1"], ["milieu (M)", "M"],
+        ["droit (R1)", "R1"], ["extrême droit (R2)", "R2"]
+    ];
+
+    Blockly.Blocks['maqueen_moteur'] = { init: function() {
+        this.appendDummyInput().appendField("moteur")
+            .appendField(new Blockly.FieldDropdown(MENU_COTE_MAQUEEN), "COTE")
+            .appendField("à");
+        this.appendValueInput("VITESSE").setCheck("Number");
+        this.appendDummyInput().appendField("(-255 à 255)");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+        this.setTooltip("Vitesse négative = marche arrière.");
+    }};
+    P.forBlock['maqueen_moteur'] = function(block) {
+        piloteMaqueen();
+        const vitesse = P.valueToCode(block, 'VITESSE', P.ORDER_NONE) || '0';
+        return '_mq_moteur("' + block.getFieldValue('COTE') + '", ' + vitesse + ')\n';
+    };
+
+    Blockly.Blocks['maqueen_arreter'] = { init: function() {
+        this.appendDummyInput().appendField("arrêter le moteur")
+            .appendField(new Blockly.FieldDropdown(MENU_COTE_MAQUEEN), "COTE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_arreter'] = function(block) {
+        piloteMaqueen();
+        return '_mq_moteur("' + block.getFieldValue('COTE') + '", 0)\n';
+    };
+
+    Blockly.Blocks['maqueen_ligne_etat'] = { init: function() {
+        this.appendDummyInput().appendField("capteur de ligne")
+            .appendField(new Blockly.FieldDropdown(MENU_CAPTEUR_LIGNE), "CAPTEUR")
+            .appendField("sur la ligne");
+        this.setOutput(true, "Boolean");
+        this.setColour(COULEUR_MAQUEEN);
+        this.setTooltip("Vrai si ce capteur voit la ligne blanche de la piste.");
+    }};
+    P.forBlock['maqueen_ligne_etat'] = function(block) {
+        piloteMaqueen();
+        return ['_mq_ligne_etat("' + block.getFieldValue('CAPTEUR') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['maqueen_ligne_valeur'] = { init: function() {
+        this.appendDummyInput().appendField("valeur brute du capteur de ligne")
+            .appendField(new Blockly.FieldDropdown(MENU_CAPTEUR_LIGNE), "CAPTEUR");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_ligne_valeur'] = function(block) {
+        piloteMaqueen();
+        return ['_mq_ligne_valeur("' + block.getFieldValue('CAPTEUR') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['maqueen_phare'] = { init: function() {
+        this.appendDummyInput().appendField("phare")
+            .appendField(new Blockly.FieldDropdown(MENU_COTE_MAQUEEN), "COTE")
+            .appendField(new Blockly.FieldDropdown([["allumé", "1"], ["éteint", "0"]]), "ETAT");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_phare'] = function(block) {
+        piloteMaqueen();
+        return '_mq_phare("' + block.getFieldValue('COTE') + '", ' + block.getFieldValue('ETAT') + ')\n';
+    };
+
+    Blockly.Blocks['maqueen_rgb_couleur'] = { init: function() {
+        this.appendDummyInput().appendField("DEL RGB")
+            .appendField(new Blockly.FieldDropdown([
+                ["toutes", "4"], ["L1", "0"], ["L2", "1"], ["R2", "2"], ["R1", "3"]
+            ]), "INDEX")
+            .appendField("en").appendField(menuCouleur(), "COULEUR");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_rgb_couleur'] = function(block) {
+        piloteMaqueen();
+        return '_mq_rgb(' + block.getFieldValue('INDEX') + ', ' + block.getFieldValue('COULEUR') + ')\n';
+    };
+
+    Blockly.Blocks['maqueen_rgb_eteindre'] = { init: function() {
+        this.appendDummyInput().appendField("éteindre les DEL RGB");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_rgb_eteindre'] = function(block) {
+        piloteMaqueen();
+        return '_mq_rgb(4, 0)\n';
+    };
+
+    Blockly.Blocks['maqueen_distance'] = { init: function() {
+        this.appendDummyInput().appendField("distance (cm) capteur ultrason Maqueen");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_distance'] = function(block) {
+        piloteMaqueen();
+        return ['_mq_distance()', P.ORDER_FUNCTION_CALL];
+    };
+
+    // ---------- Maqueen Plus V3 (suiveur de ligne, PID, éclairage carrosserie) ----------
+    //
+    // Meme puce I2C 0x10 que ci-dessus : la V3 partage sa bibliotheque avec la
+    // V2 (source : DFRobot/pxt-DFRobot_MaqueenPlus_v20, maqueenPlusV2.ts,
+    // fonctions marquees group="V3"). Le suiveur de ligne autopilote et le
+    // controle PID supposent un codeur de roue et des capteurs de carrefour
+    // que seul un chassis V3 possede physiquement — sur un V1/V2 ces blocs
+    // envoient des octets valides mais sans effet observable.
+
+    const MENU_INTERSECTION_MAQUEEN = [
+        ["tout droit", "3"], ["à gauche", "1"], ["à droite", "2"], ["stop", "4"]
+    ];
+    const MENU_COULEUR_CARROSSERIE_MAQUEEN = [
+        ["rouge", "rouge"], ["vert", "vert"], ["jaune", "jaune"], ["bleu", "bleu"],
+        ["violet", "violet"], ["cyan", "cyan"], ["blanc", "blanc"], ["éteint", "eteint"]
+    ];
+
+    Blockly.Blocks['maqueen_v3_vitesse_suivi'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 : vitesse du suiveur de ligne")
+            .appendField(new Blockly.FieldDropdown([["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"]]), "VITESSE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_v3_vitesse_suivi'] = function(block) {
+        piloteMaqueen();
+        return '_mq_v3_vitesse_suivi(' + block.getFieldValue('VITESSE') + ')\n';
+    };
+
+    Blockly.Blocks['maqueen_v3_suiveur'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 :")
+            .appendField(new Blockly.FieldDropdown([["démarrer", "1"], ["arrêter", "0"]]), "ACTIF")
+            .appendField("le suiveur de ligne");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+        this.setTooltip("Le chassis suit seul la ligne noire sous lui, sans intervention du programme.");
+    }};
+    P.forBlock['maqueen_v3_suiveur'] = function(block) {
+        piloteMaqueen();
+        return '_mq_v3_suiveur(' + block.getFieldValue('ACTIF') + ')\n';
+    };
+
+    Blockly.Blocks['maqueen_v3_mode_carrefour'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 : aux carrefours, avancer")
+            .appendField(new Blockly.FieldDropdown(MENU_INTERSECTION_MAQUEEN), "MODE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_v3_mode_carrefour'] = function(block) {
+        piloteMaqueen();
+        return '_mq_v3_mode_carrefour(' + block.getFieldValue('MODE') + ')\n';
+    };
+
+    Blockly.Blocks['maqueen_v3_mode_T'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 : aux intersections en T, avancer")
+            .appendField(new Blockly.FieldDropdown([["à gauche", "1"], ["à droite", "2"], ["stop", "4"]]), "MODE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_v3_mode_T'] = function(block) {
+        piloteMaqueen();
+        return '_mq_v3_mode_T(' + block.getFieldValue('MODE') + ')\n';
+    };
+
+    Blockly.Blocks['maqueen_v3_mode_gauche'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 : aux intersections à gauche, avancer")
+            .appendField(new Blockly.FieldDropdown([["tout droit", "3"], ["à gauche", "1"], ["stop", "4"]]), "MODE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_v3_mode_gauche'] = function(block) {
+        piloteMaqueen();
+        return '_mq_v3_mode_gauche(' + block.getFieldValue('MODE') + ')\n';
+    };
+
+    Blockly.Blocks['maqueen_v3_mode_droite'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 : aux intersections à droite, avancer")
+            .appendField(new Blockly.FieldDropdown([["tout droit", "3"], ["à droite", "2"], ["stop", "4"]]), "MODE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_v3_mode_droite'] = function(block) {
+        piloteMaqueen();
+        return '_mq_v3_mode_droite(' + block.getFieldValue('MODE') + ')\n';
+    };
+
+    Blockly.Blocks['maqueen_v3_intersection_detectee'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 : intersection détectée (code)");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_v3_intersection_detectee'] = function(block) {
+        piloteMaqueen();
+        return ['_mq_v3_intersection()', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['maqueen_v3_intersection_est'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 : intersection détectée est")
+            .appendField(new Blockly.FieldDropdown(MENU_INTERSECTION_MAQUEEN), "TYPE").appendField("?");
+        this.setOutput(true, "Boolean");
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_v3_intersection_est'] = function(block) {
+        piloteMaqueen();
+        return ['(_mq_v3_intersection() == ' + block.getFieldValue('TYPE') + ')', P.ORDER_RELATIONAL];
+    };
+
+    Blockly.Blocks['maqueen_v3_luminosite'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 : intensité lumineuse à")
+            .appendField(new Blockly.FieldDropdown([["gauche", "gauche"], ["droite", "droite"]]), "COTE");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_v3_luminosite'] = function(block) {
+        piloteMaqueen();
+        return ['_mq_v3_luminosite("' + block.getFieldValue('COTE') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['maqueen_v3_vitesse_reelle'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 : vitesse réelle de la roue")
+            .appendField(new Blockly.FieldDropdown([["gauche", "gauche"], ["droite", "droite"]]), "COTE")
+            .appendField("(cm/s)");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_MAQUEEN);
+        this.setTooltip("Mesurée par le codeur de roue — nécessite un châssis V3.");
+    }};
+    P.forBlock['maqueen_v3_vitesse_reelle'] = function(block) {
+        piloteMaqueen();
+        return ['_mq_v3_vitesse_reelle("' + block.getFieldValue('COTE') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['maqueen_v3_pid_avancer'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 :")
+            .appendField(new Blockly.FieldDropdown([["avancer", "avant"], ["reculer", "arriere"]]), "SENS");
+        this.appendValueInput("DISTANCE").setCheck("Number");
+        this.appendDummyInput().appendField("cm")
+            .appendField(new Blockly.FieldCheckbox("TRUE"), "ATTENDRE").appendField("attendre la fin");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+        this.setTooltip("Déplacement asservi par PID (codeur de roue) — nécessite un châssis V3.");
+    }};
+    P.forBlock['maqueen_v3_pid_avancer'] = function(block) {
+        piloteMaqueen();
+        const distance = P.valueToCode(block, 'DISTANCE', P.ORDER_NONE) || '0';
+        const attendre = block.getFieldValue('ATTENDRE') === 'TRUE' ? 'True' : 'False';
+        return '_mq_v3_pid_avancer("' + block.getFieldValue('SENS') + '", ' + distance + ', ' + attendre + ')\n';
+    };
+
+    Blockly.Blocks['maqueen_v3_pid_tourner'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 : tourner à")
+            .appendField(new Blockly.FieldDropdown([["gauche", "gauche"], ["droite", "droite"]]), "SENS");
+        this.appendValueInput("ANGLE").setCheck("Number");
+        this.appendDummyInput().appendField("°")
+            .appendField(new Blockly.FieldCheckbox("TRUE"), "ATTENDRE").appendField("attendre la fin");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+        this.setTooltip("Rotation asservie par PID — nécessite un châssis V3. Sens gauche/droite non confirmé sur une vraie carte (seul le signe compte dans la source DFRobot).");
+    }};
+    P.forBlock['maqueen_v3_pid_tourner'] = function(block) {
+        piloteMaqueen();
+        const angle = P.valueToCode(block, 'ANGLE', P.ORDER_NONE) || '0';
+        const attendre = block.getFieldValue('ATTENDRE') === 'TRUE' ? 'True' : 'False';
+        return '_mq_v3_pid_tourner("' + block.getFieldValue('SENS') + '", ' + angle + ', ' + attendre + ')\n';
+    };
+
+    Blockly.Blocks['maqueen_v3_pid_stop'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 : arrêter le contrôle PID en cours");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+    }};
+    P.forBlock['maqueen_v3_pid_stop'] = function(block) {
+        piloteMaqueen();
+        return '_mq_v3_pid_stop()\n';
+    };
+
+    Blockly.Blocks['maqueen_v3_del_carrosserie'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus v3 : DEL de carrosserie")
+            .appendField(new Blockly.FieldDropdown(MENU_COTE_MAQUEEN), "COTE")
+            .appendField("en").appendField(new Blockly.FieldDropdown(MENU_COULEUR_CARROSSERIE_MAQUEEN), "COULEUR");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+        this.setTooltip("DEL simples de la coque (registres 11/12) — distinctes du ruban RGB adressable ci-dessus.");
+    }};
+    P.forBlock['maqueen_v3_del_carrosserie'] = function(block) {
+        piloteMaqueen();
+        return '_mq_v3_del_carrosserie("' + block.getFieldValue('COTE') + '", "' + block.getFieldValue('COULEUR') + '")\n';
+    };
+
+    // ---------- Maqueen Plus : télécommande infrarouge ----------
+
+    Blockly.Blocks['maqueen_ir_init'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus : connecter le récepteur infrarouge à")
+            .appendField(menuBroche(), "BROCHE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+        this.setTooltip("Décodage NEC standard réécrit en MicroPython (le pilote DFRobot d'origine est du C++ natif, non portable). Jamais confronté à un vrai récepteur.");
+    }};
+    P.forBlock['maqueen_ir_init'] = function(block) {
+        piloteMaqueenIR();
+        return '_ir_broche[0] = ' + block.getFieldValue('BROCHE') + '\n';
+    };
+
+    Blockly.Blocks['maqueen_ir_decoder'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus : décoder le récepteur infrarouge");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN);
+        this.setTooltip("Facultatif : les blocs « lorsque la commande... » ci-dessous vérifient déjà automatiquement à chaque tour de boucle.");
+    }};
+    P.forBlock['maqueen_ir_decoder'] = function(block) {
+        piloteMaqueenIR();
+        return '_ir_traiter()\n';
+    };
+
+    Blockly.Blocks['maqueen_ir_dernier_code'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Plus : code reçu du récepteur infrarouge");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_MAQUEEN);
+        this.setTooltip("-1 si rien n'a encore été reçu.");
+    }};
+    P.forBlock['maqueen_ir_dernier_code'] = function(block) {
+        piloteMaqueenIR();
+        return ['_ir_dernier[0]', P.ORDER_MEMBER];
+    };
+
+    Blockly.Blocks['lorsque_ir_noire'] = { init: function() {
+        this.appendDummyInput().appendField("lorsque la commande")
+            .appendField(new Blockly.FieldDropdown(MENU_TOUCHE_NOIRE), "TOUCHE")
+            .appendField("est reçue par télécommande noire (NEC)");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(300);
+    }};
+    P.forBlock['lorsque_ir_noire'] = function(block) {
+        piloteMaqueenIR();
+        return declarerGestionnaire('on_ir_noire_' + block.getFieldValue('TOUCHE'), P.statementToCode(block, 'DO'));
+    };
+
+    Blockly.Blocks['lorsque_ir_grise'] = { init: function() {
+        this.appendDummyInput().appendField("lorsque la commande")
+            .appendField(new Blockly.FieldDropdown(MENU_TOUCHE_GRISE), "TOUCHE")
+            .appendField("est reçue par télécommande grise Car mp3 (NEC)");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(300);
+    }};
+    P.forBlock['lorsque_ir_grise'] = function(block) {
+        piloteMaqueenIR();
+        return declarerGestionnaire('on_ir_grise_' + block.getFieldValue('TOUCHE'), P.statementToCode(block, 'DO'));
+    };
+
+    // ---------- Kitrobot v2 (chassis Grove : servos, ultrason, ruban, buzzer, lignes) ----------
+    //
+    // Contrairement au Maqueen (une puce I2C dediee, protocole documente),
+    // le Kitrobot v2 est une simple carcasse assemblant des modules Grove deja
+    // presents dans ce projet (servos a rotation continue, ultrason, ruban
+    // RGB) plus un buzzer et deux capteurs de ligne sur broche numerique. Le
+    // cablage exact de ce produit precis n'a pas de documentation publique
+    // verifiable (pas de depot MakeCode officiel trouve) : plutot que de
+    // deviner des broches, elles sont toutes modifiables par des blocs
+    // "definir" facultatifs, comme le reste des modules Grove de ce projet.
+    // Les blocs de mouvement "d'une case" / "pivoter à gauche/droite" sont
+    // minutes (pas d'odometrie reelle) : a ajuster selon le sol et la charge.
+
+    const COULEUR_KITROBOT = 55;
+
+    function piloteKitrobot() {
+        importerMicrobit();
+        piloteServo();
+        piloteUltrason();
+        piloteRuban();
+        piloteRegistre();
+        pilote('kitrobot', [
+            '# Broches modifiables par les blocs "definir" (facultatifs) ; ces',
+            '# valeurs ne sont que des defauts raisonnables, pas un cablage verifie.',
+            '_KB_BROCHES = {',
+            '    "servo_g": pin1, "servo_d": pin2, "ultrason": pin0, "buzzer": pin8,',
+            '    "ligne_g": pin13, "ligne_d": pin14, "ruban": pin15',
+            '}',
+            '_KB_RUBAN_N = [8]',
+            '',
+            '# Servos montes en miroir de part et d\'autre du chassis (convention la',
+            '# plus courante sur ce type de robot) : pour avancer, ils tournent en',
+            '# sens visuellement oppose, d\'ou le signe inverse a droite. Si le robot',
+            '# recule au lieu d\'avancer, inverser ce signe ou le cablage d\'un cote.',
+            'def _kb_avancer(vitesse):',
+            '    _servo_continu(_KB_BROCHES["servo_g"], "kb_g", vitesse)',
+            '    _servo_continu(_KB_BROCHES["servo_d"], "kb_d", -vitesse)',
+            '',
+            'def _kb_pivoter(sens, vitesse):',
+            '    v = vitesse if sens == "horaire" else -vitesse',
+            '    _servo_continu(_KB_BROCHES["servo_g"], "kb_g", v)',
+            '    _servo_continu(_KB_BROCHES["servo_d"], "kb_d", v)',
+            '',
+            'def _kb_moteur(cote, sens, vitesse):',
+            '    v = vitesse if sens == "horaire" else -vitesse',
+            '    nom = "servo_g" if cote == "gauche" else "servo_d"',
+            '    _servo_continu(_KB_BROCHES[nom], "kb_" + cote, v)',
+            '',
+            'def _kb_arreter_moteur(cote):',
+            '    nom = "servo_g" if cote == "gauche" else "servo_d"',
+            '    _servo_arreter(_KB_BROCHES[nom], "kb_" + cote)',
+            '',
+            'def _kb_arreter():',
+            '    _kb_arreter_moteur("gauche")',
+            '    _kb_arreter_moteur("droit")',
+            '',
+            '# Duree approximative, sans mesure reelle (le robot n\'a pas d\'odometrie) :',
+            '# a corriger au besoin selon le sol et la charge.',
+            'def _kb_case(sens):',
+            '    _kb_avancer(50 if sens == "avant" else -50)',
+            '    sleep(600)',
+            '    _kb_arreter()',
+            '',
+            'def _kb_virage(sens):',
+            '    _kb_pivoter(sens, 50)',
+            '    sleep(400)',
+            '    _kb_arreter()',
+            '',
+            'def _kb_distance():',
+            '    return _grove_distance_cm(_KB_BROCHES["ultrason"])',
+            '',
+            '# Sens du signal (Vrai = ligne detectee) non verifie sur la carte reelle :',
+            '# certains capteurs Grove Line Finder sortent l\'inverse selon calibration.',
+            'def _kb_ligne(cote):',
+            '    broche = _KB_BROCHES["ligne_g" if cote == "gauche" else "ligne_d"]',
+            '    return bool(broche.read_digital())',
+            '',
+            '# Buzzer externe sur simple broche numerique : un carre PWM a la',
+            '# frequence voulue, technique standard sans puce dediee.',
+            'def _kb_buzzer(frequence, duree_ms):',
+            '    broche = _KB_BROCHES["buzzer"]',
+            '    frequence = int(frequence)',
+            '    if frequence <= 0:',
+            '        sleep(int(duree_ms))',
+            '        return',
+            '    broche.set_analog_period_us(round(1000000 / frequence))',
+            '    broche.write_analog(512)',
+            '    sleep(int(duree_ms))',
+            '    broche.write_analog(0)',
+            '',
+            'def _kb_ruban():',
+            '    return _grove_obj("kb_ruban", lambda: neopixel.NeoPixel(_KB_BROCHES["ruban"], _KB_RUBAN_N[0]))',
+            '',
+            'def _kb_clignoter():',
+            '    r = _kb_ruban()',
+            '    r.fill((255, 255, 255))',
+            '    r.show()',
+            '    sleep(150)',
+            '    r.fill((0, 0, 0))',
+            '    r.show()',
+            '',
+            'def _kb_del_couleur(index, couleur):',
+            '    r = _kb_ruban()',
+            '    if 0 <= index < len(r):',
+            '        r[index] = _grove_teinte(couleur)',
+            '        r.show()',
+            '',
+            'def _kb_del_rgb(index, rr, vv, bb):',
+            '    r = _kb_ruban()',
+            '    f = _grove_lum[0] / 100',
+            '    if 0 <= index < len(r):',
+            '        r[index] = (int(rr * f), int(vv * f), int(bb * f))',
+            '        r.show()',
+            '',
+            '# Teinte HSV -> RGB (saturation et valeur maximales), pour repartir les',
+            '# couleurs de facon reguliere sur le ruban.',
+            'def _kb_hsv(h):',
+            '    i = int(h * 6) % 6',
+            '    f = h * 6 - int(h * 6)',
+            '    p, q, t = 0, int(255 * (1 - f)), int(255 * f)',
+            '    if i == 0: return (255, t, p)',
+            '    if i == 1: return (q, 255, p)',
+            '    if i == 2: return (p, 255, t)',
+            '    if i == 3: return (p, q, 255)',
+            '    if i == 4: return (t, p, 255)',
+            '    return (255, p, q)',
+            '',
+            'def _kb_arcenciel():',
+            '    r = _kb_ruban()',
+            '    n = len(r)',
+            '    for i in range(n):',
+            '        r[i] = _kb_hsv(i / n)',
+            '    r.show()',
+        ]);
+    }
+
+    const MENU_COTE_KITROBOT = [["gauche", "gauche"], ["droit", "droit"]];
+    const MENU_SENS_AVANCER_KITROBOT = [["avancer", "avant"], ["reculer", "arriere"]];
+    const MENU_DIRECTION_KITROBOT = [["↻", "horaire"], ["↺", "antihoraire"]];
+
+    Blockly.Blocks['kitrobot_definir_servos'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : servo gauche")
+            .appendField(menuBrocheServo(), "GAUCHE").appendField("servo droit")
+            .appendField(menuBrocheServo(), "DROIT");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+        this.setTooltip("Facultatif : P1 (gauche) et P2 (droit) par défaut.");
+    }};
+    P.forBlock['kitrobot_definir_servos'] = function(block) {
+        piloteKitrobot();
+        return '_KB_BROCHES["servo_g"] = ' + block.getFieldValue('GAUCHE') + '\n' +
+               '_KB_BROCHES["servo_d"] = ' + block.getFieldValue('DROIT') + '\n';
+    };
+
+    Blockly.Blocks['kitrobot_definir_ultrason'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : capteur ultrason sur")
+            .appendField(menuBroche(), "BROCHE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+        this.setTooltip("Facultatif : P0 par défaut.");
+    }};
+    P.forBlock['kitrobot_definir_ultrason'] = function(block) {
+        piloteKitrobot();
+        return '_KB_BROCHES["ultrason"] = ' + block.getFieldValue('BROCHE') + '\n';
+    };
+
+    Blockly.Blocks['kitrobot_definir_buzzer'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : buzzer sur")
+            .appendField(menuBroche(), "BROCHE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+        this.setTooltip("Facultatif : P8 par défaut.");
+    }};
+    P.forBlock['kitrobot_definir_buzzer'] = function(block) {
+        piloteKitrobot();
+        return '_KB_BROCHES["buzzer"] = ' + block.getFieldValue('BROCHE') + '\n';
+    };
+
+    Blockly.Blocks['kitrobot_definir_lignes'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : capteur de ligne gauche")
+            .appendField(menuBroche(), "GAUCHE").appendField("droit")
+            .appendField(menuBroche(), "DROIT");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+        this.setTooltip("Facultatif : P13 (gauche) et P14 (droit) par défaut.");
+    }};
+    P.forBlock['kitrobot_definir_lignes'] = function(block) {
+        piloteKitrobot();
+        return '_KB_BROCHES["ligne_g"] = ' + block.getFieldValue('GAUCHE') + '\n' +
+               '_KB_BROCHES["ligne_d"] = ' + block.getFieldValue('DROIT') + '\n';
+    };
+
+    Blockly.Blocks['kitrobot_definir_ruban'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : ruban RGB sur")
+            .appendField(menuBroche(), "BROCHE").appendField("avec")
+            .appendField(new Blockly.FieldNumber(8, 1, 64), "NB").appendField("LED(s)");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+        this.setTooltip("Facultatif : P15 avec 8 LED par défaut.");
+    }};
+    P.forBlock['kitrobot_definir_ruban'] = function(block) {
+        piloteKitrobot();
+        const broche = block.getFieldValue('BROCHE');
+        const nb = block.getFieldValue('NB');
+        return '_KB_BROCHES["ruban"] = ' + broche + '\n' +
+               '_KB_RUBAN_N[0] = ' + nb + '\n' +
+               '_grove_objets["kb_ruban"] = neopixel.NeoPixel(' + broche + ', ' + nb + ')\n';
+    };
+
+    Blockly.Blocks['kitrobot_distance'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : distance (cm)");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_KITROBOT);
+    }};
+    P.forBlock['kitrobot_distance'] = function(block) {
+        piloteKitrobot();
+        return ['_kb_distance()', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['kitrobot_ligne'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : état du capteur de ligne")
+            .appendField(new Blockly.FieldDropdown(MENU_COTE_KITROBOT), "COTE");
+        this.setOutput(true, "Boolean");
+        this.setColour(COULEUR_KITROBOT);
+        this.setTooltip("Vrai si ce capteur détecte la ligne — à vérifier sur la carte, certains modules sont inversés.");
+    }};
+    P.forBlock['kitrobot_ligne'] = function(block) {
+        piloteKitrobot();
+        return ['_kb_ligne("' + block.getFieldValue('COTE') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['kitrobot_avancer'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 :")
+            .appendField(new Blockly.FieldDropdown(MENU_SENS_AVANCER_KITROBOT), "SENS")
+            .appendField("à la vitesse");
+        this.appendValueInput("VITESSE").setCheck("Number");
+        this.appendDummyInput().appendField("%");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+    }};
+    P.forBlock['kitrobot_avancer'] = function(block) {
+        piloteKitrobot();
+        const vitesse = P.valueToCode(block, 'VITESSE', P.ORDER_NONE) || '0';
+        const v = block.getFieldValue('SENS') === 'avant' ? vitesse : '-(' + vitesse + ')';
+        return '_kb_avancer(' + v + ')\n';
+    };
+
+    Blockly.Blocks['kitrobot_pivoter'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : pivoter")
+            .appendField(new Blockly.FieldDropdown(MENU_DIRECTION_KITROBOT), "SENS")
+            .appendField("vitesse");
+        this.appendValueInput("VITESSE").setCheck("Number");
+        this.appendDummyInput().appendField("%");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+    }};
+    P.forBlock['kitrobot_pivoter'] = function(block) {
+        piloteKitrobot();
+        const vitesse = P.valueToCode(block, 'VITESSE', P.ORDER_NONE) || '0';
+        return '_kb_pivoter("' + block.getFieldValue('SENS') + '", ' + vitesse + ')\n';
+    };
+
+    Blockly.Blocks['kitrobot_moteur'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : contrôler le moteur")
+            .appendField(new Blockly.FieldDropdown(MENU_COTE_KITROBOT), "COTE")
+            .appendField("direction").appendField(new Blockly.FieldDropdown(MENU_DIRECTION_KITROBOT), "SENS")
+            .appendField("vitesse");
+        this.appendValueInput("VITESSE").setCheck("Number");
+        this.appendDummyInput().appendField("%");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+    }};
+    P.forBlock['kitrobot_moteur'] = function(block) {
+        piloteKitrobot();
+        const vitesse = P.valueToCode(block, 'VITESSE', P.ORDER_NONE) || '0';
+        return '_kb_moteur("' + block.getFieldValue('COTE') + '", "' +
+               block.getFieldValue('SENS') + '", ' + vitesse + ')\n';
+    };
+
+    Blockly.Blocks['kitrobot_arreter_moteur'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : arrêter le moteur")
+            .appendField(new Blockly.FieldDropdown(MENU_COTE_KITROBOT), "COTE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+    }};
+    P.forBlock['kitrobot_arreter_moteur'] = function(block) {
+        piloteKitrobot();
+        return '_kb_arreter_moteur("' + block.getFieldValue('COTE') + '")\n';
+    };
+
+    Blockly.Blocks['kitrobot_case_avant'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : avancer d'une case");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+        this.setTooltip("Distance approximative, minutée (pas d'odométrie) : à ajuster selon le sol.");
+    }};
+    P.forBlock['kitrobot_case_avant'] = function(block) {
+        piloteKitrobot();
+        return '_kb_case("avant")\n';
+    };
+
+    Blockly.Blocks['kitrobot_case_arriere'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : reculer d'une case");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+        this.setTooltip("Distance approximative, minutée (pas d'odométrie) : à ajuster selon le sol.");
+    }};
+    P.forBlock['kitrobot_case_arriere'] = function(block) {
+        piloteKitrobot();
+        return '_kb_case("arriere")\n';
+    };
+
+    Blockly.Blocks['kitrobot_pivoter_gauche'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : pivoter à gauche");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+        this.setTooltip("Rotation approximative (~90°), minutée : à ajuster selon le sol.");
+    }};
+    P.forBlock['kitrobot_pivoter_gauche'] = function(block) {
+        piloteKitrobot();
+        return '_kb_virage("antihoraire")\n';
+    };
+
+    Blockly.Blocks['kitrobot_pivoter_droite'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : pivoter à droite");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+        this.setTooltip("Rotation approximative (~90°), minutée : à ajuster selon le sol.");
+    }};
+    P.forBlock['kitrobot_pivoter_droite'] = function(block) {
+        piloteKitrobot();
+        return '_kb_virage("horaire")\n';
+    };
+
+    Blockly.Blocks['kitrobot_arreter'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : arrêter le robot");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+    }};
+    P.forBlock['kitrobot_arreter'] = function(block) {
+        piloteKitrobot();
+        return '_kb_arreter()\n';
+    };
+
+    Blockly.Blocks['kitrobot_buzzer'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : buzzer à la fréquence");
+        this.appendValueInput("FREQUENCE").setCheck("Number");
+        this.appendDummyInput().appendField("Hz pendant");
+        this.appendValueInput("DUREE").setCheck("Number");
+        this.appendDummyInput().appendField("ms");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+    }};
+    P.forBlock['kitrobot_buzzer'] = function(block) {
+        piloteKitrobot();
+        const freq = P.valueToCode(block, 'FREQUENCE', P.ORDER_NONE) || '440';
+        const duree = P.valueToCode(block, 'DUREE', P.ORDER_NONE) || '500';
+        return '_kb_buzzer(' + freq + ', ' + duree + ')\n';
+    };
+
+    Blockly.Blocks['kitrobot_clignoter'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : clignoter le robot");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+    }};
+    P.forBlock['kitrobot_clignoter'] = function(block) {
+        piloteKitrobot();
+        return '_kb_clignoter()\n';
+    };
+
+    Blockly.Blocks['kitrobot_del_couleur'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : LED RGB");
+        this.appendValueInput("INDEX").setCheck("Number");
+        this.appendDummyInput().appendField("à").appendField(menuCouleur(), "COULEUR");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+    }};
+    P.forBlock['kitrobot_del_couleur'] = function(block) {
+        piloteKitrobot();
+        const index = P.valueToCode(block, 'INDEX', P.ORDER_NONE) || '0';
+        return '_kb_del_couleur(' + index + ', ' + block.getFieldValue('COULEUR') + ')\n';
+    };
+
+    Blockly.Blocks['kitrobot_del_rgb'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : LED RGB en");
+        this.appendValueInput("INDEX").setCheck("Number");
+        this.appendDummyInput().appendField("à R");
+        this.appendValueInput("R").setCheck("Number");
+        this.appendDummyInput().appendField("V");
+        this.appendValueInput("V").setCheck("Number");
+        this.appendDummyInput().appendField("B");
+        this.appendValueInput("B").setCheck("Number");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+    }};
+    P.forBlock['kitrobot_del_rgb'] = function(block) {
+        piloteKitrobot();
+        const index = P.valueToCode(block, 'INDEX', P.ORDER_NONE) || '0';
+        const r = P.valueToCode(block, 'R', P.ORDER_NONE) || '0';
+        const v = P.valueToCode(block, 'V', P.ORDER_NONE) || '0';
+        const b = P.valueToCode(block, 'B', P.ORDER_NONE) || '0';
+        return '_kb_del_rgb(' + index + ', ' + r + ', ' + v + ', ' + b + ')\n';
+    };
+
+    Blockly.Blocks['kitrobot_arcenciel'] = { init: function() {
+        this.appendDummyInput().appendField("Kitrobot v2 : Arc-en-ciel");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_KITROBOT);
+    }};
+    P.forBlock['kitrobot_arcenciel'] = function(block) {
+        piloteKitrobot();
+        return '_kb_arcenciel()\n';
+    };
+
+    // ---------- LiDAR matriciel DFRobot (SEN0628, I2C 0x30-0x33) ----------
+    //
+    // Capteur independant, pas propre a un robot particulier (compatible
+    // Maqueen ou tout autre montage). Protocole verifie depuis la source
+    // officielle DFRobot/pxt-DFRobot_matrixLidarDistanceSensor
+    // (matrixLidarDistance.ts) : paquet [0x55, longueur_H, longueur_L,
+    // commande, ...donnees], reponse lue octet par octet jusqu'a un octet de
+    // statut (0x53 = succes, 0x63 = echec), jamais confronte a un vrai
+    // capteur.
+
+    const COULEUR_LIDAR = 65;
+    const MENU_ADRESSE_LIDAR = [["0x30", "48"], ["0x31", "49"], ["0x32", "50"], ["0x33", "51"]];
+
+    function piloteLidar() {
+        importerMicrobit();
+        pilote('lidar', [
+            '_LIDAR_ADR = [0x30]',
+            '_LIDAR_STATUT_OK = 0x53',
+            '_LIDAR_STATUT_ECHEC = 0x63',
+            '_LIDAR_DIR = [0]',
+            '_LIDAR_URGENCE = [0]',
+            '_LIDAR_GAUCHE = [0]',
+            '_LIDAR_AVANT = [0]',
+            '_LIDAR_DROITE = [0]',
+            '',
+            'def _lidar_paquet(adresse, commande, donnees=b""):',
+            '    longueur = len(donnees) + 1',
+            '    entete = bytes([0x55, (longueur >> 8) & 0xFF, longueur & 0xFF, commande])',
+            '    i2c.write(adresse, entete + donnees)',
+            '    sleep(10)',
+            '',
+            '# Lit une reponse paquet : statut, commande echo, longueur (2 octets),',
+            '# puis "longueur" octets de charge utile. b\'\' si rien de valide recu.',
+            'def _lidar_reponse(adresse, commande):',
+            '    debut = running_time()',
+            '    while running_time() - debut < 200:',
+            '        statut = i2c.read(adresse, 1)[0]',
+            '        if statut in (_LIDAR_STATUT_OK, _LIDAR_STATUT_ECHEC):',
+            '            echo = i2c.read(adresse, 1)[0]',
+            '            long_oct = i2c.read(adresse, 2)',
+            '            longueur = long_oct[1] << 8 | long_oct[0]',
+            '            if echo != commande or longueur == 0:',
+            '                return b""',
+            '            return i2c.read(adresse, longueur)',
+            '    return b""',
+            '',
+            '# matrice=1 : mode evitement 4x4 (necessaire pour _lidar_donnees_evitement).',
+            '# matrice=0 : mode matrice 8x8 complete (necessaire pour _lidar_point).',
+            'def _lidar_initialiser(adresse, matrice_8x8):',
+            '    _LIDAR_ADR[0] = adresse',
+            '    _lidar_paquet(adresse, 1, bytes([0 if matrice_8x8 else 1, 0, 0]))',
+            '    _lidar_reponse(adresse, 7)',
+            '',
+            'def _lidar_distance_evitement(distance_mm):',
+            '    d = int(distance_mm)',
+            '    _lidar_paquet(_LIDAR_ADR[0], 7, bytes([(d >> 8) & 0xFF, d & 0xFF]))',
+            '    _lidar_reponse(_LIDAR_ADR[0], 7)',
+            '',
+            '# Rafraichit direction/urgence/distances a partir d\'une seule lecture :',
+            '# les blocs de lecture ci-dessous relisent ce cache, pas le capteur a',
+            '# chaque appel (comme le fait le pilote DFRobot lui-meme).',
+            'def _lidar_acquerir():',
+            '    _lidar_paquet(_LIDAR_ADR[0], 6)',
+            '    d = _lidar_reponse(_LIDAR_ADR[0], 6)',
+            '    if len(d) >= 8:',
+            '        _LIDAR_DIR[0] = d[0]',
+            '        _LIDAR_URGENCE[0] = d[1]',
+            '        _LIDAR_GAUCHE[0] = d[2] | d[3] << 8',
+            '        _LIDAR_AVANT[0] = d[4] | d[5] << 8',
+            '        _LIDAR_DROITE[0] = d[6] | d[7] << 8',
+            '',
+            'def _lidar_direction():',
+            '    return _LIDAR_DIR[0]',
+            '',
+            'def _lidar_urgence():',
+            '    return bool(_LIDAR_URGENCE[0])',
+            '',
+            'def _lidar_cote(cote):',
+            '    if cote == "gauche":',
+            '        return _LIDAR_GAUCHE[0]',
+            '    if cote == "droite":',
+            '        return _LIDAR_DROITE[0]',
+            '    return _LIDAR_AVANT[0]',
+            '',
+            '# Uniquement en mode matrice 8x8 (voir _lidar_initialiser) : x,y de 0 a 7.',
+            'def _lidar_point(adresse, x, y):',
+            '    _lidar_paquet(adresse, 3, bytes([int(x), int(y)]))',
+            '    d = _lidar_reponse(adresse, 3)',
+            '    return (d[0] | d[1] << 8) if len(d) >= 2 else 0',
+        ]);
+    }
+
+    Blockly.Blocks['lidar_initialiser'] = { init: function() {
+        this.appendDummyInput().appendField("LiDAR")
+            .appendField(new Blockly.FieldDropdown(MENU_ADRESSE_LIDAR), "ADRESSE")
+            .appendField(": configurer la taille")
+            .appendField(new Blockly.FieldDropdown([["Matrice 8x8", "TRUE"], ["Évitement 4x4", "FALSE"]]), "MODE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_LIDAR);
+        this.setTooltip("À poser une fois avant les autres blocs LiDAR. Le mode évitement 4x4 est nécessaire pour les blocs de la section « Évitement d'obstacle » ; le mode Matrice 8x8 pour « distance mesurée au point x,y ».");
+    }};
+    P.forBlock['lidar_initialiser'] = function(block) {
+        piloteLidar();
+        return '_lidar_initialiser(' + block.getFieldValue('ADRESSE') + ', ' + block.getFieldValue('MODE') + ')\n';
+    };
+
+    Blockly.Blocks['lidar_point'] = { init: function() {
+        this.appendDummyInput().appendField("LiDAR")
+            .appendField(new Blockly.FieldDropdown(MENU_ADRESSE_LIDAR), "ADRESSE")
+            .appendField(": distance mesurée au point x").appendField(new Blockly.FieldNumber(0, 0, 7, 1), "X")
+            .appendField("y").appendField(new Blockly.FieldNumber(0, 0, 7, 1), "Y").appendField("(mm)");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_LIDAR);
+    }};
+    P.forBlock['lidar_point'] = function(block) {
+        piloteLidar();
+        return ['_lidar_point(' + block.getFieldValue('ADRESSE') + ', ' + block.getFieldValue('X') + ', ' + block.getFieldValue('Y') + ')', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['lidar_distance_evitement'] = { init: function() {
+        this.appendDummyInput().appendField("LiDAR : configurer la distance d'évitement à");
+        this.appendValueInput("DISTANCE").setCheck("Number");
+        this.appendDummyInput().appendField("(mm)");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_LIDAR);
+        this.setTooltip("Sur un Maqueen, ne pas dépasser 200 mm : au-delà, le faisceau peut toucher le sol et fausser la détection (avertissement du fabricant).");
+    }};
+    P.forBlock['lidar_distance_evitement'] = function(block) {
+        piloteLidar();
+        const distance = P.valueToCode(block, 'DISTANCE', P.ORDER_NONE) || '200';
+        return '_lidar_distance_evitement(' + distance + ')\n';
+    };
+
+    Blockly.Blocks['lidar_acquerir'] = { init: function() {
+        this.appendDummyInput().appendField("LiDAR : acquérir les données d'évitement");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_LIDAR);
+        this.setTooltip("À appeler avant de lire le signal d'urgence, la direction conseillée ou une distance : ces blocs relisent la dernière acquisition, pas le capteur en direct.");
+    }};
+    P.forBlock['lidar_acquerir'] = function(block) {
+        piloteLidar();
+        return '_lidar_acquerir()\n';
+    };
+
+    Blockly.Blocks['lidar_urgence'] = { init: function() {
+        this.appendDummyInput().appendField("LiDAR : signal d'urgence activé ?");
+        this.setOutput(true, "Boolean");
+        this.setColour(COULEUR_LIDAR);
+        this.setTooltip("Vrai si un obstacle est détecté à moins de 100 mm.");
+    }};
+    P.forBlock['lidar_urgence'] = function(block) {
+        piloteLidar();
+        return ['_lidar_urgence()', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['lidar_direction'] = { init: function() {
+        this.appendDummyInput().appendField("LiDAR : direction à suivre pour éviter l'obstacle");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_LIDAR);
+        this.setTooltip("1 = gauche, 2 = droite, 3 = tout droit (d'après la source DFRobot).");
+    }};
+    P.forBlock['lidar_direction'] = function(block) {
+        piloteLidar();
+        return ['_lidar_direction()', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['lidar_direction_est'] = { init: function() {
+        this.appendDummyInput().appendField("LiDAR : direction à suivre est")
+            .appendField(new Blockly.FieldDropdown([["à gauche", "1"], ["à droite", "2"], ["tout droit", "3"]]), "SENS").appendField("?");
+        this.setOutput(true, "Boolean");
+        this.setColour(COULEUR_LIDAR);
+    }};
+    P.forBlock['lidar_direction_est'] = function(block) {
+        piloteLidar();
+        return ['(_lidar_direction() == ' + block.getFieldValue('SENS') + ')', P.ORDER_RELATIONAL];
+    };
+
+    Blockly.Blocks['lidar_distance_cote'] = { init: function() {
+        this.appendDummyInput().appendField("LiDAR : distance (en cm) de l'obstacle à")
+            .appendField(new Blockly.FieldDropdown([["gauche", "gauche"], ["devant", "avant"], ["droite", "droite"]]), "COTE");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_LIDAR);
+    }};
+    P.forBlock['lidar_distance_cote'] = function(block) {
+        piloteLidar();
+        return ['(_lidar_cote("' + block.getFieldValue('COTE') + '") / 10)', P.ORDER_ADDITIVE];
+    };
+
     // ==========================================
     // 1 bis. PROFIL ADMINISTRATEUR — configuration et libellés
     // ==========================================
@@ -2668,6 +3932,101 @@ try {
               { "kind": "block", "type": "servo_arret_neutre" },
               { "kind": "block", "type": "servo_intervalle", "inputs": { "MINI": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "MAXI": { "shadow": { "type": "math_number", "fields": { "NUM": "180" } } } } },
               { "kind": "block", "type": "servo_impulsion", "inputs": { "MICROS": { "shadow": { "type": "math_number", "fields": { "NUM": "1500" } } } } }
+            ]
+          },
+          {
+            "kind": "category", "name": "Maqueen Plus", "colour": String(COULEUR_MAQUEEN),
+            "contents": [
+              { "kind": "label", "text": "Moteurs" },
+              { "kind": "block", "type": "maqueen_moteur", "inputs": { "VITESSE": { "shadow": { "type": "math_number", "fields": { "NUM": "150" } } } } },
+              { "kind": "block", "type": "maqueen_arreter" },
+
+              { "kind": "label", "text": "Capteurs de ligne" },
+              { "kind": "block", "type": "maqueen_ligne_etat" },
+              { "kind": "block", "type": "maqueen_ligne_valeur" },
+
+              { "kind": "label", "text": "Phares et DEL" },
+              { "kind": "block", "type": "maqueen_phare" },
+              { "kind": "block", "type": "maqueen_rgb_couleur" },
+              { "kind": "block", "type": "maqueen_rgb_eteindre" },
+
+              { "kind": "label", "text": "Ultrason" },
+              { "kind": "block", "type": "maqueen_distance" },
+
+              { "kind": "label", "text": "Suiveur de ligne (V3)" },
+              { "kind": "block", "type": "maqueen_v3_vitesse_suivi" },
+              { "kind": "block", "type": "maqueen_v3_mode_carrefour" },
+              { "kind": "block", "type": "maqueen_v3_mode_T" },
+              { "kind": "block", "type": "maqueen_v3_mode_gauche" },
+              { "kind": "block", "type": "maqueen_v3_mode_droite" },
+              { "kind": "block", "type": "maqueen_v3_suiveur" },
+              { "kind": "block", "type": "maqueen_v3_intersection_detectee" },
+              { "kind": "block", "type": "maqueen_v3_intersection_est" },
+              { "kind": "block", "type": "maqueen_v3_luminosite" },
+
+              { "kind": "label", "text": "PID (V3)" },
+              { "kind": "block", "type": "maqueen_v3_pid_avancer", "inputs": { "DISTANCE": { "shadow": { "type": "math_number", "fields": { "NUM": "50" } } } } },
+              { "kind": "block", "type": "maqueen_v3_pid_tourner", "inputs": { "ANGLE": { "shadow": { "type": "math_number", "fields": { "NUM": "90" } } } } },
+              { "kind": "block", "type": "maqueen_v3_vitesse_reelle" },
+              { "kind": "block", "type": "maqueen_v3_pid_stop" },
+              { "kind": "block", "type": "maqueen_v3_del_carrosserie" },
+
+              { "kind": "label", "text": "Télécommande infrarouge" },
+              { "kind": "block", "type": "maqueen_ir_init" },
+              { "kind": "block", "type": "lorsque_ir_noire" },
+              { "kind": "block", "type": "lorsque_ir_grise" },
+              { "kind": "block", "type": "maqueen_ir_decoder" },
+              { "kind": "block", "type": "maqueen_ir_dernier_code" }
+            ]
+          },
+          {
+            "kind": "category", "name": "Kitrobot v2", "colour": String(COULEUR_KITROBOT),
+            "contents": [
+              { "kind": "label", "text": "Configuration (facultatif)" },
+              { "kind": "block", "type": "kitrobot_definir_servos" },
+              { "kind": "block", "type": "kitrobot_definir_ultrason" },
+              { "kind": "block", "type": "kitrobot_definir_buzzer" },
+              { "kind": "block", "type": "kitrobot_definir_lignes" },
+              { "kind": "block", "type": "kitrobot_definir_ruban" },
+
+              { "kind": "label", "text": "Détection" },
+              { "kind": "block", "type": "kitrobot_distance" },
+              { "kind": "block", "type": "kitrobot_ligne" },
+
+              { "kind": "label", "text": "Déplacement" },
+              { "kind": "block", "type": "kitrobot_avancer", "inputs": { "VITESSE": { "shadow": { "type": "math_number", "fields": { "NUM": "30" } } } } },
+              { "kind": "block", "type": "kitrobot_pivoter", "inputs": { "VITESSE": { "shadow": { "type": "math_number", "fields": { "NUM": "30" } } } } },
+              { "kind": "block", "type": "kitrobot_moteur", "inputs": { "VITESSE": { "shadow": { "type": "math_number", "fields": { "NUM": "30" } } } } },
+              { "kind": "block", "type": "kitrobot_arreter_moteur" },
+              { "kind": "block", "type": "kitrobot_case_avant" },
+              { "kind": "block", "type": "kitrobot_case_arriere" },
+              { "kind": "block", "type": "kitrobot_pivoter_gauche" },
+              { "kind": "block", "type": "kitrobot_pivoter_droite" },
+              { "kind": "block", "type": "kitrobot_arreter" },
+
+              { "kind": "label", "text": "Contrôle" },
+              { "kind": "block", "type": "kitrobot_buzzer", "inputs": { "FREQUENCE": { "shadow": { "type": "math_number", "fields": { "NUM": "440" } } }, "DUREE": { "shadow": { "type": "math_number", "fields": { "NUM": "500" } } } } },
+
+              { "kind": "label", "text": "LED RGB" },
+              { "kind": "block", "type": "kitrobot_clignoter" },
+              { "kind": "block", "type": "kitrobot_del_couleur", "inputs": { "INDEX": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "kitrobot_del_rgb", "inputs": { "INDEX": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "R": { "shadow": { "type": "math_number", "fields": { "NUM": "255" } } }, "V": { "shadow": { "type": "math_number", "fields": { "NUM": "255" } } }, "B": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "kitrobot_arcenciel" }
+            ]
+          },
+          {
+            "kind": "category", "name": "LiDAR", "colour": String(COULEUR_LIDAR),
+            "contents": [
+              { "kind": "block", "type": "lidar_initialiser" },
+              { "kind": "block", "type": "lidar_point" },
+
+              { "kind": "label", "text": "Évitement d'obstacle" },
+              { "kind": "block", "type": "lidar_distance_evitement", "inputs": { "DISTANCE": { "shadow": { "type": "math_number", "fields": { "NUM": "200" } } } } },
+              { "kind": "block", "type": "lidar_acquerir" },
+              { "kind": "block", "type": "lidar_urgence" },
+              { "kind": "block", "type": "lidar_direction" },
+              { "kind": "block", "type": "lidar_direction_est" },
+              { "kind": "block", "type": "lidar_distance_cote" }
             ]
           },
           {
@@ -3821,6 +5180,9 @@ try {
         // La radio n'a pas d'interruption : on releve la boite aux lettres a
         // chaque tour, et le pilote appelle le gestionnaire qui convient.
         ['def on_radio_',             '_radio_traiter()'],
+        // Meme principe que la radio : pas d'interruption materielle non plus
+        // pour l'infrarouge, une seule fonction de tri appelee a chaque tour.
+        ['def on_ir_',                '_ir_traiter()'],
     ];
 
     // ------------------------------------------
@@ -3933,6 +5295,9 @@ try {
         window.currentPythonCode = codePython;
 
         if (panneauGrovePret) rafraichirPanneauGrove();
+        if (panneauMaqueenPret) rafraichirPanneauMaqueen();
+        if (panneauKitrobotPret) rafraichirPanneauKitrobot();
+        if (panneauLidarPret) rafraichirPanneauLidar();
 
         const wrapAB = document.getElementById('wrap-ab');
         if (wrapAB) {
@@ -4051,6 +5416,24 @@ try {
     window.simu_effacerEcran = function() { window.simuQueue.push({ type: 'clear' }); };
     window.simu_afficherIcone = function(icone) { window.simuQueue.push({ type: 'show', value: icone }); };
     window.simu_sleep = function(ms) { window.simuQueue.push({ type: 'sleep', value: ms }); };
+    // Pas de vrai signal infrarouge dans un navigateur : le bouton "Simuler
+    // l'appui" du panneau Maqueen dépose ici la touche choisie, et le mock
+    // Brython de _ir_traiter() (voir index.html) la consomme au tour suivant
+    // — même principe que was_gesture() pour le geste "secouer".
+    let irCommandeAttente = null;
+    window.simu_irDeclencher = function(telecommande, touche) {
+        const table = telecommande === 'grise' ? IR_CODE_GRISE : IR_CODE_NOIRE;
+        const code = table[touche] === undefined ? -1 : table[touche];
+        irCommandeAttente = { telecommande: String(telecommande), touche: String(touche), code: Number(code) };
+    };
+    // Fonctions plutôt qu'un objet lu directement : la lecture d'une propriété
+    // JS imbriquée depuis Brython n'est pas fiable (voir PIÈGE dédié), un
+    // appel de fonction qui renvoie un type simple (bool/str/int) l'est.
+    window.simu_irEnAttente = function() { return irCommandeAttente !== null; };
+    window.simu_irTelecommande = function() { return irCommandeAttente ? irCommandeAttente.telecommande : ''; };
+    window.simu_irToucheAttente = function() { return irCommandeAttente ? irCommandeAttente.touche : ''; };
+    window.simu_irCodeAttente = function() { return irCommandeAttente ? irCommandeAttente.code : -1; };
+    window.simu_irConsommer = function() { irCommandeAttente = null; };
 
     // NOUVELLES FONCTIONS POUR LE TEXTE
     window.simu_showTexte = function(txt) { window.simuQueue.push({ type: 'showText', value: txt }); };
@@ -4497,6 +5880,791 @@ try {
                                 valeur: Math.round(Number(valeur)), angle: Number(angle) });
     };
 
+    // ------------------------------------------
+    // MAQUEEN PLUS — position réelle sur une piste
+    // ------------------------------------------
+    // Le robot avance vraiment (position + cap) selon la vitesse de chaque
+    // roue, et les capteurs de ligne lisent la couleur du pixel de la piste
+    // sous eux. Pour que ça ait un sens boucle après boucle (pas seulement un
+    // aller simple), l'exécution du programme est retravaillée plus bas
+    // (« TOURS DE BOUCLE ») pour qu'un tour ne démarre qu'une fois le
+    // précédent visuellement terminé — un capteur lu au tour 2 voit donc la
+    // position mise à jour par le tour 1, pas celle du tour 0.
+
+    const MQ_LARGEUR = 300, MQ_HAUTEUR = 220;
+    const MQ_EMPATTEMENT = 20;        // distance entre les deux roues, en px
+    const MQ_VITESSE_MAX = 70;        // px/s a vitesse moteur 255
+    const MQ_AVANT_CAPTEURS = 12;     // distance des capteurs devant le centre du robot
+    const MQ_DECALAGE_CAPTEUR = { L2: -16, L1: -8, M: 0, R1: 8, R2: 16 };
+
+    // Plusieurs tracés possibles pour la même piste (même fond, même trait
+    // blanc de 26 px) : chacun fournit son propre point de départ, un point
+    // qui a du sens sur SON tracé n'en a pas forcément sur un autre.
+    const PISTES_MAQUEEN = {
+        ovale: {
+            nom: 'Boucle ovale',
+            depart: { x: 150, y: 42, cap: 0 },
+            dessiner(ctx) {
+                ctx.beginPath();
+                ctx.roundRect(34, 30, MQ_LARGEUR - 68, MQ_HAUTEUR - 60, 44);
+                ctx.stroke();
+            }
+        },
+        rectangulaire: {
+            nom: 'Circuit rectangulaire',
+            depart: { x: 150, y: 30, cap: 0 },
+            dessiner(ctx) {
+                // Coins presque vifs (petit rayon) : virages plus brusques
+                // qu'un simple ovale, pour mettre un peu plus a l'epreuve un
+                // programme suiveur de ligne.
+                ctx.beginPath();
+                ctx.roundRect(34, 30, MQ_LARGEUR - 68, MQ_HAUTEUR - 60, 8);
+                ctx.stroke();
+            }
+        },
+        huit: {
+            nom: 'Circuit en huit',
+            depart: { x: 90, y: 30, cap: 0 },
+            dessiner(ctx) {
+                // Deux boucles qui se chevauchent au milieu : le trait blanc
+                // se croise tout seul dans la zone commune, pas besoin de
+                // calculer une intersection a la main.
+                ctx.beginPath();
+                ctx.roundRect(20, 30, 140, MQ_HAUTEUR - 60, 38);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.roundRect(120, 30, 140, MQ_HAUTEUR - 60, 38);
+                ctx.stroke();
+            }
+        }
+    };
+
+    // --- Piste personnalisée : éditeur à points de passage ---
+    //
+    // Un tracé personnalisé se résume à une liste de points {x, y} reliés par
+    // des segments droits, refermée du dernier au premier — même technique de
+    // rendu que les pistes fixes (trait blanc épais sur fond vert), donc la
+    // lecture des capteurs de ligne (qui relit le pixel du canevas) marche
+    // sans rien y changer.
+
+    const CLE_PISTE_PERSO_MAQUEEN = 'blockly_ts_piste_maqueen_perso';
+
+    function dessinerPolylineFermeeMaqueen(ctx, points) {
+        if (points.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+        if (points.length >= 3) ctx.closePath();
+        ctx.stroke();
+    }
+
+    /** Le robot démarre en direction du deuxième point : face à la piste, pas au hasard. */
+    function calculerDepartPisteMaqueen(points) {
+        const cap = Math.atan2(points[1].y - points[0].y, points[1].x - points[0].x) * 180 / Math.PI;
+        return { x: points[0].x, y: points[0].y, cap };
+    }
+
+    function construirePisteMaqueenDepuisPoints(points) {
+        return {
+            nom: 'Piste personnalisée',
+            points,   // conservés à part (pas seulement dans la fermeture dessiner) pour pouvoir rouvrir l'édition
+            depart: calculerDepartPisteMaqueen(points),
+            dessiner(ctx) { dessinerPolylineFermeeMaqueen(ctx, points); }
+        };
+    }
+
+    function chargerPistePersoMaqueen() {
+        try {
+            const brut = localStorage.getItem(CLE_PISTE_PERSO_MAQUEEN);
+            if (!brut) return;
+            const points = JSON.parse(brut);
+            if (Array.isArray(points) && points.length >= 3) {
+                PISTES_MAQUEEN.perso = construirePisteMaqueenDepuisPoints(points);
+            }
+        } catch (erreur) { /* stockage indisponible ou corrompu : pas de piste perso */ }
+    }
+
+    function sauvegarderPistePersoMaqueen(points) {
+        try { localStorage.setItem(CLE_PISTE_PERSO_MAQUEEN, JSON.stringify(points)); }
+        catch (erreur) { /* stockage indisponible : la piste vaut pour la session */ }
+    }
+
+    chargerPistePersoMaqueen();
+
+    let pisteMaqueenActuelle = 'ovale';
+    // Pas une constante : glisser le robot sur la piste (voir plus bas) deplace
+    // le point de depart lui-meme, pour que "Reinitialiser" reparte de la ou
+    // il a ete pose plutot que d'annuler le placement a chaque reinitialisation.
+    // Changer de piste (voir changerPisteMaqueen) le remplace aussi : le point
+    // de depart d'une piste n'a aucune raison de tomber sur le trace d'une
+    // autre.
+    let MQ_DEPART = { ...PISTES_MAQUEEN[pisteMaqueenActuelle].depart };
+
+    const MQ = {
+        actif: false,               // un bloc Maqueen a-t-il ete pose ?
+        x: MQ_DEPART.x, y: MQ_DEPART.y, cap: MQ_DEPART.cap,
+        vGauche: 0, vDroite: 0,
+        phareG: false, phareD: false,
+        rgb: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]   // L1, L2, R2, R1
+    };
+
+    const canevasPisteMaqueen = document.getElementById('maqueen-piste-canevas');
+    const robotMaqueenEl = document.getElementById('maqueen-robot');
+    const selecteurPisteMaqueen = document.getElementById('maqueen-piste-select');
+    const phareGEl = document.getElementById('maqueen-phare-g');
+    const phareDEl = document.getElementById('maqueen-phare-d');
+    const delsMaqueen = [
+        document.getElementById('maqueen-del-l1'), document.getElementById('maqueen-del-l2'),
+        document.getElementById('maqueen-del-r2'), document.getElementById('maqueen-del-r1')
+    ];
+    // Les deux DEL dessinées sur le robot lui-même (pas seulement dans le
+    // panneau) : L1 à gauche, R1 à droite, mêmes indices que delsMaqueen.
+    const delsSpriteMaqueen = [
+        document.getElementById('maqueen-sprite-del-1'), document.getElementById('maqueen-sprite-del-2')
+    ];
+    const curseurDistanceMaqueen = document.getElementById('maqueen-distance');
+    // willReadFrequently : les capteurs de ligne relisent des pixels du
+    // canevas a chaque deplacement du robot, plus souvent depuis que les
+    // indicateurs ci-dessous en ajoutent jusqu'a cinq de plus a chaque fois.
+    const ctxPisteMaqueen = canevasPisteMaqueen
+        ? canevasPisteMaqueen.getContext('2d', { willReadFrequently: true }) : null;
+    const ligneCapteursMaqueenEl = document.getElementById('maqueen-ligne-capteurs');
+    const chipsCapteursLigneMaqueen = {};
+    if (ligneCapteursMaqueenEl) {
+        ligneCapteursMaqueenEl.querySelectorAll('.maqueen-capteur-ligne').forEach(chip => {
+            chipsCapteursLigneMaqueen[chip.dataset.capteur] = chip;
+        });
+    }
+    const btnEditerPisteMaqueen = document.getElementById('maqueen-piste-editer');
+    const barreEditionPisteMaqueen = document.getElementById('maqueen-edition-barre');
+    const btnTerminerPisteMaqueen = document.getElementById('maqueen-piste-terminer');
+    const btnAnnulerPisteMaqueen = document.getElementById('maqueen-piste-annuler');
+    const btnEffacerPisteMaqueen = document.getElementById('maqueen-piste-effacer');
+
+    /** Dessinée à chaque changement de piste ; c'est aussi elle qu'on relit pour les capteurs de ligne. */
+    function dessinerPisteMaqueen() {
+        if (!ctxPisteMaqueen) return;
+        const ctx = ctxPisteMaqueen;
+        ctx.clearRect(0, 0, MQ_LARGEUR, MQ_HAUTEUR);
+        ctx.fillStyle = '#3aa66b';
+        ctx.fillRect(0, 0, MQ_LARGEUR, MQ_HAUTEUR);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 26;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        PISTES_MAQUEEN[pisteMaqueenActuelle].dessiner(ctx);
+    }
+
+    /** Change de tracé : redessine, ramène le robot au départ propre à cette piste. */
+    function changerPisteMaqueen(cle) {
+        if (!PISTES_MAQUEEN[cle]) return;
+        pisteMaqueenActuelle = cle;
+        MQ_DEPART = { ...PISTES_MAQUEEN[cle].depart };
+        dessinerPisteMaqueen();
+        reinitialiserMaqueen();
+    }
+
+    function remplirSelecteurPisteMaqueen() {
+        if (!selecteurPisteMaqueen) return;
+        selecteurPisteMaqueen.innerHTML = '';
+        for (const cle in PISTES_MAQUEEN) {
+            const option = document.createElement('option');
+            option.value = cle;
+            option.textContent = PISTES_MAQUEEN[cle].nom;
+            selecteurPisteMaqueen.appendChild(option);
+        }
+        selecteurPisteMaqueen.value = pisteMaqueenActuelle;
+    }
+
+    // --- Éditeur de piste à points de passage ---
+    //
+    // Clic sur la piste : ajoute un point a la fin du trace. Glisser un point
+    // existant (poignee jaune) : le deplace. Double-clic dessus : le
+    // supprime. Le canevas sert d'apercu en direct pendant l'edition — meme
+    // fonction de dessin que l'affichage normal, juste avec le trace encore
+    // ouvert (pas referme) tant qu'il y a moins de 3 points.
+
+    let modeEditionPisteMaqueen = false;
+    let pointsEditionPisteMaqueen = [];
+    const poigneesEditionPisteMaqueen = [];
+
+    function redessinerApercuEditionPisteMaqueen() {
+        if (!ctxPisteMaqueen) return;
+        const ctx = ctxPisteMaqueen;
+        ctx.clearRect(0, 0, MQ_LARGEUR, MQ_HAUTEUR);
+        ctx.fillStyle = '#3aa66b';
+        ctx.fillRect(0, 0, MQ_LARGEUR, MQ_HAUTEUR);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 26;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        dessinerPolylineFermeeMaqueen(ctx, pointsEditionPisteMaqueen);
+        synchroniserPoigneesEditionPisteMaqueen();
+    }
+
+    function creerPoigneeEditionPisteMaqueen() {
+        const poignee = document.createElement('div');
+        poignee.className = 'mq-poignee';
+        poignee.title = 'Glisser pour déplacer, double-clic pour supprimer';
+        let enDeplacement = false;
+        poignee.addEventListener('pointerdown', e => {
+            enDeplacement = true;
+            // Peut lever (pointeur deja relache, id inconnu du navigateur) :
+            // le glisser marche quand meme via les ecouteurs sur la poignee,
+            // seul le suivi hors de l'element serait perdu.
+            try { poignee.setPointerCapture(e.pointerId); } catch (erreur) { /* tant pis */ }
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        poignee.addEventListener('pointermove', e => {
+            if (!enDeplacement) return;
+            const rect = canevasPisteMaqueen.getBoundingClientRect();
+            const i = Number(poignee.dataset.index);
+            pointsEditionPisteMaqueen[i] = {
+                x: Math.max(0, Math.min(MQ_LARGEUR, (e.clientX - rect.left) / rect.width * MQ_LARGEUR)),
+                y: Math.max(0, Math.min(MQ_HAUTEUR, (e.clientY - rect.top) / rect.height * MQ_HAUTEUR))
+            };
+            redessinerApercuEditionPisteMaqueen();
+        });
+        const finDeplacement = () => { enDeplacement = false; };
+        poignee.addEventListener('pointerup', finDeplacement);
+        poignee.addEventListener('pointercancel', finDeplacement);
+        poignee.addEventListener('dblclick', e => {
+            e.stopPropagation();
+            pointsEditionPisteMaqueen.splice(Number(poignee.dataset.index), 1);
+            redessinerApercuEditionPisteMaqueen();
+        });
+        return poignee;
+    }
+
+    function synchroniserPoigneesEditionPisteMaqueen() {
+        const conteneur = document.getElementById('maqueen-piste');
+        while (poigneesEditionPisteMaqueen.length > pointsEditionPisteMaqueen.length) {
+            poigneesEditionPisteMaqueen.pop().remove();
+        }
+        while (poigneesEditionPisteMaqueen.length < pointsEditionPisteMaqueen.length) {
+            const poignee = creerPoigneeEditionPisteMaqueen();
+            if (conteneur) conteneur.appendChild(poignee);
+            poigneesEditionPisteMaqueen.push(poignee);
+        }
+        poigneesEditionPisteMaqueen.forEach((poignee, i) => {
+            const p = pointsEditionPisteMaqueen[i];
+            poignee.dataset.index = i;
+            poignee.style.left = (p.x / MQ_LARGEUR * 100) + '%';
+            poignee.style.top = (p.y / MQ_HAUTEUR * 100) + '%';
+            poignee.classList.toggle('mq-poignee-depart', i === 0);
+        });
+    }
+
+    function afficherBarreEditionPisteMaqueen(visible) {
+        if (barreEditionPisteMaqueen) barreEditionPisteMaqueen.classList.toggle('active', visible);
+        if (btnEditerPisteMaqueen) btnEditerPisteMaqueen.style.display = visible ? 'none' : '';
+        if (selecteurPisteMaqueen) selecteurPisteMaqueen.disabled = visible;
+    }
+
+    function entrerEditionPisteMaqueen() {
+        modeEditionPisteMaqueen = true;
+        pointsEditionPisteMaqueen = PISTES_MAQUEEN.perso
+            ? PISTES_MAQUEEN.perso.points.map(p => ({ x: p.x, y: p.y }))
+            : [];
+        if (robotMaqueenEl) robotMaqueenEl.style.display = 'none';
+        if (canevasPisteMaqueen) canevasPisteMaqueen.style.cursor = 'crosshair';
+        afficherBarreEditionPisteMaqueen(true);
+        redessinerApercuEditionPisteMaqueen();
+    }
+
+    function sortirEditionPisteMaqueen() {
+        modeEditionPisteMaqueen = false;
+        while (poigneesEditionPisteMaqueen.length) poigneesEditionPisteMaqueen.pop().remove();
+        if (robotMaqueenEl) robotMaqueenEl.style.display = '';
+        if (canevasPisteMaqueen) canevasPisteMaqueen.style.cursor = '';
+        afficherBarreEditionPisteMaqueen(false);
+    }
+
+    function annulerEditionPisteMaqueen() {
+        sortirEditionPisteMaqueen();
+        dessinerPisteMaqueen();   // redessine la piste reellement active, pas l'ebauche abandonnee
+        deplacerRobotMaqueenInstantanement();
+    }
+
+    function terminerEditionPisteMaqueen() {
+        if (pointsEditionPisteMaqueen.length < 3) {
+            afficherEtat('Il faut au moins 3 points pour fermer une piste.', true);
+            return;
+        }
+        const points = pointsEditionPisteMaqueen.map(p => ({ x: p.x, y: p.y }));
+        PISTES_MAQUEEN.perso = construirePisteMaqueenDepuisPoints(points);
+        sauvegarderPistePersoMaqueen(points);
+        sortirEditionPisteMaqueen();
+        remplirSelecteurPisteMaqueen();
+        changerPisteMaqueen('perso');
+        afficherEtat('Piste personnalisée enregistrée.', false);
+    }
+
+    function effacerEditionPisteMaqueen() {
+        pointsEditionPisteMaqueen = [];
+        redessinerApercuEditionPisteMaqueen();
+    }
+
+    function pixelPisteMaqueen(x, y) {
+        if (!ctxPisteMaqueen || x < 0 || y < 0 || x >= MQ_LARGEUR || y >= MQ_HAUTEUR) return null;
+        return ctxPisteMaqueen.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+    }
+
+    /** Position d'un capteur (décalage latéral en px) selon la position/cap actuels du robot. */
+    function positionCapteurMaqueen(decalageLateral) {
+        const rad = MQ.cap * Math.PI / 180;
+        const avantX = Math.cos(rad), avantY = Math.sin(rad);
+        // Perpendiculaire pointant vers la DROITE du robot (axe Y vers le bas) :
+        // un decalage positif (R1/R2) va donc bien a droite, negatif (L1/L2) a
+        // gauche. Coherent avec le sens de omega dans avancerMaqueen().
+        const lateralX = -avantY, lateralY = avantX;
+        return {
+            x: MQ.x + avantX * MQ_AVANT_CAPTEURS + lateralX * decalageLateral,
+            y: MQ.y + avantY * MQ_AVANT_CAPTEURS + lateralY * decalageLateral
+        };
+    }
+
+    function dessinerRobotMaqueen() {
+        if (!robotMaqueenEl) return;
+        robotMaqueenEl.style.left = (MQ.x / MQ_LARGEUR * 100) + '%';
+        robotMaqueenEl.style.top = (MQ.y / MQ_HAUTEUR * 100) + '%';
+        robotMaqueenEl.style.transform = 'translate(-50%, -50%) rotate(' + MQ.cap + 'deg)';
+        mettreAJourIndicateursLigneMaqueen();
+    }
+
+    /** Allume/eteint le point de chaque capteur de ligne visible, d'apres la position actuelle du robot. */
+    function mettreAJourIndicateursLigneMaqueen() {
+        for (const capteur in chipsCapteursLigneMaqueen) {
+            const chip = chipsCapteursLigneMaqueen[capteur];
+            if (!chip.classList.contains('visible')) continue;
+            const point = chip.querySelector('.maqueen-capteur-point');
+            if (point) point.classList.toggle('sur-ligne', window.simu_maqueenLigneEtat(capteur));
+        }
+    }
+
+    /** Les capteurs L2/L1/M/R1/R2 effectivement lus par un bloc du programme. */
+    function capteursLigneUtilisesMaqueen() {
+        const utilises = new Set();
+        for (const bloc of window.workspace.getAllBlocks(false)) {
+            if (bloc.type === 'maqueen_ligne_etat' || bloc.type === 'maqueen_ligne_valeur') {
+                const capteur = bloc.getFieldValue('CAPTEUR');
+                if (capteur) utilises.add(capteur);
+            }
+        }
+        return utilises;
+    }
+
+    /** Deplace le robot sans transition CSS : glisser-deposer, reinitialisation,
+     *  ou tout appel qui doit se voir tout de suite plutot que s'animer. */
+    function deplacerRobotMaqueenInstantanement() {
+        if (robotMaqueenEl) robotMaqueenEl.style.transition = 'none';
+        dessinerRobotMaqueen();
+    }
+
+    function dessinerPharesMaqueen() {
+        if (phareGEl) phareGEl.classList.toggle('allume', MQ.phareG);
+        if (phareDEl) phareDEl.classList.toggle('allume', MQ.phareD);
+    }
+
+    function dessinerDelsMaqueen() {
+        delsMaqueen.forEach((el, i) => {
+            if (!el) return;
+            const [r, v, b] = MQ.rgb[i];
+            el.style.background = (r || v || b) ? 'rgb(' + r + ',' + v + ',' + b + ')' : '#333';
+        });
+        // L1 (indice 0) et R1 (indice 3) : les deux DEL les plus visibles sur
+        // le petit gabarit du robot, gauche et droite.
+        [0, 3].forEach((indiceRgb, i) => {
+            const el = delsSpriteMaqueen[i];
+            if (!el) return;
+            const [r, v, b] = MQ.rgb[indiceRgb];
+            el.style.background = (r || v || b) ? 'rgb(' + r + ',' + v + ',' + b + ')' : '#333';
+            el.style.boxShadow = (r || v || b) ? '0 0 3px rgb(' + r + ',' + v + ',' + b + ')' : 'none';
+        });
+    }
+
+    /**
+     * Avance le robot du temps simulé écoulé (ms), à la vitesse courante des
+     * deux roues : cinématique différentielle standard. Appelée depuis le
+     * traitement de l'action 'sleep' de la file, donc avec le même temps que
+     * celui réellement écoulé à l'écran.
+     */
+    function avancerMaqueen(ms) {
+        if (!MQ.actif) return;
+        const dt = ms / 1000;
+        const vG = MQ.vGauche / 255 * MQ_VITESSE_MAX;
+        const vD = MQ.vDroite / 255 * MQ_VITESSE_MAX;
+        const v = (vG + vD) / 2;
+        // Roue droite plus rapide que la gauche : le robot pivote autour de la
+        // roue la plus lente, le nez part vers la gauche. Verifie par calcul :
+        // avec l'axe Y vers le bas (ecran), (vG - vD) fait tourner le cap dans
+        // le bon sens vers les capteurs L1/L2 (decalage negatif = cote gauche).
+        const omega = (vG - vD) / MQ_EMPATTEMENT;   // rad/s
+        const rad = MQ.cap * Math.PI / 180;
+        MQ.x += v * dt * Math.cos(rad);
+        MQ.y += v * dt * Math.sin(rad);
+        // Surtout ne pas ramener dans [0, 360[ : une transition CSS interpole
+        // numeriquement entre l'ancien et le nouvel angle, donc un saut du
+        // genre 350 -> 10 (repli) se lirait comme -340 (tour complet a
+        // l'envers) au lieu de +20. Laisser grandir sans limite est a la fois
+        // plus simple et correct ; cos/sin s'en moquent.
+        MQ.cap += omega * dt * 180 / Math.PI;
+
+        // Anime le deplacement sur la duree reelle du sleep() qui l'a
+        // declenche, plutot que de teleporter le robot puis figer l'affichage
+        // jusqu'au prochain tour : c'est ce qui rendait les deplacements
+        // saccades.
+        if (robotMaqueenEl) {
+            robotMaqueenEl.style.transition =
+                'left ' + ms + 'ms linear, top ' + ms + 'ms linear, transform ' + ms + 'ms linear';
+        }
+        dessinerRobotMaqueen();
+    }
+
+    function reinitialiserMaqueen() {
+        // Le cap n'est plus ramene dans [0, 360[ pendant la conduite (voir
+        // avancerMaqueen) : le reinitialiser explicitement ici evite qu'il ne
+        // grandisse sans fin d'une simulation a l'autre.
+        MQ.x = MQ_DEPART.x; MQ.y = MQ_DEPART.y; MQ.cap = MQ_DEPART.cap;
+        MQ.vGauche = 0; MQ.vDroite = 0;
+        MQ.phareG = false; MQ.phareD = false;
+        MQ.rgb = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]];
+        deplacerRobotMaqueenInstantanement();
+        dessinerPharesMaqueen();
+        dessinerDelsMaqueen();
+    }
+
+    // N'apparaît que si un bloc Maqueen est posé, comme les sections Grove.
+    function rafraichirPanneauMaqueen() {
+        const panneau = document.getElementById('maqueen-panneau');
+        if (!panneau) return;
+        MQ.actif = window.workspace.getAllBlocks(false).some(b => b.type.startsWith('maqueen_'));
+        panneau.classList.toggle('replie', !MQ.actif);
+
+        // N'affiche que les capteurs de ligne que le programme lit vraiment :
+        // pas la peine de montrer les cinq si un seul sert au suivi de ligne.
+        const utilises = capteursLigneUtilisesMaqueen();
+        if (ligneCapteursMaqueenEl) ligneCapteursMaqueenEl.classList.toggle('visible', utilises.size > 0);
+        for (const capteur in chipsCapteursLigneMaqueen) {
+            chipsCapteursLigneMaqueen[capteur].classList.toggle('visible', utilises.has(capteur));
+        }
+        mettreAJourIndicateursLigneMaqueen();
+
+        Blockly.svgResize(window.workspace);
+    }
+
+    window.simu_maqueenMoteur = function(cote, vitesse) {
+        window.simuQueue.push({ type: 'maqueenMoteur', cote: String(cote),
+                                vitesse: Math.max(-255, Math.min(255, Math.round(Number(vitesse)))) });
+    };
+    window.simu_maqueenPhare = function(cote, etat) {
+        window.simuQueue.push({ type: 'maqueenPhare', cote: String(cote), etat: !!etat });
+    };
+    window.simu_maqueenRgb = function(index, couleur) {
+        window.simuQueue.push({ type: 'maqueenRgb', index: Number(index), couleur: Number(couleur) });
+    };
+    // Lues directement, comme la distance Grove : pas de délai visuel a respecter.
+    window.simu_maqueenLigneEtat = function(capteur) {
+        const decalage = MQ_DECALAGE_CAPTEUR[capteur];
+        if (decalage === undefined) return false;
+        const p = positionCapteurMaqueen(decalage);
+        const pix = pixelPisteMaqueen(p.x, p.y);
+        return !!pix && pix[0] > 200 && pix[1] > 200 && pix[2] > 200;
+    };
+    window.simu_maqueenLigneValeur = function(capteur) {
+        const decalage = MQ_DECALAGE_CAPTEUR[capteur];
+        if (decalage === undefined) return 0;
+        const p = positionCapteurMaqueen(decalage);
+        const pix = pixelPisteMaqueen(p.x, p.y);
+        if (!pix) return 0;
+        return Math.round((pix[0] + pix[1] + pix[2]) / 3 / 255 * 1023);
+    };
+    window.simu_maqueenDistance = function() {
+        return curseurDistanceMaqueen ? Number(curseurDistanceMaqueen.value) : 0;
+    };
+
+    // Expose pour les verifications : la position du robot n'est pas pilotable
+    // depuis un programme, seule la vitesse des roues l'est.
+    window.maqueenTest = {
+        etat: () => ({ x: MQ.x, y: MQ.y, cap: MQ.cap, vGauche: MQ.vGauche, vDroite: MQ.vDroite, actif: MQ.actif }),
+        definirPosition: (x, y, cap) => { MQ.x = x; MQ.y = y; MQ.cap = cap; deplacerRobotMaqueenInstantanement(); },
+        avancer: ms => avancerMaqueen(ms),
+        surLaLigne: capteur => window.simu_maqueenLigneEtat(capteur),
+        valeurLigne: capteur => window.simu_maqueenLigneValeur(capteur),
+        forcerActif: actif => { MQ.actif = actif; },
+        rafraichirPanneau: rafraichirPanneauMaqueen,
+        changerPiste: changerPisteMaqueen,
+        pisteActuelle: () => pisteMaqueenActuelle,
+        editerPiste: entrerEditionPisteMaqueen,
+        ajouterPointEdition: (x, y) => {
+            pointsEditionPisteMaqueen.push({ x, y });
+            redessinerApercuEditionPisteMaqueen();
+        },
+        deplacerPointEdition: (i, x, y) => {
+            if (!pointsEditionPisteMaqueen[i]) return;
+            pointsEditionPisteMaqueen[i] = { x, y };
+            redessinerApercuEditionPisteMaqueen();
+        },
+        supprimerPointEdition: i => {
+            pointsEditionPisteMaqueen.splice(i, 1);
+            redessinerApercuEditionPisteMaqueen();
+        },
+        terminerEdition: terminerEditionPisteMaqueen,
+        annulerEdition: annulerEditionPisteMaqueen,
+        effacerEdition: effacerEditionPisteMaqueen,
+        etatEdition: () => ({
+            actif: modeEditionPisteMaqueen,
+            points: pointsEditionPisteMaqueen.map(p => ({ ...p }))
+        }),
+        capteursLigneUtilises: () => [...capteursLigneUtilisesMaqueen()],
+        etatIndicateursLigne: () => {
+            const etat = {};
+            for (const capteur in chipsCapteursLigneMaqueen) {
+                const chip = chipsCapteursLigneMaqueen[capteur];
+                etat[capteur] = {
+                    visible: chip.classList.contains('visible'),
+                    surLigne: chip.querySelector('.maqueen-capteur-point').classList.contains('sur-ligne')
+                };
+            }
+            return etat;
+        }
+    };
+
+    // ------------------------------------------
+    // KITROBOT V2 — piste droite, départ/arrivée
+    // ------------------------------------------
+    // Même principe que Maqueen Plus (position réelle, avancée sur les
+    // 'sleep', capteurs qui relisent le canevas), mais piste dédiée : ligne
+    // droite, drapeaux Départ/Arrivée, noir sur blanc (inversé de Maqueen,
+    // pour qu'on les distingue au premier coup d'œil). Deux capteurs de
+    // ligne seulement (gauche/droit), comme le vrai jeu de blocs.
+
+    const KB_LARGEUR = 320, KB_HAUTEUR = 140;
+    const KB_EMPATTEMENT = 20;
+    const KB_VITESSE_MAX = 70;          // px/s a vitesse moteur 100 (%)
+    const KB_AVANT_CAPTEURS = 12;
+    const KB_DECALAGE_CAPTEUR = { gauche: -8, droit: 8 };
+    const KB_DEPART = { x: 30, y: KB_HAUTEUR / 2, cap: 0 };
+
+    const KB = {
+        actif: false,
+        x: KB_DEPART.x, y: KB_DEPART.y, cap: KB_DEPART.cap,
+        vGauche: 0, vDroite: 0
+    };
+
+    const canevasPisteKitrobot = document.getElementById('kitrobot-piste-canevas');
+    const robotKitrobotEl = document.getElementById('kitrobot-robot');
+    const curseurDistanceKitrobot = document.getElementById('kitrobot-distance');
+    const ctxPisteKitrobot = canevasPisteKitrobot
+        ? canevasPisteKitrobot.getContext('2d', { willReadFrequently: true }) : null;
+    const ligneCapteursKitrobotEl = document.getElementById('kitrobot-ligne-capteurs');
+    const chipsCapteursLigneKitrobot = {};
+    if (ligneCapteursKitrobotEl) {
+        ligneCapteursKitrobotEl.querySelectorAll('.maqueen-capteur-ligne').forEach(chip => {
+            chipsCapteursLigneKitrobot[chip.dataset.capteur] = chip;
+        });
+    }
+
+    function dessinerPisteKitrobot() {
+        if (!ctxPisteKitrobot) return;
+        const ctx = ctxPisteKitrobot;
+        ctx.clearRect(0, 0, KB_LARGEUR, KB_HAUTEUR);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, KB_LARGEUR, KB_HAUTEUR);
+        ctx.strokeStyle = '#111111';
+        ctx.lineWidth = 22;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(30, KB_HAUTEUR / 2);
+        ctx.lineTo(KB_LARGEUR - 30, KB_HAUTEUR / 2);
+        ctx.stroke();
+    }
+
+    function pixelPisteKitrobot(x, y) {
+        if (!ctxPisteKitrobot || x < 0 || y < 0 || x >= KB_LARGEUR || y >= KB_HAUTEUR) return null;
+        return ctxPisteKitrobot.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+    }
+
+    function positionCapteurKitrobot(decalageLateral) {
+        const rad = KB.cap * Math.PI / 180;
+        const avantX = Math.cos(rad), avantY = Math.sin(rad);
+        const lateralX = -avantY, lateralY = avantX;
+        return {
+            x: KB.x + avantX * KB_AVANT_CAPTEURS + lateralX * decalageLateral,
+            y: KB.y + avantY * KB_AVANT_CAPTEURS + lateralY * decalageLateral
+        };
+    }
+
+    function dessinerRobotKitrobot() {
+        if (!robotKitrobotEl) return;
+        robotKitrobotEl.style.left = (KB.x / KB_LARGEUR * 100) + '%';
+        robotKitrobotEl.style.top = (KB.y / KB_HAUTEUR * 100) + '%';
+        robotKitrobotEl.style.transform = 'translate(-50%, -50%) rotate(' + KB.cap + 'deg)';
+        mettreAJourIndicateursLigneKitrobot();
+    }
+
+    function deplacerRobotKitrobotInstantanement() {
+        if (robotKitrobotEl) robotKitrobotEl.style.transition = 'none';
+        dessinerRobotKitrobot();
+    }
+
+    function mettreAJourIndicateursLigneKitrobot() {
+        for (const capteur in chipsCapteursLigneKitrobot) {
+            const chip = chipsCapteursLigneKitrobot[capteur];
+            if (!chip.classList.contains('visible')) continue;
+            const point = chip.querySelector('.maqueen-capteur-point');
+            if (point) point.classList.toggle('sur-ligne', window.simu_kitrobotLigne(capteur));
+        }
+    }
+
+    function capteursLigneUtilisesKitrobot() {
+        const utilises = new Set();
+        for (const bloc of window.workspace.getAllBlocks(false)) {
+            if (bloc.type === 'kitrobot_ligne') {
+                const capteur = bloc.getFieldValue('COTE');
+                if (capteur) utilises.add(capteur);
+            }
+        }
+        return utilises;
+    }
+
+    /** Cinématique différentielle identique à Maqueen (voir avancerMaqueen) : vitesse en %, pas en -255..255. */
+    function avancerKitrobot(ms) {
+        if (!KB.actif) return;
+        const dt = ms / 1000;
+        const vG = KB.vGauche / 100 * KB_VITESSE_MAX;
+        const vD = KB.vDroite / 100 * KB_VITESSE_MAX;
+        const v = (vG + vD) / 2;
+        const omega = (vG - vD) / KB_EMPATTEMENT;
+        const rad = KB.cap * Math.PI / 180;
+        KB.x += v * dt * Math.cos(rad);
+        KB.y += v * dt * Math.sin(rad);
+        KB.cap += omega * dt * 180 / Math.PI;   // jamais replié dans [0,360[ : voir PIÈGE nº 31 (Maqueen)
+        if (robotKitrobotEl) {
+            robotKitrobotEl.style.transition =
+                'left ' + ms + 'ms linear, top ' + ms + 'ms linear, transform ' + ms + 'ms linear';
+        }
+        dessinerRobotKitrobot();
+    }
+
+    function reinitialiserKitrobot() {
+        KB.x = KB_DEPART.x; KB.y = KB_DEPART.y; KB.cap = KB_DEPART.cap;
+        KB.vGauche = 0; KB.vDroite = 0;
+        deplacerRobotKitrobotInstantanement();
+    }
+
+    function rafraichirPanneauKitrobot() {
+        const panneau = document.getElementById('kitrobot-panneau');
+        if (!panneau) return;
+        KB.actif = window.workspace.getAllBlocks(false).some(b => b.type.startsWith('kitrobot_'));
+        panneau.classList.toggle('replie', !KB.actif);
+
+        const utilises = capteursLigneUtilisesKitrobot();
+        if (ligneCapteursKitrobotEl) ligneCapteursKitrobotEl.classList.toggle('visible', utilises.size > 0);
+        for (const capteur in chipsCapteursLigneKitrobot) {
+            chipsCapteursLigneKitrobot[capteur].classList.toggle('visible', utilises.has(capteur));
+        }
+        mettreAJourIndicateursLigneKitrobot();
+
+        Blockly.svgResize(window.workspace);
+    }
+
+    window.simu_kitrobotMoteur = function(cote, vitesse) {
+        window.simuQueue.push({ type: 'kitrobotMoteur', cote: String(cote),
+                                vitesse: Math.max(-100, Math.min(100, Math.round(Number(vitesse)))) });
+    };
+    window.simu_kitrobotBuzzer = function(frequence, duree) {
+        window.simuQueue.push({ type: 'son', notes: [[Number(frequence), Number(duree)]] });
+    };
+    window.simu_kitrobotDistance = function() {
+        return curseurDistanceKitrobot ? Number(curseurDistanceKitrobot.value) : 0;
+    };
+    window.simu_kitrobotLigne = function(capteur) {
+        const decalage = KB_DECALAGE_CAPTEUR[capteur];
+        if (decalage === undefined) return false;
+        const p = positionCapteurKitrobot(decalage);
+        const pix = pixelPisteKitrobot(p.x, p.y);
+        // Piste noire sur blanc (inverse de Maqueen) : ligne detectee = pixel sombre.
+        return !!pix && pix[0] < 100 && pix[1] < 100 && pix[2] < 100;
+    };
+
+    window.kitrobotTest = {
+        etat: () => ({ x: KB.x, y: KB.y, cap: KB.cap, vGauche: KB.vGauche, vDroite: KB.vDroite, actif: KB.actif }),
+        definirPosition: (x, y, cap) => { KB.x = x; KB.y = y; KB.cap = cap; deplacerRobotKitrobotInstantanement(); },
+        avancer: ms => avancerKitrobot(ms),
+        surLaLigne: capteur => window.simu_kitrobotLigne(capteur),
+        forcerActif: actif => { KB.actif = actif; },
+        rafraichirPanneau: rafraichirPanneauKitrobot,
+        capteursLigneUtilises: () => [...capteursLigneUtilisesKitrobot()],
+        etatIndicateursLigne: () => {
+            const etat = {};
+            for (const capteur in chipsCapteursLigneKitrobot) {
+                const chip = chipsCapteursLigneKitrobot[capteur];
+                etat[capteur] = {
+                    visible: chip.classList.contains('visible'),
+                    surLigne: chip.querySelector('.maqueen-capteur-point').classList.contains('sur-ligne')
+                };
+            }
+            return etat;
+        }
+    };
+
+    // ------------------------------------------
+    // LIDAR MATRICIEL — trois curseurs (gauche/avant/droite), pas de robot
+    // ------------------------------------------
+    // Capteur independant, pas de piste : un panneau simple a curseurs,
+    // comme les autres capteurs Grove (distance, luminosite...).
+
+    const LIDAR = { seuilEvitement: 200 };
+    const curseurLidarGauche = document.getElementById('lidar-gauche');
+    const curseurLidarAvant = document.getElementById('lidar-avant');
+    const curseurLidarDroite = document.getElementById('lidar-droite');
+
+    function lireCurseurLidar(el) { return el ? Number(el.value) : 1000; }
+
+    function rafraichirPanneauLidar() {
+        const panneau = document.getElementById('lidar-panneau');
+        if (!panneau) return;
+        const actif = window.workspace.getAllBlocks(false).some(b => b.type.startsWith('lidar_'));
+        panneau.classList.toggle('replie', !actif);
+        Blockly.svgResize(window.workspace);
+    }
+
+    window.simu_lidarDistanceEvitement = function(mm) { LIDAR.seuilEvitement = Number(mm); };
+    window.simu_lidarCote = function(cote) {
+        if (cote === 'gauche') return lireCurseurLidar(curseurLidarGauche);
+        if (cote === 'droite') return lireCurseurLidar(curseurLidarDroite);
+        return lireCurseurLidar(curseurLidarAvant);
+    };
+    window.simu_lidarUrgence = function() {
+        const m = Math.min(lireCurseurLidar(curseurLidarGauche), lireCurseurLidar(curseurLidarAvant), lireCurseurLidar(curseurLidarDroite));
+        return m < 100;
+    };
+    window.simu_lidarDirection = function() {
+        const g = lireCurseurLidar(curseurLidarGauche), a = lireCurseurLidar(curseurLidarAvant), d = lireCurseurLidar(curseurLidarDroite);
+        if (a > LIDAR.seuilEvitement) return 3;
+        return g > d ? 1 : 2;
+    };
+    window.simu_lidarPoint = function(x) {
+        // Simplification : colonne gauche/milieu/droite de la matrice 8x8
+        // renvoie respectivement le curseur gauche/avant/droite.
+        if (x < 3) return lireCurseurLidar(curseurLidarGauche);
+        if (x > 4) return lireCurseurLidar(curseurLidarDroite);
+        return lireCurseurLidar(curseurLidarAvant);
+    };
+
+    window.lidarTest = {
+        rafraichirPanneau: rafraichirPanneauLidar,
+        definirDistances: (gauche, avant, droite) => {
+            if (curseurLidarGauche) curseurLidarGauche.value = gauche;
+            if (curseurLidarAvant) curseurLidarAvant.value = avant;
+            if (curseurLidarDroite) curseurLidarDroite.value = droite;
+        },
+        direction: () => window.simu_lidarDirection(),
+        urgence: () => window.simu_lidarUrgence()
+    };
+
     // Entrées : lues à l'instant où le programme les demande.
     window.simu_mesure = function(grandeur) {
         const g = String(grandeur);
@@ -4567,6 +6735,45 @@ try {
             valeurDistance.textContent = curseurDistance.value;
         });
     }
+    const valeurDistanceMaqueen = document.getElementById('maqueen-distance-val');
+    if (curseurDistanceMaqueen) {
+        curseurDistanceMaqueen.addEventListener('input', () => {
+            valeurDistanceMaqueen.textContent = curseurDistanceMaqueen.value;
+        });
+    }
+    const valeurDistanceKitrobot = document.getElementById('kitrobot-distance-val');
+    if (curseurDistanceKitrobot) {
+        curseurDistanceKitrobot.addEventListener('input', () => {
+            valeurDistanceKitrobot.textContent = curseurDistanceKitrobot.value;
+        });
+    }
+    [['lidar-gauche', 'lidar-gauche-val'], ['lidar-avant', 'lidar-avant-val'],
+     ['lidar-droite', 'lidar-droite-val']].forEach(([idCurseur, idValeur]) => {
+        const c = document.getElementById(idCurseur);
+        const v = document.getElementById(idValeur);
+        if (c && v) c.addEventListener('input', () => { v.textContent = c.value; });
+    });
+
+    // Panneau de simulation de la télécommande infrarouge : les listes de
+    // touches viennent des mêmes tables que le générateur (MENU_TOUCHE_NOIRE
+    // / MENU_TOUCHE_GRISE), pas dupliquées côté HTML.
+    const selectIrTelecommande = document.getElementById('maqueen-ir-telecommande');
+    const selectIrTouche = document.getElementById('maqueen-ir-touche');
+    const btnIrSimuler = document.getElementById('maqueen-ir-simuler');
+    function remplirTouchesIr() {
+        if (!selectIrTouche) return;
+        const menu = selectIrTelecommande.value === 'grise' ? MENU_TOUCHE_GRISE : MENU_TOUCHE_NOIRE;
+        selectIrTouche.innerHTML = menu.map(([libelle, valeur]) => '<option value="' + valeur + '">' + libelle + '</option>').join('');
+    }
+    if (selectIrTelecommande) {
+        remplirTouchesIr();
+        selectIrTelecommande.addEventListener('change', remplirTouchesIr);
+    }
+    if (btnIrSimuler) {
+        btnIrSimuler.addEventListener('click', () => {
+            window.simu_irDeclencher(selectIrTelecommande.value, selectIrTouche.value);
+        });
+    }
     if (curseurJX) curseurJX.addEventListener('input', () => { valeurJX.textContent = curseurJX.value; });
     if (curseurJY) curseurJY.addEventListener('input', () => { valeurJY.textContent = curseurJY.value; });
     [['grove-temp', 'grove-temp-val'], ['grove-humi', 'grove-humi-val'],
@@ -4592,7 +6799,15 @@ try {
     window.simu_parler = function(texte) { window.simuQueue.push({ type: 'parler', texte: String(texte) }); };
 
     window.simu_playQueue = function() {
-        if (window.simuQueue.length === 0) return;
+        if (window.simuQueue.length === 0) {
+            // Utilisé par l'exécution tour par tour (voir TOURS DE BOUCLE plus
+            // bas) : une fois la file d'un tour entièrement rejouée, enchaîner
+            // sur le tour suivant. Sans rappel en attente, comportement inchangé.
+            const suite = window._simuApresVidageFile;
+            window._simuApresVidageFile = null;
+            if (suite) suite();
+            return;
+        }
         let action = window.simuQueue.shift();
 
         const textContainer = document.getElementById('led-text-container');
@@ -4608,9 +6823,9 @@ try {
             if(textContainer) textContainer.style.display = 'none';
             let pattern = [];
             if (action.value === "HEART") pattern = [1,3,5,6,7,8,9,10,11,12,13,14,16,17,18,22];
-            else if (action.value === "HAPPY") pattern = [1,3,5,9,10,14,16,18,21,22,23];
-            else if (action.value === "SAD") pattern = [1,3,5,9,11,12,13,16,18,20,24];
-            else if (action.value === "GHOST") pattern = [1,2,3,5,7,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24];
+            else if (action.value === "HAPPY") pattern = [6,8,15,19,21,22,23];
+            else if (action.value === "SAD") pattern = [6,8,16,17,18,20,24];
+            else if (action.value === "GHOST") pattern = [0,1,2,3,4,5,7,9,10,11,12,13,14,15,16,17,18,19,20,22,24];
             else if (typeof action.value === 'string' && action.value.includes(':')) {
                 let rows = action.value.split(':');
                 for (let y = 0; y < 5; y++) {
@@ -4711,6 +6926,25 @@ try {
             dessinerMoteurs();
             window.simu_playQueue();
         }
+        else if (action.type === 'maqueenMoteur') {
+            if (action.cote !== 'droit') MQ.vGauche = action.vitesse;
+            if (action.cote !== 'gauche') MQ.vDroite = action.vitesse;
+            dessinerRobotMaqueen();
+            window.simu_playQueue();
+        }
+        else if (action.type === 'maqueenPhare') {
+            if (action.cote !== 'droit') MQ.phareG = action.etat;
+            if (action.cote !== 'gauche') MQ.phareD = action.etat;
+            dessinerPharesMaqueen();
+            window.simu_playQueue();
+        }
+        else if (action.type === 'maqueenRgb') {
+            const r = (action.couleur >> 16) & 0xFF, v = (action.couleur >> 8) & 0xFF, b = action.couleur & 0xFF;
+            if (action.index === 4) MQ.rgb = [[r, v, b], [r, v, b], [r, v, b], [r, v, b]];
+            else if (MQ.rgb[action.index]) MQ.rgb[action.index] = [r, v, b];
+            dessinerDelsMaqueen();
+            window.simu_playQueue();
+        }
         else if (action.type === 'afficheurLum') {
             // 0 à 7 sur le module : on rend l'écart en opacité.
             ecran4Digit.style.opacity = String(0.25 + 0.75 * (action.niveau / 7));
@@ -4730,8 +6964,46 @@ try {
             window.simu_reinitialiser();
         }
         else if (action.type === 'sleep') {
+            // Avancer AVANT la vraie pause : au moment ou suiteApres() reprendra
+            // la main, le robot doit deja avoir parcouru ce temps-la.
+            avancerMaqueen(action.value);
+            avancerKitrobot(action.value);
             suiteApres(action.value);
         }
+        else if (action.type === 'kitrobotMoteur') {
+            if (action.cote === 'g') KB.vGauche = action.vitesse;
+            else KB.vDroite = action.vitesse;
+            dessinerRobotKitrobot();
+            window.simu_playQueue();
+        }
+    };
+
+    // ------------------------------------------
+    // TOURS DE BOUCLE — exécution qui laisse le temps de bouger
+    // ------------------------------------------
+    // exec() ne met jamais réellement en pause Python : sleep() se contente
+    // d'empiler une action, tout le corps de la boucle s'exécute donc d'un
+    // bloc. Pour un ruban LED ça n'a pas d'importance (rien ne dépend de son
+    // état), mais un capteur de ligne DOIT voir la position mise à jour par
+    // le tour précédent, pas 5 fois la même position de départ. La partie
+    // Brython (index.html, lancer_simulation) isole donc le corps de la
+    // PREMIERE boucle infinie de premier niveau et expose deux fonctions :
+    // simu_tourSuivant() exécute un seul tour (et renvoie false en cas
+    // d'erreur), simu_finDesTours() s'exécute une fois les tours épuisés.
+    // C'est ici, côté JS, que le rythme réel (vider la file avec de vrais
+    // délais avant d'enchaîner) est imposé.
+    window.simu_lancerTours = function(nRestants) {
+        if (nRestants <= 0) {
+            if (typeof window.simu_finDesTours === 'function') window.simu_finDesTours();
+            return;
+        }
+        const succes = typeof window.simu_tourSuivant === 'function' ? window.simu_tourSuivant() : false;
+        if (succes === false) return;   // l'erreur est déjà affichée côté Brython
+        const jeton = jetonSimulation;
+        window._simuApresVidageFile = () => {
+            if (jeton === jetonSimulation) window.simu_lancerTours(nRestants - 1);
+        };
+        window.simu_playQueue();
     };
 
     // ==========================================
@@ -4827,8 +7099,11 @@ try {
         window.simu_pin1_pressed = false;
         window.simu_pin2_pressed = false;
         window.simu_geste = null;
+        window._simuApresVidageFile = null;
 
         reinitialiserGrove();
+        reinitialiserMaqueen();
+        reinitialiserKitrobot();
         afficherEtat('', false);
     };
 
@@ -4900,6 +7175,78 @@ try {
     // se mettre à jour à chaque modification du programme.
     panneauGrovePret = true;
     rafraichirPanneauGrove();
+
+    dessinerPisteMaqueen();
+    deplacerRobotMaqueenInstantanement();
+    panneauMaqueenPret = true;
+    rafraichirPanneauMaqueen();
+
+    dessinerPisteKitrobot();
+    deplacerRobotKitrobotInstantanement();
+    panneauKitrobotPret = true;
+    rafraichirPanneauKitrobot();
+
+    panneauLidarPret = true;
+    rafraichirPanneauLidar();
+
+    if (selecteurPisteMaqueen) {
+        remplirSelecteurPisteMaqueen();
+        selecteurPisteMaqueen.addEventListener('change', () => {
+            changerPisteMaqueen(selecteurPisteMaqueen.value);
+        });
+    }
+
+    if (btnEditerPisteMaqueen) btnEditerPisteMaqueen.addEventListener('click', entrerEditionPisteMaqueen);
+    if (btnTerminerPisteMaqueen) btnTerminerPisteMaqueen.addEventListener('click', terminerEditionPisteMaqueen);
+    if (btnAnnulerPisteMaqueen) btnAnnulerPisteMaqueen.addEventListener('click', annulerEditionPisteMaqueen);
+    if (btnEffacerPisteMaqueen) btnEffacerPisteMaqueen.addEventListener('click', effacerEditionPisteMaqueen);
+    if (canevasPisteMaqueen) {
+        canevasPisteMaqueen.addEventListener('click', e => {
+            if (!modeEditionPisteMaqueen) return;
+            const rect = canevasPisteMaqueen.getBoundingClientRect();
+            pointsEditionPisteMaqueen.push({
+                x: (e.clientX - rect.left) / rect.width * MQ_LARGEUR,
+                y: (e.clientY - rect.top) / rect.height * MQ_HAUTEUR
+            });
+            redessinerApercuEditionPisteMaqueen();
+        });
+    }
+
+    // Glisser-deposer : place le robot n'importe ou sur la piste, a la souris
+    // comme au doigt. Pointer Events unifie les deux sans code separe.
+    if (robotMaqueenEl && canevasPisteMaqueen) {
+        let deplacementMaqueenEnCours = false;
+
+        function positionMaqueenDepuisEvenement(e) {
+            const rect = canevasPisteMaqueen.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width * MQ_LARGEUR;
+            const y = (e.clientY - rect.top) / rect.height * MQ_HAUTEUR;
+            return {
+                x: Math.max(0, Math.min(MQ_LARGEUR, x)),
+                y: Math.max(0, Math.min(MQ_HAUTEUR, y))
+            };
+        }
+
+        robotMaqueenEl.addEventListener('pointerdown', e => {
+            deplacementMaqueenEnCours = true;
+            try { robotMaqueenEl.setPointerCapture(e.pointerId); } catch (erreur) { /* tant pis */ }
+            e.preventDefault();
+        });
+        robotMaqueenEl.addEventListener('pointermove', e => {
+            if (!deplacementMaqueenEnCours) return;
+            const p = positionMaqueenDepuisEvenement(e);
+            MQ.x = p.x; MQ.y = p.y;
+            deplacerRobotMaqueenInstantanement();
+        });
+        robotMaqueenEl.addEventListener('pointerup', e => {
+            if (!deplacementMaqueenEnCours) return;
+            deplacementMaqueenEnCours = false;
+            // La position deposee devient le nouveau depart : "Reinitialiser"
+            // doit repartir de la, pas annuler le placement choisi.
+            MQ_DEPART = { x: MQ.x, y: MQ.y, cap: MQ_DEPART.cap };
+        });
+        robotMaqueenEl.addEventListener('pointercancel', () => { deplacementMaqueenEnCours = false; });
+    }
 
     const btnAB = document.getElementById('btn-ab');
     if (btnAB) {

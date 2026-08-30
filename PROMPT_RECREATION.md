@@ -505,6 +505,29 @@ Points à respecter :
   `is_gesture()` le constate sans le consommer. Vérifiable : sur 5 tours de
   boucle, le premier déclenche 1 fois, le second 5 fois.
 
+**PIÈGE nº 37 — les icônes prédéfinies (`Image.HAPPY`, `SAD`, `GHOST`...) ont
+un motif de pixels précis, pas un dessin approximatif.** `display.show(val)`
+mappe chaque nom d'icône à une liste d'index (0-24, `y*5+x`) de LED allumées ;
+rien ne rapproche automatiquement ce mapping du vrai micro:bit, donc une liste
+tapée à la main peut « ressembler » à un visage sans être la bonne — c'est
+resté indétecté jusqu'à ce qu'un utilisateur compare visuellement HAPPY et
+SAD affichés côte à côte et remarque que ni l'un ni l'autre n'avait la forme
+attendue. Vérifier chaque icône contre la définition officielle
+(`microbit_constimage.c` du dépôt `microbit-foundation/micropython-microbit-v2`,
+`SMALL_IMAGE(...)` en grille 5×5 de 0/1) plutôt que de redessiner à l'œil :
+
+```
+HAPPY : 0,0,0,0,0 / 0,1,0,1,0 / 0,0,0,0,0 / 1,0,0,0,1 / 0,1,1,1,0
+  → index allumés : 6,8,15,19,21,22,23
+SAD   : 0,0,0,0,0 / 0,1,0,1,0 / 0,0,0,0,0 / 0,1,1,1,0 / 1,0,0,0,1
+  → index allumés : 6,8,16,17,18,20,24
+GHOST : 1,1,1,1,1 / 1,0,1,0,1 / 1,1,1,1,1 / 1,1,1,1,1 / 1,0,1,0,1
+  → index allumés : 0,1,2,3,4,5,7,9,10,11,12,13,14,15,16,17,18,19,20,22,24
+```
+
+`HEART` était déjà correcte (comparée à la même source en corrigeant ce
+piège) ; seules HAPPY, SAD et GHOST avaient un motif erroné.
+
 ### Le son
 
 Le simulateur doit **réellement** émettre du son, via Web Audio, en onde carrée
@@ -1019,7 +1042,7 @@ deuxième fois suffit à annuler le masquage.
 Un glisser-déposer, un raccourci clavier ou la saisie dans un `<input>` ne se
 simulent pas facilement depuis la console. Exposer les actions du panneau sous
 un objet global (`window.adminTest`) permet de piloter les mêmes chemins de
-code que l'UI — dans l'esprit du §15 (vérifier en pilotant l'application,
+code que l'UI — dans l'esprit du §19 (vérifier en pilotant l'application,
 jamais en se fiant à l'absence d'erreur).
 
 ## 13. Édition manuelle du code
@@ -1084,7 +1107,703 @@ leur ligne de déclaration n'a pas été exécutée. Déclarer ces booléens d'�
 manipule le plus (l'endroit le plus naturel à lire n'est pas forcément le bon
 endroit où déclarer).
 
-## 14. Lanceur et empaquetage
+## 14. Exécution tour par tour — sleep() ne met jamais en pause
+
+Sans quoi un vrai suivi de ligne (§15) est impossible : `sleep()` ne fait
+qu'empiler une action, et le programme entier (les 5 tours de la boucle
+`while True`) s'exécute d'un seul bloc synchrone. Les délais visuels (texte,
+son) sont rejoués *après coup*, avec de vrais délais — mais un capteur lu au
+tour 3 voit encore la position du tour 0, puisque rien n'a encore bougé au
+moment où le code Python s'exécute. Pour un ruban LED ça n'a aucune
+importance (rien ne dépend de son état) ; pour un capteur qui doit refléter
+un déplacement réel entre deux tours, ça rend le retour d'information faux
+en silence — le programme tourne sans erreur, il regarde juste toujours la
+même photo.
+
+**PIÈGE nº 28 — restructurer l'exécution sans pouvoir suspendre Python.**
+Faire vraiment pauser `sleep()` en plein milieu d'une fonction imbriquée
+demanderait des générateurs Python et un `yield from` à *chaque* site
+d'appel touchant potentiellement du code bloquant — y compris dans les
+fonctions que les blocs "Fonctions" laissent l'utilisateur créer. Aucun
+générateur de blocs ne produit ce genre de code, et le retrofit reviendrait à
+réécrire tout le générateur Python. Solution retenue à la place : ne pas
+suspendre *dans* une itération, mais entre deux itérations — la seule
+frontière que le générateur contrôle déjà (`while True:` → `for _ in
+range(5):`). Isoler le corps de la boucle et l'exécuter un tour à la fois,
+en vidant sa file avec de vrais délais avant de lancer le tour suivant :
+
+```js
+// un.js — orchestration cote JS (déjà réagencé pour l'édition manuelle du §13)
+window.simu_lancerTours = function(nRestants) {
+    if (nRestants <= 0) { window.simu_finDesTours(); return; }
+    if (window.simu_tourSuivant() === false) return;   // erreur déjà affichée
+    const jeton = jetonSimulation;
+    window._simuApresVidageFile = () => {
+        if (jeton === jetonSimulation) window.simu_lancerTours(nRestants - 1);
+    };
+    window.simu_playQueue();
+};
+```
+
+```python
+# index.html — cote Brython : isoler le corps, l'exécuter une fois par tour
+def _tour_suivant():
+    try:
+        exec(corps, env)          # `env` est le MEME dict a chaque tour : les
+        return True                # variables du programme y survivent.
+    except Exception as e:
+        _rapporter_erreur(e)
+        return False
+
+window.simu_tourSuivant = _tour_suivant
+window.simu_finDesTours = _fin_des_tours
+window.simu_lancerTours(5)
+```
+
+Le crochet côté `simu_playQueue()` : quand la file se vide, appeler un
+rappel en attente plutôt que de simplement s'arrêter :
+
+```js
+if (window.simuQueue.length === 0) {
+    const suite = window._simuApresVidageFile;
+    window._simuApresVidageFile = null;
+    if (suite) suite();
+    return;
+}
+```
+
+Ce changement est **invisible pour tout ce qui existait déjà** : l'ordre et
+le minutage des actions rejouées à l'écran sont identiques à l'ancien
+comportement (tout précalculé d'un coup) pour toute fonctionnalité qui ne
+relit pas un état modifié par le simulateur lui-même — ce qui est le cas de
+tout, sauf des capteurs Maqueen. Vérifié en rejouant le test documenté au
+§7 (`was_gesture` déclenche 1 fois sur 5 tours, `is_gesture` 5 fois) après le
+changement : résultat identique.
+
+**PIÈGE nº 29 — ne jamais supposer une largeur d'indentation fixe pour
+séparer le corps de la boucle.** Le code généré par les blocs utilise
+toujours 2 espaces (`Blockly.Python.INDENT`), mais du code tapé à la main
+(§13, édition manuelle) peut très bien en utiliser 4, ou des tabulations.
+Retirer un nombre fixe de caractères sur chaque ligne laisse un reliquat
+d'indentation sur du code à 4 espaces, et `exec()` échoue sur
+`IndentationError: unexpected indent` — silencieux à la lecture du code
+(il a l'air correct), visible seulement à l'exécution. Utiliser
+`textwrap.dedent()` sur le corps isolé : il retire la plus longue
+indentation commune à toutes les lignes, quelle que soit sa largeur.
+
+Cas de repli, volontairement laissés au comportement d'origine (programme
+entier d'un coup, 5 tours précalculés) : aucune boucle infinie de premier
+niveau trouvée, ou plusieurs (rare — un élève peut empiler deux blocs
+« répéter indéfiniment »). Un vrai découpage tour par tour pour plusieurs
+boucles concurrentes demanderait de les entrelacer, hors de portée ici.
+
+## 15. Maqueen Plus — un robot qui se déplace vraiment sur une piste
+
+Inspiré d'un simulateur avec piste et châssis Maqueen Plus vu ailleurs (type
+Mind+/DFRobot). Nouvelle catégorie de blocs, plus une piste dessinée dans le
+panneau simulateur où le robot avance réellement, dont les capteurs de ligne
+lisent la piste sous lui — rendu possible par le §14 ci-dessus.
+
+### Protocole I²C — repris d'un pilote MicroPython vérifié, pas deviné
+
+Adresse `0x10`. Moteurs sur les registres `0x00` (gauche) / `0x02` (droit),
+écriture de 3 octets `[registre, sens, vitesse]` (sens 0 = avant, 1 =
+arrière, vitesse 0-255). État des cinq capteurs de ligne sur un seul octet
+(`0x1D`, un bit par capteur : L2=`0x10`, L1=`0x08`, M=`0x04`, R1=`0x02`,
+R2=`0x01`), leur valeur brute (16 bits) sur les registres `0x1E` à `0x26`.
+Phares sur `0x0B`/`0x0C`. Les DEL RGB et l'ultrason ne passent **pas** par le
+registre I²C : DEL en NeoPixel direct sur P15, ultrason sur P13 (trig) / P14
+(echo) via `machine.time_pulse_us`, exactement le même principe que le
+module Grove Ultrason déjà présent — ne pas réinventer un second pilote
+ultrason, copier celui qui est déjà vérifié. Source du protocole :
+`GBSL-Informatik/maqueen-plus-v2-mpy` (MicroPython, basé sur le paquet
+MakeCode officiel DFRobot) — comme pour le DHT11/DHT22, ne jamais deviner un
+protocole I²C à partir de captures d'écran ou de mémoire, toujours le
+retrouver dans une source vérifiable.
+
+### La piste : un `<canvas>` servant à la fois d'affichage et de capteur
+
+Dessinée **une seule fois** avec `ctx.roundRect(...)` puis un `stroke()`
+blanc épais — inutile de calculer un tracé plus élaboré, un rectangle
+arrondi suffit à faire une boucle fermée franchissable. Le capteur de ligne
+ne lit PAS un tracé paramétrique : il relit directement le pixel du canevas
+à la position calculée du capteur (`getImageData(x, y, 1, 1)`), blanc = sur
+la ligne. Ça marche pour n'importe quel dessin de piste, procédural ou non —
+aucune structure de données séparée à maintenir en double.
+
+Le robot, lui, est un `<div>` positionné par-dessus en **pourcentage** des
+coordonnées internes du canevas (`left: X/largeur*100%`), pas en pixels
+absolus : il suit alors tout seul la mise à l'échelle CSS du canevas
+(`width: 100%` sur un `aspect-ratio` fixe) sans recalcul JS au
+redimensionnement, contrairement à la mise à l'échelle par `transform:
+scale()` déjà utilisée pour la carte micro:bit (§7) qui suppose un calcul
+explicite de facteur.
+
+### Cinématique différentielle — et son piège de signe
+
+```js
+const v = (vGauche + vDroite) / 2;                    // vitesse lineaire
+const omega = (vGauche - vDroite) / EMPATTEMENT;       // vitesse angulaire, rad/s
+x += v * dt * Math.cos(cap);
+y += v * dt * Math.sin(cap);
+cap += omega * dt;
+```
+
+Intégration d'Euler simple, un seul pas par appel de `sleep()` : suffisant
+tant que les pas restent petits (le `sleep(50)` à `sleep(200)` typique d'une
+boucle de contrôle), sans prétendre à une trajectoire d'arc exacte sur un
+grand pas.
+
+**PIÈGE nº 30 — le sens de rotation dépend de la convention d'axes, et se
+trompe silencieusement.** Sur un canevas, l'axe Y pointe vers le **bas** :
+un angle qui augmente fait donc tourner visuellement dans le sens des
+aiguilles d'une montre, pas l'inverse comme en mathématiques classiques (Y
+vers le haut). La formule manuel de la cinématique différentielle
+(`omega = (vDroite - vGauche) / L`) suppose la convention mathématique
+standard ; copiée telle quelle sur un canevas, elle fait tourner le robot du
+**mauvais côté** — roue droite plus rapide tournait vers la droite au lieu
+de la gauche, silencieusement, sans qu'aucune erreur ne le signale : le
+robot bouge, juste pas dans le sens attendu. Une IndentationError se
+remarque tout de suite ; un signe de rotation inversé ne se voit qu'en
+mesurant. Vérifié par calcul : avec `vGauche=100, vDroite=200`, le cap doit
+décroître (le nez part vers la gauche, où sont montés les capteurs L1/L2),
+pas croître — la formule doit donc être `(vGauche - vDroite) / L`, pas
+`(vDroite - vGauche) / L`.
+
+### Capteurs de ligne : décalage de montage, pas une broche
+
+Les cinq capteurs (L2, L1, M, R1, R2) ne sont pas des broches physiques
+distinctes dans la simulation, seulement des décalages latéraux fixes par
+rapport au centre du robot (`{L2: -16, L1: -8, M: 0, R1: 8, R2: 16}`), même
+esprit que les décalages des capteurs de ligne sur le vrai châssis. Leur
+position réelle se recalcule à chaque lecture à partir du cap courant :
+
+```js
+const avantX = Math.cos(cap), avantY = Math.sin(cap);
+const droiteX = -avantY, droiteY = avantX;   // perpendiculaire vers la DROITE du robot
+const x = robot.x + avantX * AVANT_CAPTEURS + droiteX * decalage;
+const y = robot.y + avantY * AVANT_CAPTEURS + droiteY * decalage;
+```
+
+Un décalage positif va donc vers la droite (R1/R2), négatif vers la gauche
+(L1/L2) — cohérent avec le signe de `omega` ci-dessus : les deux doivent
+s'accorder, sinon un programme qui « tourne vers le capteur qui a quitté la
+ligne » tournerait en fait à l'opposé.
+
+### Étendre l'exécution tour par tour, pas la dupliquer
+
+Le déplacement du robot doit s'appliquer au même endroit que le §14 fait déjà
+avancer le temps simulé — dans le traitement de l'action `'sleep'` de la
+file, juste avant `suiteApres()` :
+
+```js
+else if (action.type === 'sleep') {
+    avancerMaqueen(action.value);   // avant la vraie pause : la position doit
+    suiteApres(action.value);       // deja etre a jour quand suiteApres reprend
+}
+```
+
+Écrire vitesse/phares/DEL passe par la file comme un servo ou un moteur
+DRV8830 déjà présents (`window.simuQueue.push({...})`) — **jamais** en
+écriture directe et instantanée sur l'état : la variable de vitesse doit
+changer au même rythme que le reste de la file, sinon un programme qui
+alterne plusieurs vitesses moteur dans la même boucle verrait toutes ses
+écritures appliquées d'un coup avant le premier `sleep()`, invalidant tout
+l'intérêt du §14. Les lectures (ligne, distance), à l'inverse, sont
+synchrones — comme la distance Grove déjà en place — puisqu'un capteur se
+lit à l'instant où le programme le demande, sans délai visuel à respecter.
+
+### Un bug préexistant corrigé au passage : DHT11/DHT22 sans substitut simulateur
+
+En construisant les substituts Maqueen, l'absence de `_CapteurDHT11Mock` /
+`_CapteurDHT22Mock` dans `env` saute aux yeux par comparaison avec les
+autres modules Grove. Sans eux, un programme utilisant DHT11/DHT22 plantait
+sur `NameError` dès qu'on cliquait « Lancer la simulation » — jamais détecté
+faute d'avoir testé ce chemin précis à l'origine (voir §19 : la génération
+de code seule ne suffit pas, il faut aussi *exécuter*). Prévoir un
+`_CapteurXMock` pour **chaque** classe qu'un pilote Grove peut instancier
+est donc à vérifier systématiquement à la création d'un nouveau module, pas
+seulement pour ceux qui ont l'air d'avoir besoin d'un rendu visuel.
+
+### Placer le robot à la souris, et une conséquence à en tirer sur le point de départ
+
+Glisser-déposer avec `pointerdown`/`pointermove`/`pointerup` (les Pointer
+Events unifient souris et tactile, `touch-action: none` en CSS empêche le
+geste de faire défiler la page à la place) : convertir la position du
+pointeur en coordonnées internes de la piste (`(clientX - rect.left) /
+rect.width * LARGEUR`), pas en pixels d'écran — le robot est déjà positionné
+en pourcentage (voir plus haut), donc cohérent avec le redimensionnement CSS
+sans code supplémentaire.
+
+Une fois déposé, la nouvelle position devient le **point de départ**
+(`MQ_DEPART`, muable et non plus une constante), pas seulement la position
+courante : sans ça, « Réinitialiser la simulation » effacerait le placement
+choisi à chaque clic, ce qui viderait la fonctionnalité de son intérêt — le
+but est justement de pouvoir tester un programme depuis un endroit précis de
+la piste de façon répétable.
+
+### Animer le déplacement — et le piège qu'une transition CSS révèle sur l'angle
+
+Une position mise à jour d'un coup (téléporter puis figer jusqu'au prochain
+tour) se voit comme saccadée, même quand le calcul de cinématique est
+correct : rien n'interpole visuellement entre l'ancienne et la nouvelle
+position. Remède simple, une transition CSS calée sur la **durée réelle**
+du `sleep()` qui a déclenché le déplacement :
+
+```js
+robotEl.style.transition =
+    'left ' + ms + 'ms linear, top ' + ms + 'ms linear, transform ' + ms + 'ms linear';
+// … puis on change left/top/transform : le navigateur anime la difference.
+```
+
+Écrire `transition = 'none'` avant tout déplacement qui doit être instantané
+(glisser-déposer, réinitialisation, positionnement de test) — sinon ces
+changements-là s'animent aussi, ce qui donne un robot qui « rattrape »
+mollement le pointeur au lieu de le suivre.
+
+**PIÈGE nº 31 — replier un angle dans [0, 360[ casse l'animation CSS à la
+frontière.** Une transition CSS sur `transform: rotate()` interpole
+**numériquement** entre l'ancienne et la nouvelle valeur, sans savoir qu'un
+angle est périodique. Si le cap est ramené dans [0, 360[ après chaque pas
+(`cap = ((cap + delta) % 360 + 360) % 360`), un virage qui franchit la
+frontière — 350° qui devient 10° après un delta de +20° — s'affiche comme
+une rotation de -340° (le tour complet dans l'autre sens) plutôt que les +20°
+réels : le robot semble faire un tour sur lui-même à chaque passage par
+zéro. Solution : ne **jamais** replier l'angle pendant la conduite, le
+laisser croître ou décroître sans limite (`cap += delta`, un nombre réel
+quelconque) — `Math.cos`/`Math.sin` et `rotate()` en CSS sont tous les deux
+périodiques et s'en accommodent très bien. Ne remettre à une valeur connue
+(0° ou autre) qu'à la réinitialisation explicite, où aucune animation n'est
+souhaitée de toute façon (`transition: none`).
+
+### Plusieurs tracés — un registre, pas des variantes du code de dessin
+
+Trois pistes (`PISTES_MAQUEEN = { ovale, rectangulaire, huit }`), chacune un
+objet `{ nom, depart: {x, y, cap}, dessiner(ctx) }` plutôt que trois copies
+de `dessinerPisteMaqueen()` avec un `if` sur le tracé choisi — changer de
+piste devient alors `dessinerPisteMaqueen()` (fond + réglages de trait
+communs) suivi de `PISTES_MAQUEEN[cle].dessiner(ctx)` (juste le tracé), et
+ajouter une quatrième piste n'est qu'une nouvelle entrée dans le registre.
+
+Le point de départ appartient à la piste, **pas** au robot : un point qui
+tombe sur le tracé d'une boucle ovale ne tombe pas forcément sur celui d'un
+circuit en huit. Changer de piste doit donc remplacer `MQ_DEPART` par celui
+de la nouvelle piste et repositionner le robot dessus tout de suite
+(`reinitialiserMaqueen()`), pas garder l'ancien point et laisser l'élève
+découvrir que son robot est planté en dehors de la piste.
+
+Le circuit en huit ne calcule aucune intersection : deux tracés en boucle
+(`ctx.roundRect` + `stroke`) dont les rectangles de base se chevauchent sur
+une quarantaine de pixels suffisent, le croisement du trait blanc apparaît
+tout seul dans la zone commune. Plus simple et plus sûr que de calculer une
+courbe en forme de huit à la main.
+
+### Éditeur de piste à points de passage
+
+Une piste personnalisée n'est qu'une liste `[{x, y}, …]` reliée par des
+segments droits, refermée du dernier point au premier
+(`ctx.closePath()` dès qu'il y en a au moins 3) — même style de trait que les
+pistes fixes (26 px, blanc), donc les capteurs de ligne n'ont besoin d'aucun
+cas particulier pour une piste dessinée à la main. Le point de départ est le
+premier point posé, orienté vers le deuxième (`atan2`) : le robot démarre
+face à la piste plutôt que dans une direction arbitraire.
+
+Les poignées (un `<div>` par point, positionné en pourcentage comme le
+robot) sont des éléments DOM distincts du canevas, **jamais dessinées sur
+ses pixels** : le canevas ne doit contenir que la piste elle-même, puisque
+c'est aussi lui qu'on relit pour savoir si un capteur est sur la ligne — y
+mélanger des poignées de couleur fausserait cette lecture pendant l'édition.
+
+Identifier *quelle* poignée on déplace ou supprime avec un `dataset.index`
+relu **au moment de l'événement**, pas capturé une fois pour toutes à la
+création : les poignées sont recyclées (on ajoute/retire des `<div>` plutôt
+que de tout reconstruire à chaque point posé), et supprimer le point *n*
+décale les index de tous les points suivants. Un index figé dans la
+fermeture au moment de `addEventListener` pointerait sur le mauvais point
+dès la première suppression.
+
+**PIÈGE nº 32 — `setPointerCapture` peut lever une exception, sur un geste
+par ailleurs valide.** Rencontré en testant le glisser d'une poignée avec de
+vrais `PointerEvent` synthétiques, mais le message d'erreur
+(`NotFoundError: No active pointer with the given id`) n'a rien de
+spécifique aux tests : un pointeur relâché entre le `pointerdown` et l'appel
+à `setPointerCapture`, ou un identifiant que le navigateur ne reconnaît plus,
+donne la même exception en usage réel. Comme elle n'est pas rattrapée, une
+exception ici **interrompt le reste du gestionnaire** — y compris
+`preventDefault()`/`stopPropagation()` placés juste après, qui ne
+s'exécutent alors jamais. Encadrer l'appel d'un `try/catch` qui ne fait rien
+d'autre que laisser continuer : la capture est un confort (suivre le
+pointeur même s'il sort de l'élément), pas une condition pour que le reste
+du glisser fonctionne, puisque les écouteurs restent actifs sur l'élément
+lui-même.
+
+### Indicateurs de capteurs de ligne — n'afficher que ce que le programme lit vraiment
+
+Même logique que les sections du panneau Grove (§9) : un point par capteur
+(L2/L1/M/R1/R2), masqué par défaut, montré seulement si un bloc `capteur de
+ligne` ou `valeur brute du capteur de ligne` **posé sur l'espace de
+travail** référence ce capteur précis — pas les cinq d'un coup, l'élève ne
+doit voir que ce qui compte pour son programme :
+
+```js
+function capteursLigneUtilisesMaqueen() {
+    const utilises = new Set();
+    for (const bloc of window.workspace.getAllBlocks(false)) {
+        if (bloc.type === 'maqueen_ligne_etat' || bloc.type === 'maqueen_ligne_valeur') {
+            utilises.add(bloc.getFieldValue('CAPTEUR'));
+        }
+    }
+    return utilises;
+}
+```
+
+Appelée depuis `rafraichirPanneauMaqueen()` (donc à chaque changement de
+bloc, comme le reste du panneau) pour la **visibilité** des points, mais leur
+**état** (vert/gris) doit rester à jour bien plus souvent que ça — à chaque
+déplacement du robot, simulé ou glissé à la souris. Plutôt qu'un second
+mécanisme de rafraîchissement, brancher la mise à jour des indicateurs
+directement dans `dessinerRobotMaqueen()` : c'est déjà le point de passage
+unique pour tout changement de position, qu'il vienne d'`avancerMaqueen()`
+(§15), du glisser-déposer ou d'une réinitialisation.
+
+Conséquence : relire jusqu'à cinq pixels du canevas (un `getImageData` par
+capteur visible) à *chaque* appel de `dessinerRobotMaqueen()`, largement
+assez fréquent pour que le navigateur suggère `willReadFrequently: true` à
+la création du contexte 2D — un avertissement console à prendre au sérieux
+ici (des lectures répétées sur un petit canevas, pas un cas isolé), pas à
+ignorer par réflexe.
+
+## 16. Kitrobot v2 — un second robot, sans supposer le câblage
+
+Second kit, distinct du Maqueen Plus (autre châssis, deux servos + une
+piste dédiée départ/arrivée plutôt qu'un circuit fermé), demandé à partir de
+captures d'écran (piste avec drapeaux, palette de blocs Détection /
+Déplacement / Contrôle / LED RGB). Module **séparé** de Maqueen — pas une
+extension — avec sa propre catégorie, sa propre piste, son propre panneau.
+
+### Pas de protocole vérifié cette fois : les broches se choisissent, elles ne se devinent pas
+
+Pour le Maqueen Plus (§15) et le DHT11/DHT22 (§9), un pilote MicroPython
+tiers vérifiable a pu être retrouvé et cité. Pour le Kitrobot v2, aucune
+source de ce niveau n'a été trouvée. Plutôt que fabriquer un faux protocole
+I²C à partir d'une capture d'écran — ce que ce projet s'interdit
+systématiquement — le robot est reconstruit comme une **composition de
+briques déjà vérifiées séparément** :
+
+- deux servomoteurs à rotation continue (`_servo_continu`, déjà vérifié au
+  §8) pour les roues, montés en miroir (signe inversé côté droit) ;
+- l'ultrason Grove (`_grove_distance_cm`, §9) pour la distance ;
+- le ruban NeoPixel Grove (`neopixel.NeoPixel`, `_grove_teinte`, `_grove_lum`,
+  §9) pour les LED RGB ;
+- un buzzer sur simple broche numérique, technique standard (`set_analog_
+  period_us` + `write_analog(512)` pour un carré PWM à la fréquence voulue) ;
+- deux capteurs de ligne Grove Line Finder lus en tout-ou-rien
+  (`read_digital()`).
+
+Toutes les broches ont une valeur par défaut plausible (P1/P2 les servos, P0
+l'ultrason, P8 le buzzer, P13/P14 les capteurs de ligne, P15 le ruban), mais
+**modifiable** par des blocs « définir » facultatifs — exactement le choix
+déjà fait pour le Maqueen Plus concernant l'ultrason/le ruban, généralisé ici
+à tout le robot puisque rien n'est vérifié. Un tooltip le dit sur chaque bloc
+« définir ». Ne pas présenter ces valeurs comme un câblage réel : elles ne le
+sont pas.
+
+### La piste : droite, départ/arrivée, noir sur blanc — pas le circuit fermé de Maqueen
+
+Piste dédiée, demandée explicitement pour ne pas réutiliser le système de
+piste fermée de Maqueen (§15, boucle refermée sur elle-même). Un simple
+segment horizontal épais dessiné une fois au `<canvas>`
+(`ctx.moveTo`/`lineTo`/`stroke()`), deux drapeaux « Départ »/« Arrivée » en
+`<div>` décoratifs par-dessus — même principe que le robot lui-même :
+jamais dessinés sur le canevas, seulement en CSS, puisque le canevas sert
+aussi de capteur (`getImageData`) et que tout ce qui s'y dessine en plus
+fausserait la lecture des capteurs de ligne.
+
+Couleurs **inversées** par rapport à Maqueen (ligne noire sur fond blanc, au
+lieu de blanche sur fond vert) : un choix délibéré pour qu'on distingue les
+deux panneaux d'un coup d'œil, pas seulement par leur titre. Conséquence
+directe sur la détection : Maqueen teste un pixel *clair* (`pix[0] > 200`
+typiquement), Kitrobot teste un pixel *sombre* (`pix[0] < 100 && pix[1] <
+100 && pix[2] < 100`). Confondre les deux revient à un capteur qui ne
+détecte jamais rien — un piège silencieux (pas d'erreur, juste un capteur
+qui renvoie toujours `false`), à vérifier en plaçant le robot manuellement
+sur la ligne (`window.kitrobotTest.definirPosition(x, y, cap)`) et en lisant
+`surLaLigne('gauche')`.
+
+Cinématique et positionnement du robot : identiques à Maqueen au signe près
+déjà corrigé (§15 — `omega = (vGauche - vDroite) / empattement`), aucune
+raison de le redécouvrir une seconde fois. Vitesse en pourcentage (-100 à
+100, comme les blocs Kitrobot l'exposent) plutôt qu'en -255..255 comme
+Maqueen : seule la constante de conversion change.
+
+### Chaque fonction du pilote retiré a besoin de son substitut — pas seulement les feuilles
+
+Point déjà découvert avec DHT11/DHT22 (§9, bug corrigé au §15) et reconfirmé
+ici en le construisant dès le départ plutôt qu'en le découvrant après coup :
+**tout** ce qui est déclaré à l'intérieur du bloc `# >>> pilote kitrobot …
+# <<< pilote kitrobot` disparaît avant l'exécution dans le simulateur — pas
+seulement les fonctions qui touchent une broche, mais aussi celles qui ne
+font qu'en appeler d'autres. `_kb_case(sens)`, par exemple, ne fait
+qu'enchaîner `_kb_avancer()`, `sleep()` et `_kb_arreter()` — mais comme sa
+propre définition est *elle-même* à l'intérieur du marqueur, ne fournir un
+substitut que pour `_kb_avancer`/`_kb_arreter` et pas pour `_kb_case` produit
+un `NameError` tout aussi sûrement. Les 16 fonctions `_kb_*` du pilote ont
+donc chacune leur mock côté navigateur, y compris les fonctions de
+composition (`_kb_case`, `_kb_virage`, `_kb_arreter`) et les fonctions
+purement calculatoires (`_kb_hsv`) — écrites en réutilisant `sleep()` et les
+mocks déjà mockés plus haut (`_grove_obj`, `_NeoPixelMock`, `_grove_teinte`)
+plutôt qu'en réinventant un nouveau mécanisme de file d'attente : `_kb_case`
+appelle `_kb_avancer()` puis `sleep(600)` puis `_kb_arreter()`, exactement
+comme le vrai pilote, et ça suffit — `sleep()` est déjà une fonction mockée
+qui empile une action dans la file du simulateur (§14), donc l'ordre et le
+délai sont respectés sans rien coder de plus.
+
+## 17. Maqueen Plus V3, télécommande infrarouge et LiDAR
+
+Demandé à partir de captures d'écran d'une palette de blocs MakeCode/Mind+
+montrant des variantes « v1/v2/v3 » du Maqueen Plus, une télécommande
+infrarouge et un module LiDAR matriciel. Contrairement au Kitrobot v2
+(§16), ici une source vérifiable existe et a été retrouvée avant d'écrire
+la moindre ligne : `DFRobot/pxt-DFRobot_MaqueenPlus_v20` (fichier
+`maqueenPlusV2.ts`) et `DFRobot/pxt-DFRobot_matrixLidarDistanceSensor`
+(fichier `matrixLidarDistance.ts`), tous deux sur GitHub.
+
+### Démêler « v1/v2/v3 » avant de coder quoi que ce soit
+
+DFRobot n'a **pas de nommage cohérent** entre ses propres dépôts : le
+dépôt le plus proche d'un hypothétique « V1 » (`pxt-DFRobot-Maqueenplus`,
+6 capteurs de ligne, servos pilotés en I2C) pointe lui-même vers une page
+produit étiquetée « V2 » chez DFRobot. En revanche, une confirmation
+externe a été trouvée : « V3 et V2 utilisent la même bibliothèque, toutes
+les fonctions V3 sont intégrées à la bibliothèque V2 » — exactement ce que
+montre `maqueenPlusV2.ts`, où les fonctions V3 (suiveur de ligne, PID) sont
+marquées `group="V3"` mais vivent dans le **même namespace**, avec le
+**même registre I2C 0x10** que les fonctions déjà implémentées dans ce
+projet (moteurs, 5 capteurs de ligne, phares, ruban NeoPixel — qui
+correspondent déjà exactement au protocole V2, vérifié en comparant les
+adresses registre par registre). Plutôt que de deviner un « V1 » incertain,
+la question a été posée : la réponse retenue est que le jeu de blocs déjà
+présent (motorisation, ligne, phares, ruban) *est* la base commune, et que
+seules les fonctions **V3 additionnelles** (suiveur de ligne autopilote,
+PID, luminosité, vitesse réelle, DEL de carrosserie) sont de nouveaux
+blocs — sans sélecteur de version qui changerait le code généré, puisque
+rien dans les sources trouvées n'exige de branchement par version une fois
+« V1 » écarté.
+
+### Suiveur de ligne et PID (V3) — mêmes fonctions `_mq_ecrire`/`_mq_lire`
+
+```python
+def _mq_v3_pid_avancer(sens, distance_cm, attendre):
+    distance_cm = int(distance_cm)
+    if distance_cm >= 6000:
+        distance_cm = 60000     # tel quel dans la source DFRobot (voir plus bas)
+    _mq_ecrire(64, 1 if sens == "avant" else 2)
+    _mq_ecrire(85, 2)           # vitesse PID interne, fixe (pas un parametre MakeCode)
+    _mq_ecrire(65, (distance_cm >> 8) & 0xFF)
+    _mq_ecrire(66, distance_cm & 0xFF)
+    _mq_ecrire(60, 0x04 | 0x02)
+    if attendre:
+        while _mq_lire(87, 1)[0] == 1:
+            sleep(10)
+```
+
+**PIÈGE nº 35 — reproduire une source fidèlement, même une coquille
+apparente, plutôt que la « corriger » sans certitude.** La fonction
+d'origine (`pidControlDistance`) contient `if (distance >= 6000) distance
+= 60000` — un plafond qui semble être une erreur de copier-coller (6000
+attendu, 60000 écrit), mais rien ne prouve que ce n'est pas une valeur
+volontaire tenant compte d'une unité interne différente. Corriger cette
+ligne serait deviner un comportement jamais vérifié sur une vraie carte.
+La reproduire telle quelle, en le signalant en commentaire et dans
+`ETAT_DU_PROJET.md`, laisse la décision à quelqu'un qui pourra un jour la
+vérifier sur le matériel réel — la règle « ne jamais deviner un protocole »
+(§9, §15) s'applique aussi à ne pas deviner une correction.
+
+Le sens gauche/droite du bloc « tourner (PID) » est logé dans la même
+incertitude : la source ne code que le **signe** de l'angle (`angle >= 0`
+→ direction 1, sinon direction 2, source déjà donc muette sur ce que ça
+donne physiquement) — traduit en un choix gauche/droite pour coller à
+l'interface par blocs, mais non confirmé sur un vrai chassis.
+
+### Le suiveur de ligne autopilote n'a pas d'équivalent dans le simulateur
+
+Contrairement aux blocs moteur ordinaires (qui pilotent directement les
+deux roues, modélisées par la cinématique différentielle du §15), le
+suiveur de ligne V3 et le codeur de roue sont des fonctionnalités
+**embarquées dans le firmware du chassis lui-même** : le micro:bit ne fait
+qu'envoyer une commande, toute la boucle de correction se passe sur la
+puce du Maqueen. Le modèle cinématique de ce simulateur n'a pas de
+représentation de ce firmware distinct — seuls les mouvements PID
+(distance/angle) sont donc mimés en pilotant directement les moteurs
+simulés déjà existants (`window.simu_maqueenMoteur`), avec un `sleep()`
+proportionnel à la distance/l'angle demandé (approximation minutée, sans
+odométrie réelle, même limite déjà acceptée pour le Kitrobot v2 au §16).
+Les autres blocs V3 (mode aux intersections, vitesse du suiveur, capteurs
+de luminosité, vitesse réelle des roues) se contentent d'enregistrer un
+état sans effet visuel — les documenter comme tel plutôt que fabriquer une
+fausse simulation aurait été trompeur.
+
+### Télécommande infrarouge — protocole public, pilote DFRobot non portable
+
+Le pilote réel de DFRobot pour l'infrarouge (`maqueenIR`/`maqueenIRV2`
+dans `pxt-DFRobot-Maqueenplus`) est entièrement **natif** : les fichiers
+`.ts` ne déclarent que des signatures vides (`declare namespace maqueenIR
+{ function onPressEvent(...): void; }`), l'implémentation réelle vit dans
+des fichiers `.cpp` compilés dans le firmware MakeCode — impossible à
+réutiliser en MicroPython, exactement comme pour le premier pilote
+DHT11/DHT22 (§9). Contrairement au DHT11/22, la solution n'est pas un
+firmware assembleur repris d'ailleurs : le protocole NEC lui-même est une
+**norme publique** (pas un secret DFRobot), documentée indépendamment de
+DFRobot — le décoder n'est donc pas « deviner un protocole », c'est
+implémenter une spécification ouverte.
+
+```python
+def _ir_lire_trame():
+    broche = _ir_broche[0]
+    if broche.read_digital() == 1:      # recepteur actif bas : repos = 1
+        return None
+    temps = []
+    niveau = 0
+    for _ in range(68):                  # 1 marque + 1 espace d'entete + 32*2 bits + 1 stop
+        duree = machine.time_pulse_us(broche, niveau, 15000)
+        if duree < 0:
+            break
+        temps.append(duree)
+        niveau = 1 - niveau
+    if len(temps) < 68 or not (8000 <= temps[0] <= 10000) or not (4000 <= temps[1] <= 5000):
+        return None
+    valeur = 0
+    for i in range(2, 66, 2):
+        valeur >>= 1
+        if temps[i + 1] > 1120:          # espace long = bit 1, court = bit 0
+            valeur |= 0x80000000
+    commande = (valeur >> 16) & 0xFF
+    if commande != ((valeur >> 24) & 0xFF) ^ 0xFF:   # verification du complement
+        return None
+    return commande
+```
+
+Même technique que le capteur ultrason (§9) : `machine.time_pulse_us`
+mesure une impulsion avec la précision native du firmware, pas un
+bit-bang Python microseconde par microseconde (qui, lui, aurait exigé de
+l'assembleur — le DHT11/22 l'a appris à ses dépens). Les impulsions NEC
+(562,5 µs minimum) sont assez larges pour que la surcharge d'un appel de
+fonction MicroPython entre deux mesures reste négligeable — contrairement
+au DHT11/22 dont les impulsions de ~50-70 µs ne laissent aucune marge.
+Pas de gestion des trames de répétition (bouton maintenu) : simplification
+assumée, chaque appui ne déclenche l'évènement qu'une fois.
+
+Deux télécommandes reconnues, deux tables de correspondance code→bouton :
+la « noire » (enum `RemoteButton` du dépôt DFRobot, adresse NEC non
+documentée donc non vérifiée) et la « grise Car mp3 SE-020401 » (très
+répandue, table de 21 boutons relevée sur une source indépendante :
+<https://gist.github.com/danyboy666/f342c1cca26e88e0e637ee071698ac56>).
+
+### PIÈGE nº 36 — `globals()` dans un mock ne renvoie PAS l'espace de noms du programme élève
+
+Repose sur le même mécanisme que les blocs « lorsque … » (§6) : un bloc
+« lorsque la commande X est reçue » génère `def on_ir_noire_touche1():
+...`, et un dispatcher doit retrouver cette fonction par son nom pour
+l'appeler. Sur la vraie carte, tout — pilote et programme élève — vit dans
+un seul espace de noms, donc `globals()` fonctionne. Mais dans le
+simulateur, le programme élève s'exécute via `exec(code, env)` où `env`
+est un **dictionnaire séparé** de l'espace de noms du script Brython du
+simulateur : une fonction mock définie avec `def _ir_traiter(): ...` au
+niveau du module a son `__globals__` figé sur le module où elle est
+**définie**, pas sur `env`. Résultat : `"on_ir_noire_touche1" in
+globals()` est toujours faux, silencieusement — aucune erreur, l'appel
+ne se produit juste jamais.
+
+Ce piège était déjà connu et documenté pour `_radio_traiter` (commentaire
+en clair dans `index.html` : « doit chercher les gestionnaires dans env,
+là où exec les crée ») — mais pas réappliqué du premier coup en écrivant
+`_ir_traiter` par analogie avec le pilote réel plutôt qu'avec le mock déjà
+existant. Repéré uniquement en **exécutant** un programme avec un vrai
+gestionnaire posé (le mock, testé isolément avec des arguments neutres,
+ne révèle rien) : la fonction se déclarait « sans erreur » mais
+n'appelait jamais le gestionnaire. Corrigé en déplaçant `_ir_traiter` à
+l'intérieur de `lancer_simulation()`, fermeture sur `env`, exactement
+comme `_radio_traiter` :
+
+```python
+def _ir_traiter():
+    if not window.simu_irEnAttente():
+        return
+    telecommande = str(window.simu_irTelecommande())
+    touche = str(window.simu_irToucheAttente())
+    _ir_dernier[0] = int(window.simu_irCodeAttente())
+    window.simu_irConsommer()
+    nom = "on_ir_" + telecommande + "_" + touche
+    if nom in env:          # env, jamais globals()
+        env[nom]()
+```
+
+Règle générale : **tout mock destiné à appeler une fonction définie par
+les blocs (pas seulement lire/écrire un état) doit être défini à
+l'intérieur de `lancer_simulation()` et fermer sur `env`** — jamais au
+niveau module, même si ça semble fonctionner en l'appelant isolément.
+
+### Simuler une télécommande sans vrai signal infrarouge
+
+Le panneau Maqueen Plus expose deux menus déroulants (télécommande,
+touche — remplis depuis les mêmes tables `MENU_TOUCHE_NOIRE`/
+`MENU_TOUCHE_GRISE` que le générateur, pas dupliqués côté HTML) et un
+bouton « Simuler l'appui ». Le pont JS→Python passe par des **fonctions**
+qui renvoient un type simple (`window.simu_irEnAttente()` → bool,
+`window.simu_irTelecommande()` → str, `window.simu_irCodeAttente()` →
+int) plutôt qu'un objet JS lu directement (`window.simu_irCommande.code`)
+— ce dernier a été essayé en premier et abandonné : la lecture d'une
+propriété d'objet JS imbriquée depuis Brython n'est pas un chemin aussi
+éprouvé dans ce projet que l'appel de fonction renvoyant un scalaire,
+déjà utilisé par tous les autres mocks (`_mq_distance`, `_grove_teinte`,
+etc.) — repris par cohérence avec l'existant plutôt que re-découvert à
+la dure une seconde fois.
+
+### LiDAR matriciel (SEN0628) — capteur indépendant, protocole par paquets
+
+Nouvelle catégorie de blocs, pas rattachée au Maqueen (utilisable seule).
+Protocole entièrement différent de l'I2C « écrire un registre, lire un
+registre » des autres modules : un paquet d'entête fixe, une commande, une
+réponse à interroger jusqu'à un octet de statut :
+
+```python
+def _lidar_paquet(adresse, commande, donnees=b""):
+    longueur = len(donnees) + 1
+    entete = bytes([0x55, (longueur >> 8) & 0xFF, longueur & 0xFF, commande])
+    i2c.write(adresse, entete + donnees)
+    sleep(10)
+
+def _lidar_reponse(adresse, commande):
+    debut = running_time()
+    while running_time() - debut < 200:
+        statut = i2c.read(adresse, 1)[0]
+        if statut in (0x53, 0x63):          # succes / echec
+            echo = i2c.read(adresse, 1)[0]
+            longueur = i2c.read(adresse, 2)
+            longueur = longueur[1] << 8 | longueur[0]
+            if echo != commande or longueur == 0:
+                return b""
+            return i2c.read(adresse, longueur)
+    return b""
+```
+
+Deux modes distincts, à ne pas mélanger : « Matrice 8x8 » (lecture point
+par point, x/y de 0 à 7) et « Évitement 4x4 » (une seule acquisition
+renvoie direction conseillée, signal d'urgence, distances gauche/avant/
+droite déjà calculées par le capteur). Un détail de la source à respecter
+sans le « simplifier » : `obstacleSuggestion()` (direction conseillée) et
+`getObstacleDistance()` (distance par côté) **n'utilisent pas le même
+codage** pour gauche/avant/droite — la première documente 1=gauche/
+2=droite/3=avant en commentaire, la seconde utilise un enum `Left=1,
+Front=2, Right=3` — une incohérence de la source elle-même, reproduite
+avec deux tables séparées plutôt qu'unifiée en une seule qui aurait
+introduit une inversion.
+
+Panneau simulateur minimal (trois curseurs gauche/avant/droite, pas de
+vraie matrice de distances) : aucune piste ni robot associé à un capteur
+générique, contrairement à Maqueen/Kitrobot.
+
+## 18. Lanceur et empaquetage
 
 `lancer_projet.bat` :
 
@@ -1093,7 +1812,7 @@ endroit où déclarer).
 cd /d "%~dp0"
 ```
 
-**PIÈGE nº 28** — sans `cd /d "%~dp0"`, lancé depuis un raccourci ou une invite
+**PIÈGE nº 33** — sans `cd /d "%~dp0"`, lancé depuis un raccourci ou une invite
 positionnée ailleurs, le serveur sert le mauvais dossier et le navigateur
 affiche des 404 sur `un.js`, `deux.js`, `trois.js`. Ouvrir le navigateur
 **après** le démarrage du serveur, et ne pas masquer la fenêtre : si le port est
@@ -1104,7 +1823,26 @@ Pour un exécutable PyInstaller : `os.chdir(sys._MEIPASS)` en mode figé,
 `allow_reuse_address = True` sur le `TCPServer`, et message clair si le port
 est pris.
 
-## 15. Comment vérifier
+**PIÈGE nº 34 — `socketserver.TCPServer` tout court ne suffit pas : il lui
+faut `ThreadingMixIn`.** Un navigateur ouvre plusieurs connexions en
+parallèle pour charger `trois.js`, `deux.js` et `un.js` en même temps qu'il
+sert `index.html`. Un `TCPServer` nu ne traite qu'une connexion à la fois
+(gardée ouverte en HTTP/1.1 keep-alive) : la première requête aboutit,
+`index.html` s'affiche avec toute sa mise en page statique, mais le serveur
+reste bloqué dessus et ne répond jamais aux autres — l'espace de travail
+Blockly reste vide indéfiniment, sans la moindre erreur console, puisque
+`un.js` n'est simplement jamais exécuté. Pas un cas rare : ça peut arriver
+au tout premier chargement, dans n'importe quel navigateur. Corrigé par
+`class Serveur(socketserver.ThreadingMixIn, socketserver.TCPServer)` (plus
+`daemon_threads = True`, pour que les threads ne bloquent pas l'arrêt du
+serveur). Le mono-thread avait été gardé un temps par crainte d'un accès
+concurrent au lecteur de carte dans `deux.js` — mais ce lecteur est piloté
+côté navigateur (File System Access API), sans aucun rapport avec le
+serveur Python, qui ne fait que servir des fichiers statiques en lecture
+seule sans état partagé entre requêtes. Rien à protéger, donc rien qui
+justifiait de s'en priver.
+
+## 19. Comment vérifier
 
 Aucun test automatisé : la vérification se fait dans le navigateur, en pilotant
 l'application depuis la console.
@@ -1146,6 +1884,20 @@ l'application depuis la console.
     protocole (le datasheet en donne un), pas seulement en relisant le code —
     une erreur de décalage de bits se lit rarement à l'œil dans du code
     correct en apparence.
+11. **Un mock qui doit appeler une fonction définie par les blocs** (un
+    dispatcher d'évènement, voir PIÈGE nº 36 §17) : ne jamais se contenter
+    de vérifier qu'il s'exécute sans erreur avec des arguments neutres —
+    poser un vrai gestionnaire (`def on_xxx(): ...`) et vérifier qu'il est
+    réellement *appelé*, sans quoi une recherche dans le mauvais espace de
+    noms (`globals()` au lieu de `env`) passe inaperçue indéfiniment.
+12. **Substituts d'un pilote retiré côté simulateur** (Kitrobot v2, §16) :
+    lister toutes les fonctions déclarées à l'intérieur du bloc
+    `# >>> pilote … # <<< pilote`, pas seulement celles que les blocs
+    appellent directement — une fonction de composition (`_kb_case` par
+    exemple) est tout aussi absente du code exécuté que celles qui touchent
+    une broche. Exécuter un programme qui appelle chacune au moins une fois
+    et vérifier l'absence de `NameError`, pas seulement les quelques-unes
+    posées à la main pendant le développement.
 
 ### Les faux négatifs, à connaître avant de conclure
 
@@ -1162,12 +1914,14 @@ Ces six-là ont fait conclure à tort qu'un correctif ne marchait pas :
 - **`elementFromPoint` sur un élément en `pointer-events: none`** : il est
   invisible au test de survol par construction. L'ordre de peinture se vérifie
   par la structure, pas par le pointeur.
-- **Un serveur qui ne répond plus après une rafale de tests.** Le serveur du
-  §1 est mono-thread (`socketserver.TCPServer`, pas `ThreadingTCPServer`) : une
-  requête qui ne se termine pas — un onglet resté ouvert, un fetch abandonné —
-  bloque tout le reste derrière elle, y compris un tout nouvel onglet. Ça
-  ressemble à une régression du dernier correctif alors que c'est le serveur
-  de test qui est engorgé. Redémarrer `app.py` avant de conclure à un bug.
+- **Un espace de travail Blockly qui reste vide, sans erreur.** Si `app.py`
+  utilise encore `socketserver.TCPServer` sans `ThreadingMixIn` (voir PIÈGE
+  nº 34, §18), les connexions parallèles qu'un navigateur ouvre pour charger
+  `trois.js`/`deux.js`/`un.js` se bloquent les unes les autres : `index.html`
+  s'affiche, mais `un.js` n'est jamais exécuté, donc rien ne ressemble à une
+  erreur — juste un espace de travail qui ne se remplit jamais. Ça ressemble
+  à une régression du dernier correctif alors que c'est le serveur qui est
+  engorgé. Vérifier `class Serveur` avant de chercher plus loin.
 
 Règle générale : l'absence d'erreur ne prouve rien. Relire ce qui a été produit
 avec un outil indépendant de celui qui l'a produit.

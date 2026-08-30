@@ -521,3 +521,170 @@ saisie manuelle, exactement comme elle perd deja l'espace de travail Blockly
 lui-meme. Telecharger le .py avant de recharger si le texte tape doit etre
 garde.
 
+---------------------------------------------------------
+15. MAQUEEN PLUS (robot sur piste)
+---------------------------------------------------------
+Nouvelle categorie de blocs pour le chassis robot DFRobot Maqueen Plus (I2C,
+adresse 0x10) : moteurs gauche/droit, cinq capteurs de ligne, phares,
+DEL RGB, capteur a ultrason. Des qu'un bloc de cette categorie est pose, un
+panneau "Maqueen Plus" apparait sous le simulateur habituel, avec une piste
+et le robot dessus.
+
+Un menu deroulant au-dessus de la piste propose plusieurs tracés : boucle
+ovale, circuit aux coins presque vifs, circuit en huit (deux boucles qui se
+croisent). Changer de piste replace le robot au point de depart propre a ce
+tracé.
+
+Le bouton "✏ Éditer la piste" ouvre un editeur a points de passage pour
+dessiner sa propre piste :
+- Clic sur la piste : ajoute un point a la fin du tracé.
+- Glisser un point (poignee jaune, verte pour le premier) : le deplace.
+- Double-clic sur un point : le supprime.
+- "Terminer" enregistre (3 points minimum pour fermer une boucle) et bascule
+  dessus ; "Annuler" abandonne les modifications ; "Effacer" repart de zero
+  sans quitter l'editeur.
+Une seule piste personnalisee a la fois, memorisee en localStorage (donc
+propre a chaque navigateur/poste, comme le reste des reglages). Le premier
+point pose devient le depart, oriente vers le deuxieme point.
+
+Une ligne "Ligne :" apparait sous la piste, avec un point par capteur
+REELLEMENT utilise par le programme (un bloc "capteur de ligne" pose sur
+l'espace de travail) : vert s'il est actuellement sur la piste, gris sinon.
+Se met a jour en direct, aussi bien pendant une simulation qu'en deplacant
+le robot a la souris.
+
+Le robot se glisse-depose n'importe ou sur la piste, a la souris ou au doigt :
+c'est la nouvelle position de depart, conservee par "Reinitialiser la
+simulation" (qui ne revient donc plus a un point fixe une fois le robot
+deplace).
+
+Contrairement aux autres modules, le robot BOUGE REELLEMENT sur la piste :
+sa position et son cap suivent la vitesse donnee a chaque moteur, et les
+blocs "capteur de ligne" lisent la couleur de la piste sous le robot a
+l'endroit ou il se trouve a cet instant precis. Un vrai programme suiveur de
+ligne (lire un capteur, corriger, boucler) fonctionne donc pour de vrai dans
+le simulateur, tour de boucle apres tour de boucle - pas seulement une
+demonstration figee.
+
+A savoir avant de juger que "ca ne suit pas bien la ligne" :
+- La cinematique est une approximation simple (un seul calcul par pause
+  sleep()), pas une simulation physique complete. Des pauses courtes et
+  regulieres (sleep(50) a sleep(150)) donnent une trajectoire plus fidele
+  que de grosses pauses espacees.
+- Trois tracés au choix, tous fermes ; aucun n'est dessinable ou modifiable
+  a la main.
+- Le deplacement du robot est anime (transition CSS) sur la duree reelle de
+  chaque sleep() du programme, pour rester fluide plutot que saccade.
+- Aucun materiel Maqueen Plus n'a servi a verifier ceci : le protocole I2C
+  vient d'un pilote MicroPython tiers verifie (pas invente), mais rien ne
+  remplace un test sur la vraie carte.
+
+Comme les autres modules, le pilote reel est ecrit dans le programme
+genere (marqueurs "# >>> pilote maqueen") : sur la carte, ce sont les
+memes lignes qui pilotent le vrai chassis.
+
+Le robot dessine s'inspire de l'allure du vrai chassis (coque sombre, bord
+dore, vis aux coins, bouton orange central) sans etre une image : tout est
+en CSS, comme le reste du simulateur. Les deux DEL visibles sur le robot
+refletent en direct les couleurs reellement programmees (blocs "DEL RGB"),
+pas juste decoratives.
+
+---------------------------------------------------------
+16. KITROBOT V2 (robot sur piste droite)
+---------------------------------------------------------
+Deuxieme robot, distinct du Maqueen Plus ci-dessus : chassis a deux servos,
+piste droite avec un depart et une arrivee (pas une boucle fermee). Des
+qu'un bloc de la categorie "Kitrobot v2" est pose, un panneau "Kitrobot v2"
+apparait sous le simulateur, avec sa propre piste (fond blanc, ligne noire -
+inversee par rapport a Maqueen pour bien distinguer les deux d'un coup
+d'oeil).
+
+Contrairement au Maqueen Plus, aucun cablage reel n'a pu etre verifie pour
+ce kit. Toutes les broches (servos, ultrason, buzzer, capteurs de ligne,
+ruban RGB) ont donc des valeurs par defaut raisonnables, mais modifiables
+par des blocs "definir" facultatifs en haut de la categorie - a ajuster
+selon le cablage reellement fait en classe. Le tooltip de chaque bloc
+"definir" rappelle la valeur par defaut.
+
+Les blocs disponibles :
+- Configuration (facultatif) : definir les broches des servos, de
+  l'ultrason, du buzzer, des capteurs de ligne, du ruban RGB.
+- Detection : distance (cm), etat d'un capteur de ligne (gauche/droit).
+- Deplacement : avancer/reculer a une vitesse (%), pivoter sur place,
+  piloter un seul moteur, avancer/reculer d'une case, pivoter d'un quart de
+  tour, tout arreter.
+- Controle : jouer un son (frequence, duree), clignoter en blanc.
+- LED RGB : allumer une DEL du ruban par couleur ou par R/V/B, effet
+  "Arc-en-ciel" sur tout le ruban.
+
+Comme les autres modules, le pilote reel est ecrit dans le programme genere
+(marqueurs "# >>> pilote kitrobot") : sur la carte, ce sont les memes lignes
+qui pilotent le vrai chassis. Le robot dessine (chassis bleu-gris, pour ne
+pas le confondre avec le Maqueen) bouge reellement sur la piste, comme pour
+Maqueen : position et cap suivent la vitesse donnee a chaque moteur, les
+capteurs de ligne lisent vraiment la piste sous le robot.
+
+Aucun materiel Kitrobot v2 n'a servi a verifier ceci : contrairement au
+Maqueen Plus, aucune source de cablage fiable n'a ete trouvee pour ce kit,
+d'ou le choix de rendre toutes les broches configurables plutot que
+d'inventer un cablage. Avant un premier essai reel : verifier le sens de
+montage des deux servos (si le robot recule au lieu d'avancer, inverser le
+cablage d'un cote), et le sens des capteurs de ligne (certains modules
+Grove Line Finder sortent l'inverse selon calibration).
+
+---------------------------------------------------------
+17. MAQUEEN PLUS V3, TELECOMMANDE INFRAROUGE ET LIDAR
+---------------------------------------------------------
+Trois ajouts a la categorie "Maqueen Plus" et une nouvelle categorie
+"LiDAR", tous verifies depuis le code source officiel DFRobot (memes
+depots GitHub que sert MakeCode), jamais confrontes a un vrai chassis V3
+ni a un vrai capteur LiDAR.
+
+SUIVEUR DE LIGNE ET PID (V3) - sous-sections "Suiveur de ligne (V3)" et
+"PID (V3)" de la categorie Maqueen Plus. Le Maqueen Plus V3 possede un
+codeur de roue et des capteurs de carrefour absents des chassis V1/V2 :
+sur un chassis plus ancien, ces blocs envoient des octets valides mais
+sans effet observable (ni erreur, ni mouvement). Dans le simulateur, seuls
+les blocs "avancer de X cm (PID)" et "tourner de X degres (PID)" font
+vraiment bouger le robot (memes moteurs simules que les blocs Maqueen
+ordinaires) ; le suiveur de ligne autopilote et le codeur de roue n'ont
+pas d'equivalent visuel, faute de modele physique pour un pilotage
+entierement automatique.
+
+DEL DE CARROSSERIE : distinctes du ruban RGB adressable (registres 11/12
+au lieu du NeoPixel sur P15) - un jeu de couleurs simples (rouge, vert,
+jaune, bleu, violet, cyan, blanc, eteint), pas un choix de teinte libre.
+
+TELECOMMANDE INFRAROUGE : le pilote DFRobot d'origine est ecrit en C++
+compile dans le firmware MakeCode, impossible a reutiliser tel quel en
+MicroPython. Le decodage a donc ete reecrit a partir du protocole NEC
+(norme publique, pas un secret DFRobot), avec la meme technique que le
+capteur ultrason (machine.time_pulse_us). Deux telecommandes reconnues :
+- "Noire" : boutons de la telecommande DFRobot d'origine (Power, Vol +/-,
+  fleches, chiffres 0-9, EQ...).
+- "Grise Car mp3" : telecommande generique tres repandue (fournie dans de
+  nombreux kits Arduino), 21 boutons.
+Poser un bloc "lorsque la commande ... est recue" par telecommande cree
+l'evenement ; il se declenche automatiquement a chaque tour de boucle,
+inutile d'appeler "decoder le recepteur infrarouge" a la main (ce bloc
+existe pour un controle plus fin, dans une boucle personnalisee). Le
+panneau Maqueen Plus propose un simulateur de telecommande (deux menus
+deroulants + bouton "Simuler l'appui") puisqu'aucun vrai signal infrarouge
+n'existe dans un navigateur. Une seule reserve non verifiee sur la vraie
+telecommande DFRobot : son adresse NEC exacte n'est pas documentee, le
+decodeur ne verifie donc que le bouton, pas l'appareil emetteur - une
+autre telecommande NEC a adresse differente pourrait donc, en theorie,
+declencher les memes evenements sur du vrai materiel.
+
+LIDAR MATRICIEL (nouvelle categorie "LiDAR", capteur DFRobot SEN0628,
+I2C 0x30 a 0x33) : mode "Matrice 8x8" pour lire la distance en un point
+precis (x, y de 0 a 7), ou mode "Evitement 4x4" pour une detection
+gauche/avant/droite toute faite - poser "configurer la taille" avec le
+bon mode avant d'utiliser les blocs correspondants. En mode evitement,
+"acquerir les donnees d'evitement" doit etre appele avant de lire le
+signal d'urgence, la direction conseillee ou une distance : ces blocs-la
+relisent la derniere acquisition, pas le capteur en direct. Independant
+d'un robot precis (utilisable seul ou avec un Maqueen) ; le panneau du
+simulateur propose trois curseurs (gauche/avant/droite, en mm) plutot
+qu'une vraie matrice de distances.
+

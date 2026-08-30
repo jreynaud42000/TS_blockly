@@ -269,6 +269,125 @@
     .grove-case { display: flex !important; align-items: center; gap: 6px; }
     .grove-case input { width: auto; }
 
+    /* --- Maqueen Plus : piste + robot --- */
+    #maqueen-panneau { width: 100%; margin-top: 22px; border-top: 1px solid #46617d; padding-top: 12px; }
+    #maqueen-panneau h4 { margin: 0 0 10px 0; color: #ffb74d; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .maqueen-piste-barre { display: flex; gap: 6px; margin-bottom: 8px; }
+    #maqueen-piste-select { flex: 1; min-width: 0; box-sizing: border-box; padding: 6px;
+        border-radius: 4px; background: #1b2a38; color: #d6e0ea; border: 1px solid #46617d; font-size: 12px; }
+    #maqueen-piste-editer { font-size: 11px; padding: 6px 8px; margin: 0; white-space: nowrap; }
+
+    #maqueen-edition-barre { display: none; margin-bottom: 8px; }
+    #maqueen-edition-barre.active { display: block; }
+    #maqueen-edition-barre p { font-size: 11px; color: #9fb3c8; margin: 0 0 6px 0; }
+    .maqueen-edition-boutons { display: flex; gap: 6px; }
+    .maqueen-edition-boutons button { flex: 1; font-size: 12px; padding: 6px; margin: 0; }
+    #maqueen-piste-annuler, #maqueen-piste-effacer { background: #7f8c8d; }
+    #maqueen-piste-annuler:hover, #maqueen-piste-effacer:hover { background: #616a6b; }
+
+    /* Poignee jaune = point normal, verte = premier point (depart + cap de depart). */
+    .mq-poignee { position: absolute; width: 12px; height: 12px; border-radius: 50%;
+        background: #ffeb3b; border: 2px solid #263238; transform: translate(-50%, -50%);
+        cursor: grab; touch-action: none; z-index: 5; }
+    .mq-poignee:active { cursor: grabbing; }
+    .mq-poignee-depart { background: #4caf50; }
+    /* La piste garde ses coordonnees internes fixes (300x220) : le robot est
+       positionne en pourcentage de ces coordonnees, donc suit la mise a
+       l'echelle CSS du canevas sans recalcul JS. */
+    #maqueen-piste { position: relative; width: 100%; aspect-ratio: 300 / 220;
+                     border-radius: 6px; overflow: hidden; background: #3aa66b; }
+    #maqueen-piste-canevas { display: block; width: 100%; height: 100%; }
+    /* Deplacable a la souris/au doigt : voir le pointerdown/move/up dans un.js.
+       touch-action: none empeche le navigateur de faire defiler la page au
+       lieu de deplacer le robot sur un ecran tactile. */
+    /* Inspiré du vrai châssis Maqueen Plus : coque sombre à bord doré, vis
+       aux quatre coins, bouton d'alimentation orange au centre. Les deux
+       petites DEL reflètent l'état réel des DEL RGB du programme (voir
+       dessinerDelsMaqueen dans un.js) — pas juste décoratif. */
+    #maqueen-robot { position: absolute; width: 26px; height: 36px; left: 50%; top: 50%;
+                     transform: translate(-50%, -50%); cursor: grab; touch-action: none; }
+    #maqueen-robot:active { cursor: grabbing; }
+    #maqueen-robot:hover .mq-corps { box-shadow: 0 0 0 2px rgba(255,255,255,0.65); }
+    #maqueen-robot .mq-corps { position: absolute; inset: 0;
+                                background: linear-gradient(180deg, #2e3236, #16181a);
+                                border-radius: 5px; border: 1.5px solid #c9a227; }
+    #maqueen-robot .mq-vis { position: absolute; width: 2.5px; height: 2.5px; border-radius: 50%;
+                              background: #d8b559; box-shadow: 0 0 1px #000; }
+    #maqueen-robot .mq-vis-1 { top: 2px; left: 2px; }
+    #maqueen-robot .mq-vis-2 { top: 2px; right: 2px; }
+    #maqueen-robot .mq-vis-3 { bottom: 2px; left: 2px; }
+    #maqueen-robot .mq-vis-4 { bottom: 2px; right: 2px; }
+    #maqueen-robot .mq-bouton { position: absolute; top: 50%; left: 50%; width: 9px; height: 9px;
+                                 transform: translate(-50%, -50%);
+                                 background: linear-gradient(180deg, #ffb347, #e07b1a);
+                                 border-radius: 2px; box-shadow: 0 0 3px rgba(255, 150, 40, 0.75); }
+    #maqueen-robot .mq-sprite-del { position: absolute; top: 4px; width: 3px; height: 3px;
+                                     border-radius: 50%; background: #333; transition: background 0.15s; }
+    #maqueen-robot #maqueen-sprite-del-1 { left: 5px; }
+    #maqueen-robot #maqueen-sprite-del-2 { right: 5px; }
+    #maqueen-robot .mq-avant { position: absolute; top: 50%; right: -2px; width: 5px; height: 5px;
+                                background: #ff3b30; border-radius: 50%; transform: translateY(-50%);
+                                box-shadow: 0 0 3px #ff3b30; }
+    #maqueen-robot .mq-roue { position: absolute; width: 6px; height: 12px; background: #0d0d0d; border-radius: 1px; }
+    #maqueen-robot .mq-roue-h { left: 5px; top: -3px; } #maqueen-robot .mq-roue-b { left: 5px; bottom: -3px; }
+    .maqueen-ligne { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; color: #d6e0ea; }
+    .maqueen-phare { width: 10px; height: 10px; border-radius: 50%; background: #555; display: inline-block; }
+    .maqueen-phare.allume { background: #fff8dc; box-shadow: 0 0 6px #fff8dc; }
+    .maqueen-dels { display: flex; gap: 5px; }
+    .maqueen-del { width: 10px; height: 10px; border-radius: 50%; background: #333; border: 1px solid #444; }
+
+    /* N'affiche que les capteurs de ligne réellement utilisés par le
+       programme (voir rafraichirPanneauMaqueen dans un.js) — comme le reste
+       du panneau Grove, pas la peine de montrer les cinq si un seul sert. */
+    #maqueen-ligne-capteurs { display: none; }
+    #maqueen-ligne-capteurs.visible { display: flex; align-items: center; gap: 6px;
+        margin-top: 8px; font-size: 11px; color: #d6e0ea; flex-wrap: wrap; }
+    .maqueen-capteur-ligne { display: none; align-items: center; gap: 4px; background: #1b2a38;
+        padding: 3px 7px; border-radius: 10px; font-family: monospace; }
+    .maqueen-capteur-ligne.visible { display: inline-flex; }
+    .maqueen-capteur-point { width: 9px; height: 9px; border-radius: 50%; background: #333; }
+    .maqueen-capteur-point.sur-ligne { background: #4caf50; box-shadow: 0 0 5px #4caf50; }
+
+    /* --- Kitrobot v2 : piste droite depart/arrivee --- */
+    #kitrobot-panneau { width: 100%; margin-top: 22px; border-top: 1px solid #46617d; padding-top: 12px; }
+    #kitrobot-panneau h4 { margin: 0 0 10px 0; color: #4fc3f7; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+    /* Piste blanche, ligne noire : inverse de Maqueen (vert/blanc) pour qu'on
+       distingue les deux d'un coup d'oeil. Coordonnees internes fixes
+       320x140, le robot est positionne en % (voir dessinerRobotKitrobot). */
+    #kitrobot-piste { position: relative; width: 100%; aspect-ratio: 320 / 140;
+                       border-radius: 6px; overflow: hidden; background: #ffffff; border: 1px solid #46617d; }
+    #kitrobot-piste-canevas { display: block; width: 100%; height: 100%; }
+    .kb-drapeau { position: absolute; top: 8px; bottom: 8px; width: 3px; background: repeating-linear-gradient(
+        45deg, #111 0 6px, #fff 6px 12px); }
+    .kb-drapeau-depart { left: 26px; }
+    .kb-drapeau-arrivee { right: 26px; }
+    .kb-drapeau-etiquette { position: absolute; top: -2px; font-size: 9px; color: #46617d;
+        background: #fff; padding: 0 3px; border-radius: 2px; white-space: nowrap; }
+    .kb-drapeau-depart .kb-drapeau-etiquette { left: -6px; }
+    .kb-drapeau-arrivee .kb-drapeau-etiquette { right: -6px; }
+    /* Chassis bleu-gris distinct du Maqueen (sombre/dore) pour ne pas les confondre. */
+    #kitrobot-robot { position: absolute; width: 24px; height: 30px; left: 50%; top: 50%;
+                       transform: translate(-50%, -50%); }
+    #kitrobot-robot .kb-corps { position: absolute; inset: 0;
+                                 background: linear-gradient(180deg, #6f8fa8, #3c5468);
+                                 border-radius: 6px; border: 1.5px solid #26374a; }
+    #kitrobot-robot .kb-oeil { position: absolute; top: 6px; width: 4px; height: 4px; border-radius: 50%;
+                                background: #aeeaff; box-shadow: 0 0 3px #aeeaff; }
+    #kitrobot-robot .kb-oeil-g { left: 5px; } #kitrobot-robot .kb-oeil-d { right: 5px; }
+    #kitrobot-robot .kb-avant { position: absolute; top: 50%; right: -2px; width: 5px; height: 5px;
+                                 background: #ffca28; border-radius: 50%; transform: translateY(-50%);
+                                 box-shadow: 0 0 3px #ffca28; }
+    #kitrobot-robot .kb-roue { position: absolute; width: 5px; height: 10px; background: #16181a; border-radius: 1px; }
+    #kitrobot-robot .kb-roue-h { left: 4px; top: -2px; } #kitrobot-robot .kb-roue-b { left: 4px; bottom: -2px; }
+
+    #kitrobot-ligne-capteurs { display: none; }
+    #kitrobot-ligne-capteurs.visible { display: flex; align-items: center; gap: 6px;
+        margin-top: 8px; font-size: 11px; color: #d6e0ea; flex-wrap: wrap; }
+
+    /* --- LiDAR matriciel : pas de robot, juste trois curseurs --- */
+    #lidar-panneau { width: 100%; margin-top: 22px; border-top: 1px solid #46617d; padding-top: 12px; }
+    #lidar-panneau h4 { margin: 0 0 10px 0; color: #7986cb; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+
     #grove-ruban { display: flex; flex-wrap: wrap; gap: 3px; min-height: 14px;
                    padding: 5px; background: #1b2a38; border-radius: 4px; }
     .grove-led { width: 11px; height: 11px; border-radius: 50%; background: #2a2a2a;
@@ -556,6 +675,119 @@
           <div id="grove-servos">aucun</div>
         </div>
       </div>
+
+      <div id="maqueen-panneau">
+        <h4>Maqueen Plus</h4>
+        <div class="maqueen-piste-barre">
+          <select id="maqueen-piste-select" title="Choisir la piste"></select>
+          <button id="maqueen-piste-editer" class="btn-vue" title="Créer ou modifier une piste personnalisée">✏ Éditer la piste</button>
+        </div>
+        <div id="maqueen-edition-barre">
+          <p>Cliquez sur la piste pour ajouter un point. Glissez un point pour le déplacer,
+            double-cliquez dessus pour le supprimer.</p>
+          <div class="maqueen-edition-boutons">
+            <button id="maqueen-piste-terminer">Terminer</button>
+            <button id="maqueen-piste-annuler">Annuler</button>
+            <button id="maqueen-piste-effacer">Effacer</button>
+          </div>
+        </div>
+        <div id="maqueen-piste">
+          <canvas id="maqueen-piste-canevas" width="300" height="220"></canvas>
+          <div id="maqueen-robot">
+            <div class="mq-roue mq-roue-h"></div>
+            <div class="mq-roue mq-roue-b"></div>
+            <div class="mq-corps">
+              <div class="mq-vis mq-vis-1"></div>
+              <div class="mq-vis mq-vis-2"></div>
+              <div class="mq-vis mq-vis-3"></div>
+              <div class="mq-vis mq-vis-4"></div>
+              <div class="mq-bouton"></div>
+              <div class="mq-sprite-del" id="maqueen-sprite-del-1"></div>
+              <div class="mq-sprite-del" id="maqueen-sprite-del-2"></div>
+            </div>
+            <div class="mq-avant"></div>
+          </div>
+        </div>
+        <div class="maqueen-ligne">
+          <span>Phares :</span>
+          <span class="maqueen-phare" id="maqueen-phare-g"></span>
+          <span class="maqueen-phare" id="maqueen-phare-d"></span>
+          <span style="margin-left:auto;">DEL :</span>
+          <span class="maqueen-dels">
+            <span class="maqueen-del" id="maqueen-del-l1"></span>
+            <span class="maqueen-del" id="maqueen-del-l2"></span>
+            <span class="maqueen-del" id="maqueen-del-r2"></span>
+            <span class="maqueen-del" id="maqueen-del-r1"></span>
+          </span>
+        </div>
+        <div class="maqueen-ligne" id="maqueen-ligne-capteurs">
+          <span>Ligne :</span>
+          <span class="maqueen-capteur-ligne" data-capteur="L2">L2<i class="maqueen-capteur-point"></i></span>
+          <span class="maqueen-capteur-ligne" data-capteur="L1">L1<i class="maqueen-capteur-point"></i></span>
+          <span class="maqueen-capteur-ligne" data-capteur="M">M<i class="maqueen-capteur-point"></i></span>
+          <span class="maqueen-capteur-ligne" data-capteur="R1">R1<i class="maqueen-capteur-point"></i></span>
+          <span class="maqueen-capteur-ligne" data-capteur="R2">R2<i class="maqueen-capteur-point"></i></span>
+        </div>
+        <label class="grove-titre" for="maqueen-distance" style="margin-top:8px; display:block;">
+          Distance obstacle (cm) : <b id="maqueen-distance-val">50</b></label>
+        <input type="range" id="maqueen-distance" min="0" max="200" value="50">
+
+        <div class="grove-bloc" id="maqueen-ir-panneau" style="margin-top:10px;">
+          <span class="grove-titre">Télécommande infrarouge (simulation)</span>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+            <select id="maqueen-ir-telecommande" style="flex:1; min-width:110px; box-sizing:border-box; padding:4px;
+                border-radius:4px; background:#1b2a38; color:#d6e0ea; border:1px solid #46617d; font-size:12px;">
+              <option value="noire">Noire</option>
+              <option value="grise">Grise Car mp3</option>
+            </select>
+            <select id="maqueen-ir-touche" style="flex:1; min-width:110px; box-sizing:border-box; padding:4px;
+                border-radius:4px; background:#1b2a38; color:#d6e0ea; border:1px solid #46617d; font-size:12px;"></select>
+            <button id="maqueen-ir-simuler" class="btn-vue" style="margin:0; font-size:11px; padding:5px 8px;">Simuler l'appui</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="kitrobot-panneau">
+        <h4>Kitrobot v2</h4>
+        <div id="kitrobot-piste">
+          <canvas id="kitrobot-piste-canevas" width="320" height="140"></canvas>
+          <div class="kb-drapeau kb-drapeau-depart"><span class="kb-drapeau-etiquette">Départ</span></div>
+          <div class="kb-drapeau kb-drapeau-arrivee"><span class="kb-drapeau-etiquette">Arrivée</span></div>
+          <div id="kitrobot-robot">
+            <div class="kb-roue kb-roue-h"></div>
+            <div class="kb-roue kb-roue-b"></div>
+            <div class="kb-corps">
+              <div class="kb-oeil kb-oeil-g"></div>
+              <div class="kb-oeil kb-oeil-d"></div>
+            </div>
+            <div class="kb-avant"></div>
+          </div>
+        </div>
+        <div class="maqueen-ligne" id="kitrobot-ligne-capteurs">
+          <span>Ligne :</span>
+          <span class="maqueen-capteur-ligne" data-capteur="gauche">G<i class="maqueen-capteur-point"></i></span>
+          <span class="maqueen-capteur-ligne" data-capteur="droit">D<i class="maqueen-capteur-point"></i></span>
+        </div>
+        <label class="grove-titre" for="kitrobot-distance" style="margin-top:8px; display:block;">
+          Distance obstacle (cm) : <b id="kitrobot-distance-val">50</b></label>
+        <input type="range" id="kitrobot-distance" min="0" max="200" value="50">
+      </div>
+
+      <div id="lidar-panneau">
+        <h4>LiDAR matriciel</h4>
+        <div class="grove-bloc">
+          <label class="grove-titre" for="lidar-gauche">Gauche : <b id="lidar-gauche-val">1000</b> mm</label>
+          <input type="range" id="lidar-gauche" min="0" max="2000" value="1000">
+        </div>
+        <div class="grove-bloc">
+          <label class="grove-titre" for="lidar-avant">Devant : <b id="lidar-avant-val">1000</b> mm</label>
+          <input type="range" id="lidar-avant" min="0" max="2000" value="1000">
+        </div>
+        <div class="grove-bloc">
+          <label class="grove-titre" for="lidar-droite">Droite : <b id="lidar-droite-val">1000</b> mm</label>
+          <input type="range" id="lidar-droite" min="0" max="2000" value="1000">
+        </div>
+      </div>
     </div>
   </div>
 
@@ -568,6 +800,7 @@
     from browser import window, document, alert
     import math
     import re
+    import textwrap
 
     def sleep(ms): window.simu_sleep(ms)
     def temperature(): return 21
@@ -822,6 +1055,172 @@
             # Le SCD41 rend le CO2 en entier, contrairement au SCD30.
             return int(valeur) if grandeur == 'co2' else valeur
 
+    # DHT11/DHT22 : le pilote reel (assembleur, refuse sur V2) n'a pas de sens
+    # cote navigateur. Meme jeu de curseurs temperature/humidite que AHT20/DHT20 :
+    # sur la carte reelle ce sont des capteurs differents, mais rien ne les
+    # distingue a l'usage pour un eleve qui regarde le simulateur.
+    class _CapteurDHT11Mock:
+        def __init__(self, broche=None, decalage=None): pass
+        def temperature(self): return float(window.simu_mesure('temperature'))
+        def humidite(self): return float(window.simu_mesure('humidite'))
+
+    class _CapteurDHT22Mock:
+        def __init__(self, broche=None, decalage=None): pass
+        def temperature(self): return float(window.simu_mesure('temperature'))
+        def humidite(self): return float(window.simu_mesure('humidite'))
+
+    # Maqueen Plus : moteurs et phares sont rejoues avec un delai (comme les
+    # servos), la ligne et la distance sont lues directement, sans file.
+    def _mq_moteur(cote, vitesse): window.simu_maqueenMoteur(str(cote), int(vitesse))
+    def _mq_phare(cote, etat): window.simu_maqueenPhare(str(cote), bool(etat))
+    def _mq_rgb(index, couleur): window.simu_maqueenRgb(int(index), int(couleur))
+    def _mq_ligne_etat(capteur): return bool(window.simu_maqueenLigneEtat(str(capteur)))
+    def _mq_ligne_valeur(capteur): return int(window.simu_maqueenLigneValeur(str(capteur)))
+    def _mq_distance(): return int(window.simu_maqueenDistance())
+
+    # Extensions V3 : pas de panneau dedie (le suiveur de ligne autopilote et
+    # le codeur de roue n'ont pas d'equivalent dans le modele cinematique
+    # simplifie du simulateur) — seuls les deplacements PID font vraiment
+    # bouger le robot, en reutilisant les memes moteurs simules que les blocs
+    # Maqueen ordinaires (voir window.simu_maqueenMoteur plus bas).
+    _MQ_V3_ETAT = {
+        'suiveur': False, 'intersection': 3,
+        'luminosite_gauche': 500, 'luminosite_droite': 500,
+    }
+
+    def _mq_v3_vitesse_suivi(vitesse): pass
+    def _mq_v3_mode_carrefour(mode): pass
+    def _mq_v3_mode_T(mode): pass
+    def _mq_v3_mode_gauche(mode): pass
+    def _mq_v3_mode_droite(mode): pass
+    def _mq_v3_suiveur(actif): _MQ_V3_ETAT['suiveur'] = bool(actif)
+    def _mq_v3_intersection(): return _MQ_V3_ETAT['intersection']
+    def _mq_v3_luminosite(cote):
+        return _MQ_V3_ETAT['luminosite_gauche'] if cote == 'gauche' else _MQ_V3_ETAT['luminosite_droite']
+    def _mq_v3_vitesse_reelle(cote): return 0
+    def _mq_v3_del_carrosserie(cote, couleur): pass
+
+    def _mq_v3_pid_avancer(sens, distance_cm, attendre):
+        v = 150 if sens == 'avant' else -150
+        window.simu_maqueenMoteur('les_deux', v)
+        sleep(min(4000, max(200, int(abs(distance_cm) * 20))))
+        window.simu_maqueenMoteur('les_deux', 0)
+
+    def _mq_v3_pid_tourner(sens, angle, attendre):
+        v = 120
+        if sens == 'gauche':
+            window.simu_maqueenMoteur('gauche', -v)
+            window.simu_maqueenMoteur('droit', v)
+        else:
+            window.simu_maqueenMoteur('gauche', v)
+            window.simu_maqueenMoteur('droit', -v)
+        sleep(min(3000, max(150, int(abs(angle) * 8))))
+        window.simu_maqueenMoteur('les_deux', 0)
+
+    def _mq_v3_pid_stop():
+        window.simu_maqueenMoteur('les_deux', 0)
+
+    # LiDAR matriciel (SEN0628) : pas de piste ni de robot, juste trois
+    # curseurs (gauche/avant/droite) lus en direct, voir le panneau LiDAR.
+    def _lidar_initialiser(adresse, matrice_8x8): pass
+    def _lidar_distance_evitement(distance_mm): window.simu_lidarDistanceEvitement(distance_mm)
+    def _lidar_acquerir(): pass
+    def _lidar_direction(): return int(window.simu_lidarDirection())
+    def _lidar_urgence(): return bool(window.simu_lidarUrgence())
+    def _lidar_cote(cote): return int(window.simu_lidarCote(cote))
+    def _lidar_point(adresse, x, y): return int(window.simu_lidarPoint(x))
+
+    # Telecommande infrarouge : pas de vrai signal IR dans un navigateur, donc
+    # pas de decodage NEC ici (contrairement au pilote reel). Le panneau
+    # Maqueen depose la touche choisie dans window.simu_irCommande (bouton
+    # "Simuler l'appui"), consommee ici au tour suivant — meme principe que
+    # was_gesture() pour le geste "secouer" plus haut.
+    _ir_broche = [None]
+    _ir_dernier = [-1]
+
+    # Kitrobot v2 : piste droite depart/arrivee. Contrairement a Maqueen (deux
+    # roues pilotees directement), le pilote reel passe par des servos
+    # montes en miroir (_kb_avancer inverse le cote droit) — un detail de
+    # cablage sans interet ici, donc le mock pilote directement les deux
+    # cotes du modele cinematique (voir avancerKitrobot dans un.js).
+    def _kb_avancer(vitesse):
+        window.simu_kitrobotMoteur('g', vitesse)
+        window.simu_kitrobotMoteur('d', vitesse)
+
+    def _kb_pivoter(sens, vitesse):
+        v = vitesse if sens == 'horaire' else -vitesse
+        window.simu_kitrobotMoteur('g', v)
+        window.simu_kitrobotMoteur('d', -v)
+
+    def _kb_moteur(cote, sens, vitesse):
+        v = vitesse if sens == 'horaire' else -vitesse
+        window.simu_kitrobotMoteur('g' if cote == 'gauche' else 'd', v)
+
+    def _kb_arreter_moteur(cote):
+        window.simu_kitrobotMoteur('g' if cote == 'gauche' else 'd', 0)
+
+    def _kb_arreter():
+        _kb_arreter_moteur('gauche')
+        _kb_arreter_moteur('droit')
+
+    def _kb_case(sens):
+        _kb_avancer(50 if sens == 'avant' else -50)
+        sleep(600)
+        _kb_arreter()
+
+    def _kb_virage(sens):
+        _kb_pivoter(sens, 50)
+        sleep(400)
+        _kb_arreter()
+
+    def _kb_distance(): return int(window.simu_kitrobotDistance())
+
+    def _kb_ligne(cote): return bool(window.simu_kitrobotLigne(str(cote)))
+
+    def _kb_buzzer(frequence, duree_ms):
+        window.simu_kitrobotBuzzer(int(frequence), int(duree_ms))
+
+    # Meme registre generique que le ruban Grove (_grove_obj/_grove_objets) :
+    # 8 LED par defaut si le bloc "definir ruban" n'a pas ete utilise.
+    def _kb_ruban(): return _grove_obj('kb_ruban', lambda: _NeoPixelMock(None, 8))
+
+    def _kb_clignoter():
+        r = _kb_ruban()
+        r.fill((255, 255, 255)); r.show()
+        sleep(150)
+        r.fill((0, 0, 0)); r.show()
+
+    def _kb_del_couleur(index, couleur):
+        r = _kb_ruban()
+        if 0 <= index < len(r):
+            r[index] = _grove_teinte(couleur)
+            r.show()
+
+    def _kb_del_rgb(index, rr, vv, bb):
+        r = _kb_ruban()
+        f = _grove_lum[0] / 100
+        if 0 <= index < len(r):
+            r[index] = (int(rr * f), int(vv * f), int(bb * f))
+            r.show()
+
+    def _kb_hsv(h):
+        i = int(h * 6) % 6
+        f = h * 6 - int(h * 6)
+        p, q, t = 0, int(255 * (1 - f)), int(255 * f)
+        if i == 0: return (255, t, p)
+        if i == 1: return (q, 255, p)
+        if i == 2: return (p, 255, t)
+        if i == 3: return (p, q, 255)
+        if i == 4: return (t, p, 255)
+        return (255, p, q)
+
+    def _kb_arcenciel():
+        r = _kb_ruban()
+        n = len(r)
+        for i in range(n):
+            r[i] = _kb_hsv(i / n)
+        r.show()
+
     # Servomoteurs : memes bornes que le pilote reel, mais on dessine au lieu
     # de piloter une broche.
     _SERVO_ETAT_SIMU = {}
@@ -879,6 +1278,8 @@
     def _grove_couleur(): return _grove_obj('couleur', _CapteurCouleurMock)
     def _grove_scd30(): return _grove_obj('scd30', _CapteurSCD30Mock)
     def _grove_scd41(): return _grove_obj('scd41', _CapteurSCD41Mock)
+    def _grove_dht11(): return _grove_obj('dht11', _CapteurDHT11Mock)
+    def _grove_dht22(): return _grove_obj('dht22', _CapteurDHT22Mock)
 
     # La radio manquait a l'environnement : tout programme l'utilisant
     # s'arretait sur "name 'radio' is not defined".
@@ -906,6 +1307,34 @@
     # se tait, et la suite du programme n'est pas executee.
     def reset(): window.simu_resetCarte()
 
+    def _diviser_boucle_principale(code):
+        '''Isole la PREMIERE boucle infinie de premier niveau (indentation
+        nulle) : renvoie (avant, corps_sans_indentation, apres), ou None s'il
+        n'y a aucune boucle de premier niveau ou plusieurs (cas rare : voir
+        l'appelant, qui revient alors a l'ancien comportement).
+        textwrap.dedent (et non un retrait fixe de 2 espaces) : le code genere
+        par les blocs utilise 2 espaces (Blockly.Python.INDENT), mais du code
+        tape a la main (edition manuelle, voir un.js) peut tres bien en
+        utiliser 4 ou des tabulations — ne jamais supposer la largeur.'''
+        lignes = code.split("\n")
+        debut = None
+        deuxieme = False
+        for i, ligne in enumerate(lignes):
+            if ligne == "while True:":
+                if debut is None:
+                    debut = i
+                else:
+                    deuxieme = True
+        if debut is None or deuxieme:
+            return None
+        fin = debut + 1
+        while fin < len(lignes) and (lignes[fin] == "" or lignes[fin][:1] in (" ", "\t")):
+            fin += 1
+        avant = "\n".join(lignes[:debut])
+        corps = textwrap.dedent("\n".join(lignes[debut + 1:fin])).strip("\n") or "pass"
+        apres = "\n".join(lignes[fin:])
+        return avant, corps, apres
+
     def lancer_simulation(ev):
         code = getattr(window, 'currentPythonCode', '')
         if not code or "Glissez des blocs" in code:
@@ -925,7 +1354,6 @@
                       "import random", "import neopixel", "import machine",
                       "import utime", "import ustruct"]:
             code = code.replace(ligne, "")
-        code = code.replace("while True:", "for _ in range(5):")
 
         env = {
             'display': Display(), 'Image': ImageMock(), 'sleep': sleep,
@@ -951,6 +1379,28 @@
             '_CapteurTH': _CapteurTHMock, '_EcranLCD': _EcranLCDMock,
             '_CapteurCouleur': _CapteurCouleurMock,
             '_CapteurSCD30': _CapteurSCD30Mock, '_CapteurSCD41': _CapteurSCD41Mock,
+            '_CapteurDHT11': _CapteurDHT11Mock, '_CapteurDHT22': _CapteurDHT22Mock,
+            '_grove_dht11': _grove_dht11, '_grove_dht22': _grove_dht22,
+            '_mq_moteur': _mq_moteur, '_mq_phare': _mq_phare, '_mq_rgb': _mq_rgb,
+            '_mq_ligne_etat': _mq_ligne_etat, '_mq_ligne_valeur': _mq_ligne_valeur,
+            '_mq_distance': _mq_distance,
+            '_mq_v3_vitesse_suivi': _mq_v3_vitesse_suivi, '_mq_v3_mode_carrefour': _mq_v3_mode_carrefour,
+            '_mq_v3_mode_T': _mq_v3_mode_T, '_mq_v3_mode_gauche': _mq_v3_mode_gauche,
+            '_mq_v3_mode_droite': _mq_v3_mode_droite, '_mq_v3_suiveur': _mq_v3_suiveur,
+            '_mq_v3_intersection': _mq_v3_intersection, '_mq_v3_luminosite': _mq_v3_luminosite,
+            '_mq_v3_vitesse_reelle': _mq_v3_vitesse_reelle, '_mq_v3_del_carrosserie': _mq_v3_del_carrosserie,
+            '_mq_v3_pid_avancer': _mq_v3_pid_avancer, '_mq_v3_pid_tourner': _mq_v3_pid_tourner,
+            '_mq_v3_pid_stop': _mq_v3_pid_stop,
+            '_kb_avancer': _kb_avancer, '_kb_pivoter': _kb_pivoter, '_kb_moteur': _kb_moteur,
+            '_kb_arreter_moteur': _kb_arreter_moteur, '_kb_arreter': _kb_arreter,
+            '_kb_case': _kb_case, '_kb_virage': _kb_virage, '_kb_distance': _kb_distance,
+            '_kb_ligne': _kb_ligne, '_kb_buzzer': _kb_buzzer, '_kb_ruban': _kb_ruban,
+            '_kb_clignoter': _kb_clignoter, '_kb_del_couleur': _kb_del_couleur,
+            '_kb_del_rgb': _kb_del_rgb, '_kb_hsv': _kb_hsv, '_kb_arcenciel': _kb_arcenciel,
+            '_ir_broche': _ir_broche, '_ir_dernier': _ir_dernier,
+            '_lidar_initialiser': _lidar_initialiser, '_lidar_distance_evitement': _lidar_distance_evitement,
+            '_lidar_acquerir': _lidar_acquerir, '_lidar_direction': _lidar_direction,
+            '_lidar_urgence': _lidar_urgence, '_lidar_cote': _lidar_cote, '_lidar_point': _lidar_point,
             '_grove_moteur_ecrire': _grove_moteur_ecrire,
             '_grove_moteur_vitesse': _grove_moteur_vitesse,
             '_grove_moteur_arret': _grove_moteur_arret,
@@ -994,15 +1444,74 @@
 
         env['_radio_traiter'] = _radio_traiter
 
-        try:
-            exec(code, env)
-            window.simu_ok()
-            window.simu_playQueue()
-        except Exception as e:
+        # Meme raison que _radio_traiter juste au-dessus : doit chercher les
+        # gestionnaires "on_ir_..." dans env, pas dans le module.
+        def _ir_traiter():
+            if not window.simu_irEnAttente():
+                return
+            telecommande = str(window.simu_irTelecommande())
+            touche = str(window.simu_irToucheAttente())
+            _ir_dernier[0] = int(window.simu_irCodeAttente())
+            window.simu_irConsommer()
+            nom = "on_ir_" + telecommande + "_" + touche
+            if nom in env:
+                env[nom]()
+
+        env['_ir_traiter'] = _ir_traiter
+
+        def _rapporter_erreur(e):
             # L'erreur doit remonter a l'ecran : dans la console seule, elle
             # passait inapercue et la simulation semblait ne rien faire.
             print("Erreur d'exécution :", e)
             window.simu_erreur(str(e))
+
+        decoupe = _diviser_boucle_principale(code)
+
+        if decoupe is None:
+            # Pas de boucle infinie unique de premier niveau (aucune boucle
+            # trouvee, ou plusieurs blocs "repeter indefiniment" empiles) :
+            # comportement d'origine, le programme entier d'un coup. Un
+            # capteur Maqueen n'y verrait qu'une position figee, mais ce cas
+            # est rare et le filet existant (5 tours d'un coup) reste correct
+            # pour tout le reste (affichage, son, capteurs a curseur).
+            code_repli = code.replace("while True:", "for _ in range(5):")
+            try:
+                exec(code_repli, env)
+                window.simu_ok()
+                window.simu_playQueue()
+            except Exception as e:
+                _rapporter_erreur(e)
+            return
+
+        avant, corps, apres = decoupe
+        try:
+            exec(avant, env)
+        except Exception as e:
+            _rapporter_erreur(e)
+            return
+
+        def _tour_suivant():
+            try:
+                exec(corps, env)
+                return True
+            except Exception as e:
+                _rapporter_erreur(e)
+                return False
+
+        def _fin_des_tours():
+            if apres.strip():
+                try:
+                    exec(apres, env)
+                except Exception as e:
+                    _rapporter_erreur(e)
+                    return
+            window.simu_ok()
+
+        # La suite (executer un tour, vider sa file avec de vrais delais,
+        # enchainer) est pilotee cote JS : voir simu_lancerTours dans un.js.
+        window.simu_tourSuivant = _tour_suivant
+        window.simu_finDesTours = _fin_des_tours
+        window.simu_lancerTours(5)
 
     document["run-sim"].bind("click", lancer_simulation)
   </script>
