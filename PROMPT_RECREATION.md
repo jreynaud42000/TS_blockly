@@ -1042,7 +1042,7 @@ deuxième fois suffit à annuler le masquage.
 Un glisser-déposer, un raccourci clavier ou la saisie dans un `<input>` ne se
 simulent pas facilement depuis la console. Exposer les actions du panneau sous
 un objet global (`window.adminTest`) permet de piloter les mêmes chemins de
-code que l'UI — dans l'esprit du §19 (vérifier en pilotant l'application,
+code que l'UI — dans l'esprit du §21 (vérifier en pilotant l'application,
 jamais en se fiant à l'absence d'erreur).
 
 ## 13. Édition manuelle du code
@@ -1319,7 +1319,7 @@ En construisant les substituts Maqueen, l'absence de `_CapteurDHT11Mock` /
 `_CapteurDHT22Mock` dans `env` saute aux yeux par comparaison avec les
 autres modules Grove. Sans eux, un programme utilisant DHT11/DHT22 plantait
 sur `NameError` dès qu'on cliquait « Lancer la simulation » — jamais détecté
-faute d'avoir testé ce chemin précis à l'origine (voir §19 : la génération
+faute d'avoir testé ce chemin précis à l'origine (voir §21 : la génération
 de code seule ne suffit pas, il faut aussi *exécuter*). Prévoir un
 `_CapteurXMock` pour **chaque** classe qu'un pilote Grove peut instancier
 est donc à vérifier systématiquement à la création d'un nouveau module, pas
@@ -1803,7 +1803,269 @@ Panneau simulateur minimal (trois curseurs gauche/avant/droite, pas de
 vraie matrice de distances) : aucune piste ni robot associé à un capteur
 générique, contrairement à Maqueen/Kitrobot.
 
-## 18. Lanceur et empaquetage
+## 18. Maqueen Lite — un second chassis Maqueen, un protocole différent
+
+Demandé simplement comme « la catégorie "maqueen lite" avec les blocs
+correspondants » — pas de piste ni de robot animé cette fois, juste des
+blocs. Source vérifiée avant d'écrire quoi que ce soit :
+`DFRobot/pxt-maqueen` (fichier `maqueen.ts`), confirmé par une recherche
+indépendante être le dépôt que charge réellement le produit vendu sous le
+nom « Maqueen Lite » (SKU ROB0148) — le nom du dépôt lui-même (« Maqueen »,
+sans « Lite ») ne le montrait pas à lui seul, DFRobot ayant renommé sa
+gamme sans renommer le dépôt GitHub (même désordre de nommage déjà
+rencontré au §17 pour « V1 »).
+
+### Même adresse I2C, protocole différent — pas le même pilote que Maqueen Plus
+
+Le dépôt utilise la même adresse `0x10` et les mêmes registres moteur
+(`0x00`/`0x02`) que le Maqueen Plus (§15) — une coïncidence de conception
+DFRobot, pas une compatibilité : le reste du protocole diverge complètement
+et les deux chassis ne coexistent de toute façon jamais sur la même carte.
+Différences qui comptent pour l'implémentation :
+
+- **2 capteurs de ligne, pas 5** : lecture directe de `P13`/`P14`
+  (`pins.digitalReadPin`), aucun registre I2C dédié — contrairement aux 5
+  capteurs du Maqueen Plus lus via le registre `0x1D`.
+- **2 DEL simples marche/arrêt** (`P8`/`P12`, écriture numérique directe),
+  pas de ruban NeoPixel RGB.
+- **Ultrason à broches fixes** (`P1`/`P2`), aucun choix de broche possible
+  contrairement au Maqueen Plus.
+- **Événement natif sur les capteurs de ligne** (`ltEvent`, interne à
+  `maqueen.ts`) : la source scrute les deux broches en rotation toutes les
+  50 ms via un `basic.forever` et déclenche une fonction quand l'état
+  correspond — un mécanisme équivalent à la scrutation déjà bâtie pour les
+  boutons/broches de ce projet (§6), dont le même principe (une condition
+  vérifiée à chaque tour) est repris ici plutôt que réinventé.
+
+```python
+def _ml_moteur(cote, vitesse):
+    vitesse = max(-255, min(255, int(vitesse)))
+    sens = 0 if vitesse >= 0 else 1
+    v = abs(vitesse)
+    if cote != "droit":
+        _ml_ecrire(0x00, sens, v)
+    if cote != "gauche":
+        _ml_ecrire(0x02, sens, v)
+```
+
+### L'événement « lorsque le capteur de ligne… » — pas besoin d'un dispatcher dynamique
+
+Contrairement à la radio ou à l'infrarouge (§17, PIÈGE nº 36 — un
+dispatcher qui doit chercher les gestionnaires dans `env`, pas dans
+`globals()`), la condition d'un changement de capteur de ligne se calcule
+directement à chaque tour (`_ml_ligne('gauche') == 1`), sans file
+d'attente ni correspondance dynamique de nom de fonction. Elle rentre donc
+dans le mécanisme `GESTIONNAIRES` déjà existant pour les boutons et les
+broches (§6) — quatre nouvelles entrées statiques, pas un nouveau
+mécanisme :
+
+```js
+['def on_ml_ligne_gauche_haut(', "if _ml_ligne('gauche') == 1: on_ml_ligne_gauche_haut()"],
+['def on_ml_ligne_gauche_bas(',  "if _ml_ligne('gauche') == 0: on_ml_ligne_gauche_bas()"],
+['def on_ml_ligne_droit_haut(',  "if _ml_ligne('droit') == 1: on_ml_ligne_droit_haut()"],
+['def on_ml_ligne_droit_bas(',   "if _ml_ligne('droit') == 0: on_ml_ligne_droit_bas()"],
+```
+
+**Piège de test rencontré en le vérifiant, déjà noté parmi les faux
+négatifs du §21** : `Blockly.Python.workspaceToCode(ws)` appelé
+directement, en dehors du pipeline normal, ne produit **pas** l'injection
+de scrutation — celle-ci vit dans `genererCodeDepuisBlocs()` (§6), une
+enveloppe autour de `workspaceToCode` non exposée sur `window`. Un test qui
+appelle `workspaceToCode` à la main pour vérifier la scrutation conclut
+donc à tort qu'elle manque ; lire `window.currentPythonCode` (mis à jour
+par le vrai pipeline événementiel) donne la bonne réponse.
+
+### Pas de piste ni de robot animé — demande explicite
+
+Contrairement au Maqueen Plus et au Kitrobot v2, l'utilisateur n'a demandé
+qu'« une catégorie avec les blocs correspondants », pas un second robot
+visible sur une piste. Construire quand même une piste/un sprite aurait été
+une extension non demandée (à éviter, comme rappelé dans ce projet à
+plusieurs reprises) — d'autant qu'un second robot animé aurait fait
+doublon avec celui du Maqueen Plus sans que rien ne distingue lequel des
+deux est « actif ». À la place : un petit panneau (un curseur de distance,
+deux cases à cocher pour les deux capteurs de ligne) juste assez pour que
+les blocs de *lecture* soient testables ; les blocs moteur/DEL/servo ont
+des mocks qui ne font rien de visible — mais existent, pour que « Lancer la
+simulation » ne plante jamais (même discipline qu'ailleurs dans ce projet :
+chaque fonction référencée par un bloc doit avoir un substitut, y compris
+quand ce substitut ne fait rien).
+
+## 19. Piste partagée entre les robots — fusionner trois systèmes en un
+
+Demandé explicitement après coup : « je veux que la partie simulation piste
+soit la même et disponible pour tous les robots ». Jusque-là, trois
+systèmes distincts coexistaient : la piste à tracés multiples du Maqueen
+Plus (§15, canevas 300×220), la piste droite dédiée du Kitrobot v2 (§16,
+canevas 320×140, choisie **explicitement** pour ne pas réutiliser celle de
+Maqueen), et le Maqueen Lite (§18) sans piste du tout. Fusionner ça en
+« un seul panneau piste partagé » (option choisie explicitement, plutôt que
+« panneaux séparés mais mêmes contrôles ») demande de répondre à trois
+questions avant de toucher au code :
+
+### Un seul canevas, quelle taille ?
+
+Garder les 300×220 de Maqueen Plus (le système le plus riche : trois tracés
+prédéfinis + éditeur personnalisé) plutôt que les 320×140 de Kitrobot, et
+adapter la piste droite de Kitrobot à ce format plutôt que l'inverse — un
+4ᵉ tracé dans `PISTES_MAQUEEN`, au même titre que `ovale`/`rectangulaire`/
+`huit` :
+
+```js
+depart_arrivee: {
+    nom: 'Ligne droite (départ/arrivée)',
+    depart: { x: 40, y: MQ_HAUTEUR / 2, cap: 0 },
+    dessiner(ctx) {
+        ctx.beginPath();
+        ctx.moveTo(30, MQ_HAUTEUR / 2);
+        ctx.lineTo(MQ_LARGEUR - 30, MQ_HAUTEUR / 2);
+        ctx.stroke();
+    }
+}
+```
+
+### Un seul robot affiché, lequel ?
+
+Une fonction de détection, appelée partout où « quel robot est actif ? »
+se posait auparavant trois fois séparément :
+
+```js
+function robotActifDetecte() {
+    const blocs = window.workspace.getAllBlocks(false);
+    if (blocs.some(b => b.type.startsWith('maqueen_') || b.type === 'lorsque_ir_noire' || b.type === 'lorsque_ir_grise')) return 'maqueen';
+    if (blocs.some(b => b.type.startsWith('kitrobot_'))) return 'kitrobot';
+    if (blocs.some(b => b.type.startsWith('maqueenlite_') || b.type === 'lorsque_maqueenlite_ligne')) return 'maqueenlite';
+    return null;
+}
+```
+
+Les trois sprites (`#maqueen-robot`, `#kitrobot-robot`, `#maqueenlite-robot`)
+vivent tous dans le même conteneur `#maqueen-piste`, superposés ; un seul
+`.replie` à la fois selon le retour de cette fonction. `MQ.actif`/`KB.actif`/
+`ML.actif` (utilisés par `avancerX()` pour savoir s'il faut bouger) en
+découlent directement, plutôt que d'être calculés séparément comme avant —
+un seul robot peut être actif à la fois, par construction.
+
+### Une piste, deux conventions de couleur — la couleur suit le ROBOT, pas le tracé
+
+Kitrobot lit un pixel **sombre** comme « sur la ligne » (§16), Maqueen Plus
+et Maqueen Lite lisent un pixel **clair** — une convention delibérément
+inversée à l'origine pour distinguer les deux panneaux d'un coup d'œil.
+Fusionner les canevas sans fusionner les couleurs aurait cassé les
+capteurs de l'un des deux robots dès qu'il utiliserait un tracé pensé pour
+l'autre. La couleur de la piste devient donc une propriété du **robot
+actif**, pas du tracé choisi :
+
+```js
+function couleursPisteRobotActif() {
+    return robotActifDetecte() === 'kitrobot'
+        ? { fond: '#ffffff', trait: '#111111' }
+        : { fond: '#3aa66b', trait: '#ffffff' };
+}
+```
+
+Appelée à chaque redessin (`dessinerPisteMaqueen()`, et l'aperçu de
+l'éditeur) : le MÊME tracé « Boucle ovale » se dessine donc en vert/blanc
+sous Maqueen Plus et en blanc/noir sous Kitrobot, sans dupliquer la moindre
+fonction de dessin. Les seuils de détection eux-mêmes (`pix[0] > 150` pour
+Maqueen, `pix[0] < 100` pour Kitrobot) n'ont pas changé — ils restent
+corrects du moment que le canevas est dessiné dans les bonnes couleurs
+avant qu'un capteur ne le relise, ce que garantit `rafraichirPisteEtRobots()`
+(voir plus bas) en appelant systématiquement `dessinerPisteMaqueen()`.
+
+### Maqueen Lite gagne une vraie position, pas seulement des blocs
+
+Le Maqueen Lite (§18) n'avait ni objet d'état, ni fonction de déplacement,
+ni sprite : ses deux capteurs de ligne étaient simulés par deux cases à
+cocher, sa vitesse moteur ignorée par un mock `pass`. Le rejoindre à la
+piste partagée a demandé de lui construire l'équivalent de ce que Maqueen
+Plus et Kitrobot avaient déjà : un objet `ML` (x/y/cap/vGauche/vDroite),
+`avancerMaqueenLite(ms)` (même cinématique différentielle que les deux
+autres), `positionCapteurMaqueenLite`/`dessinerRobotMaqueenLite`, un sprite
+CSS simple (gris-violet, pour ne pas le confondre avec les deux autres —
+remplacé depuis par un SVG tracé, voir plus bas), et une action de file
+`'mlMoteur'` — calquée sur `'kitrobotMoteur'` — pour que `_ml_moteur`
+(jusque-là un mock ne faisant rien) pousse vraiment une vitesse dans la
+file de simulation. Les deux cases à cocher ont disparu : `_ml_ligne`
+relit désormais un pixel du canevas partagé, comme les deux autres robots.
+
+### Le sprite Maqueen Lite, du placeholder CSS au SVG tracé d'après photos réelles
+
+Une fois le sprite CSS gris-violet en place (paragraphe précédent), l'utilisateur
+a fourni le lien produit officiel DFRobot du Maqueen Lite (ROB0148-EN) pour
+appliquer la même technique déjà validée sur Maqueen Plus (§15/§19 : « essayons
+l'option 2 » — SVG tracé plutôt que photo intégrée, pour rester fidèle à la
+convention « tout est dessiné, jamais une image externe »). Deux photos haute
+résolution du produit (`ROB0148-EN_Main_01.jpg`, vue 3/4 du châssis assemblé,
+et `ROB0148-EN_Dim_02.jpg`, vue de dessus de la carte « shield » micro:bit)
+ont servi de référence pour dessiner : une coque bleue en pointe vers l'avant,
+deux capteurs ultrasons chromés sur une petite sous-carte à la pointe, un
+compartiment à piles noir avec contacts métal visibles à l'arrière, et de
+grandes roues blanches/argentées à pneu noir — bien plus visibles sur le
+vrai robot que sur Maqueen Plus ou Kitrobot. Même découpe que pour Maqueen
+Plus : la carrosserie **statique** (coque, roues, pile, sous-carte ultrasons,
+vis) devient un `<svg>` inline avec dégradés (`<linearGradient>`/
+`<radialGradient>`), tandis que les éléments **dynamiques** pilotés par
+`simu_mlDel`/`mettreAJourIndicateursLigneMaqueenLite` (`.mlite-del-g`/`-d`,
+`.mlite-avant`) restent des `<div>` frères du `<svg>`, sortis de l'ancien
+conteneur `.mlite-corps` (supprimé) sans toucher au JS qui les référence par
+`id` — donc aucune modification de `un.js` n'était nécessaire, seulement de
+`index.html`.
+
+### `rafraichirPisteEtRobots()` — un seul point d'entrée, pas trois qui se chevauchent
+
+Les trois anciennes fonctions `rafraichirPanneauMaqueen/Kitrobot/MaqueenLite`
+faisaient chacune, indépendamment : détecter si LEUR robot a un bloc posé,
+(dés)activer LEUR état, (dés)afficher LEURS indicateurs, redessiner LEUR
+piste. Une fois la piste partagée, ces trois logiques se recouvrent
+forcément (dessiner la piste trois fois de suite avec des couleurs
+différentes selon l'ordre d'appel n'a pas de sens). Une seule fonction
+regroupe tout, appelée par les trois anciennes (conservées comme de simples
+délégations, pour ne pas casser les nombreux points d'appel existants) :
+
+```js
+function rafraichirPanneauMaqueen() { rafraichirPisteEtRobots(); }
+function rafraichirPanneauKitrobot() { rafraichirPisteEtRobots(); }
+function rafraichirPanneauMaqueenLite() { rafraichirPisteEtRobots(); }
+```
+
+**PIÈGE nº 38 — un réglage partagé doit redessiner les TROIS robots, pas
+celui qu'on avait sous les yeux en l'écrivant.** Le curseur « Échelle du
+robot » existait déjà pour Maqueen Plus avant la fusion ; son gestionnaire
+`input` n'appelait que `deplacerRobotMaqueenInstantanement()`. Une fois la
+piste partagée, glisser ce curseur pendant que Kitrobot ou Maqueen Lite est
+affiché ne changeait visiblement rien — trouvé en testant explicitement ce
+cas après la fusion (voir §21 : la génération de code seule ne suffit pas,
+il faut exécuter les trois chemins). Corrigé en appelant les trois fonctions
+de redessin à chaque changement du curseur, comme le fait déjà le 'sleep'
+de la file d'attente pour `avancerMaqueen`/`avancerKitrobot`/
+`avancerMaqueenLite` — un réglage visuel partagé doit suivre la même règle
+qu'un réglage de simulation partagé : toucher les trois, laisser chacun se
+protéger via son propre `.actif` ou son propre élément DOM absent.
+
+**PIÈGE nº 39 — une interaction utilisateur (pas seulement un réglage) doit
+elle aussi être portée aux trois robots lors d'une fusion, pas seulement
+recopiée pour celui qu'on regarde.** Le glisser-déposer du robot sur la
+piste (`pointerdown`/`pointermove`/`pointerup`) n'avait jamais été écrit
+que pour Maqueen Plus, y compris après la fusion des pistes (§19) : Kitrobot
+v2 et Maqueen Lite n'avaient tout simplement aucun écouteur posé sur leur
+élément, donc aucun `cursor: grab` ni glissement possible — pas un bug de
+logique (rien ne plantait), juste une fonctionnalité jamais dupliquée.
+Signalé par l'utilisateur (« je ne peux pas positionner les robots maqueen
+lite et kitrobot v2 où je veux sur la piste »), pas trouvé par un test
+automatisé, parce que rien dans le code ne suggérait son absence — il n'y a
+pas d'erreur à chercher quand un écouteur n'existe simplement pas. Corrigé
+en extrayant `positionPisteDepuisEvenement()` (déjà partagée : un seul
+canevas, un seul repère de coordonnées) et une fonction générique
+`activerGlisserDeposerRobot(el, etat, deplacerInstantanement)` appelée une
+fois par robot avec son propre objet d'état (`MQ`/`KB`/`ML`) et sa propre
+fonction de redessin instantané — même schéma que PIÈGE nº 38, mais pour un
+écouteur d'événement plutôt qu'un simple appel de fonction. Vérifié par
+`PointerEvent` synthétiques sur les trois robots (position mise à jour
+pendant `pointermove`, conservée après `pointerup`), et non-régression
+confirmée sur Maqueen Plus.
+
+## 20. Lanceur et empaquetage
 
 `lancer_projet.bat` :
 
@@ -1842,7 +2104,7 @@ serveur Python, qui ne fait que servir des fichiers statiques en lecture
 seule sans état partagé entre requêtes. Rien à protéger, donc rien qui
 justifiait de s'en priver.
 
-## 19. Comment vérifier
+## 21. Comment vérifier
 
 Aucun test automatisé : la vérification se fait dans le navigateur, en pilotant
 l'application depuis la console.
@@ -1901,7 +2163,7 @@ l'application depuis la console.
 
 ### Les faux négatifs, à connaître avant de conclure
 
-Ces six-là ont fait conclure à tort qu'un correctif ne marchait pas :
+Ces sept-là ont fait conclure à tort qu'un correctif ne marchait pas :
 
 - **Mesurer une section masquée.** Les styles calculés d'un élément en
   `display: none` ne veulent rien dire. Rendre la section visible d'abord.
@@ -1916,12 +2178,19 @@ Ces six-là ont fait conclure à tort qu'un correctif ne marchait pas :
   par la structure, pas par le pointeur.
 - **Un espace de travail Blockly qui reste vide, sans erreur.** Si `app.py`
   utilise encore `socketserver.TCPServer` sans `ThreadingMixIn` (voir PIÈGE
-  nº 34, §18), les connexions parallèles qu'un navigateur ouvre pour charger
+  nº 34, §20), les connexions parallèles qu'un navigateur ouvre pour charger
   `trois.js`/`deux.js`/`un.js` se bloquent les unes les autres : `index.html`
   s'affiche, mais `un.js` n'est jamais exécuté, donc rien ne ressemble à une
   erreur — juste un espace de travail qui ne se remplit jamais. Ça ressemble
   à une régression du dernier correctif alors que c'est le serveur qui est
   engorgé. Vérifier `class Serveur` avant de chercher plus loin.
+- **Appeler `Blockly.Python.workspaceToCode()` directement pour vérifier la
+  scrutation d'un évènement.** Elle n'y est pas : l'injection vit dans
+  `genererCodeDepuisBlocs()` (§6), une enveloppe autour de `workspaceToCode`
+  non exposée sur `window`. Un test qui contourne le pipeline normal conclut
+  à tort qu'un bloc « lorsque… » n'a pas de scrutation alors qu'elle
+  fonctionne — lire `window.currentPythonCode` (mis à jour par le vrai
+  pipeline événementiel) plutôt que rappeler le générateur à la main.
 
 Règle générale : l'absence d'erreur ne prouve rien. Relire ce qui a été produit
 avec un outil indépendant de celui qui l'a produit.

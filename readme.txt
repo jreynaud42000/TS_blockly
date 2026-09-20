@@ -527,8 +527,18 @@ garde.
 Nouvelle categorie de blocs pour le chassis robot DFRobot Maqueen Plus (I2C,
 adresse 0x10) : moteurs gauche/droit, cinq capteurs de ligne, phares,
 DEL RGB, capteur a ultrason. Des qu'un bloc de cette categorie est pose, un
-panneau "Maqueen Plus" apparait sous le simulateur habituel, avec une piste
-et le robot dessus.
+panneau "Piste" apparait sous le simulateur habituel, avec une piste et le
+robot dessus.
+
+IMPORTANT : ce panneau piste est PARTAGE entre les trois robots du projet
+(Maqueen Plus, Kitrobot v2, Maqueen Lite - voir §16 et §18). Un seul robot
+y est visible a la fois, celui dont un bloc est reellement pose sur l'espace
+de travail (le titre du panneau change en consequence). Les trois profitent
+donc des memes reglages : choix du tracé, largeur de la piste, echelle
+d'affichage, editeur de piste personnalisee. Kitrobot lit un pixel SOMBRE
+comme "sur la ligne" (l'inverse des deux autres) : la piste change donc de
+couleurs (blanc/noir au lieu de vert/blanc) des que Kitrobot est le robot
+actif, quel que soit le tracé choisi.
 
 Un menu deroulant au-dessus de la piste propose plusieurs tracés : boucle
 ovale, circuit aux coins presque vifs, circuit en huit (deux boucles qui se
@@ -573,7 +583,9 @@ des yeux.
 Le robot se glisse-depose n'importe ou sur la piste, a la souris ou au doigt :
 c'est la nouvelle position de depart, conservee par "Reinitialiser la
 simulation" (qui ne revient donc plus a un point fixe une fois le robot
-deplace).
+deplace). Cela fonctionne aussi pour Kitrobot v2 et Maqueen Lite (meme
+piste partagee, voir plus haut) : glisser le robot reellement affiche le
+deplace, quel que soit celui des trois.
 
 Contrairement aux autres modules, le robot BOUGE REELLEMENT sur la piste :
 sa position et son cap suivent la vitesse donnee a chaque moteur, et les
@@ -610,12 +622,14 @@ pas juste decoratives.
 ---------------------------------------------------------
 16. KITROBOT V2 (robot sur piste droite)
 ---------------------------------------------------------
-Deuxieme robot, distinct du Maqueen Plus ci-dessus : chassis a deux servos,
-piste droite avec un depart et une arrivee (pas une boucle fermee). Des
-qu'un bloc de la categorie "Kitrobot v2" est pose, un panneau "Kitrobot v2"
-apparait sous le simulateur, avec sa propre piste (fond blanc, ligne noire -
-inversee par rapport a Maqueen pour bien distinguer les deux d'un coup
-d'oeil).
+Deuxieme robot, distinct du Maqueen Plus ci-dessus : chassis a deux servos.
+Des qu'un bloc de la categorie "Kitrobot v2" est pose, le panneau "Piste"
+(voir §15) affiche ce robot a la place du Maqueen, sur la MEME piste que les
+deux autres robots - y compris le tracé "Ligne droite (départ/arrivée)"
+d'origine dediee a Kitrobot, desormais un choix de tracé comme un autre.
+La piste passe en fond blanc/ligne noire (inversee par rapport a Maqueen)
+tant que Kitrobot est le robot actif, pour bien distinguer les deux d'un
+coup d'oeil quel que soit le tracé choisi.
 
 Contrairement au Maqueen Plus, aucun cablage reel n'a pu etre verifie pour
 ce kit. Toutes les broches (servos, ultrason, buzzer, capteurs de ligne,
@@ -705,4 +719,38 @@ relisent la derniere acquisition, pas le capteur en direct. Independant
 d'un robot precis (utilisable seul ou avec un Maqueen) ; le panneau du
 simulateur propose trois curseurs (gauche/avant/droite, en mm) plutot
 qu'une vraie matrice de distances.
+
+---------------------------------------------------------
+18. MAQUEEN LITE
+---------------------------------------------------------
+Chassis DFRobot plus simple, distinct du Maqueen Plus (categorie separee,
+protocole different) : meme adresse I2C 0x10 pour les moteurs, mais
+seulement 2 capteurs de ligne (gauche/droit, lus directement sur des
+broches, pas de registre dedie), 2 DEL simples marche/arret (pas de RGB),
+et un capteur ultrason a broches fixes (pas de choix de broche).
+
+Blocs disponibles : moteur (vitesse -255 a 255, comme le Maqueen Plus),
+arreter le moteur, distance (cm), capteur de ligne (0 ou 1, sens non
+verifie sur une vraie carte), DEL allumee/eteinte, servo (S1/S2), et un
+bloc "lorsque le capteur de ligne ... passe a l'etat ..." pour reagir aux
+changements sans avoir a le lire soi-meme dans une boucle.
+
+Depuis que la piste est partagee entre les trois robots (voir §15), le
+Maqueen Lite a lui aussi un robot anime : des qu'un bloc de la categorie
+est pose, le panneau "Piste" l'affiche, sur la meme piste que les deux
+autres, memes couleurs que le Maqueen Plus (vert/blanc, pas d'inversion).
+Le chassis (au depart un simple rectangle CSS gris-violet) est desormais
+dessine en SVG d'apres deux photos officielles DFRobot du vrai robot
+(ROB0148-EN) : carte bleue en pointe vers l'avant, deux capteurs ultrasons
+chromes a la pointe, compartiment a piles noir a l'arriere, grandes roues
+blanches/argentees. Le bloc moteur deplace donc vraiment le robot, et le
+bloc/l'evenement capteur de ligne lisent vraiment la piste sous lui - les
+deux anciennes cases a cocher qui simulaient ces capteurs ont disparu, plus
+necessaires. Seul le bloc servo reste sans effet visuel (aucun panneau
+dedie pour ca, comme le Maqueen Plus).
+
+Aucun materiel Maqueen Lite n'a servi a verifier ceci : le protocole vient
+du depot officiel MakeCode de DFRobot (pxt-maqueen), pas invente, mais
+rien ne remplace un test sur la vraie carte - en particulier le sens des
+capteurs de ligne (0 ou 1 = sur la ligne ?), qui depend du cablage reel.
 

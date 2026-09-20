@@ -14,6 +14,7 @@ try {
     let panneauMaqueenPret = false;
     let panneauKitrobotPret = false;
     let panneauLidarPret = false;
+    let panneauMaqueenLitePret = false;
 
     /**
      * Déclare `from microbit import *`.
@@ -3064,6 +3065,179 @@ try {
         return declarerGestionnaire('on_ir_grise_' + block.getFieldValue('TOUCHE'), P.statementToCode(block, 'DO'));
     };
 
+    // ---------- Maqueen Lite (chassis DFRobot ROB0148, distinct du Maqueen Plus) ----------
+    //
+    // Protocole verifie depuis le depot officiel DFRobot/pxt-maqueen
+    // (maqueen.ts, namespace "maqueen" — le socle commun a toutes les
+    // versions "Lite", pas l'extension "Maqueen_V5" plus recente et moins
+    // repandue du meme depot, hors perimetre ici). Meme adresse I2C 0x10 que
+    // le Maqueen Plus, mais un protocole different : seulement 2 capteurs de
+    // ligne (broches P13/P14 lues directement, pas de registre dedie),
+    // 2 DEL simples marche/arret (P8/P12, pas de RGB), ultrason a broches
+    // fixes P1/P2 (pas de choix de broche). Jamais confronte a un vrai
+    // chassis Maqueen Lite.
+
+    const COULEUR_MAQUEEN_LITE = 35;
+    const MENU_COTE_MAQUEEN_LITE = [["gauche", "gauche"], ["droit", "droit"], ["les deux", "les_deux"]];
+
+    function piloteMaqueenLite() {
+        importerMicrobit();
+        importerModule('machine');
+        pilote('maqueen_lite', [
+            '_ML_ADR = 0x10',
+            '',
+            'def _ml_ecrire(registre, *octets):',
+            '    i2c.write(_ML_ADR, bytes([registre]) + bytes(octets))',
+            '',
+            '# vitesse : -255 (arriere) a 255 (avant), comme le Maqueen Plus, meme si',
+            '# le pilote DFRobot d\'origine prend separement un sens et une vitesse.',
+            'def _ml_moteur(cote, vitesse):',
+            '    vitesse = max(-255, min(255, int(vitesse)))',
+            '    sens = 0 if vitesse >= 0 else 1',
+            '    v = abs(vitesse)',
+            '    if cote != "droit":',
+            '        _ml_ecrire(0x00, sens, v)',
+            '    if cote != "gauche":',
+            '        _ml_ecrire(0x02, sens, v)',
+            '',
+            '# Sequence de declenchement fidele a la source (etat de repos de la',
+            '# broche echo verifie avant de choisir le front a mesurer) : le',
+            '# mecanisme de nouvelles tentatives cote MakeCode (jusqu\'a 4 lectures)',
+            '# est une rustine specifique a pulseIn() la-bas, pas reprise ici — une',
+            '# seule lecture, comme le reste de l\'ultrason de ce projet.',
+            'def _ml_distance():',
+            '    pin1.write_digital(1)',
+            '    sleep(1)',
+            '    pin1.write_digital(0)',
+            '    if pin2.read_digital() == 0:',
+            '        pin1.write_digital(1)',
+            '        sleep(20)',
+            '        pin1.write_digital(0)',
+            '        duree = machine.time_pulse_us(pin2, 1, 29000)',
+            '    else:',
+            '        pin1.write_digital(0)',
+            '        sleep(20)',
+            '        pin1.write_digital(0)',
+            '        duree = machine.time_pulse_us(pin2, 0, 29000)',
+            '    return 0 if duree < 0 else round(duree / 59)',
+            '',
+            '# Lecture brute de P13/P14, sans inversion : la source ne dit pas si 1',
+            '# signifie "sur la ligne" ou "hors de la ligne" (ca depend du cablage',
+            '# reel du capteur) — a verifier au besoin sur la vraie carte.',
+            'def _ml_ligne(cote):',
+            '    return (pin13 if cote == "gauche" else pin14).read_digital()',
+            '',
+            'def _ml_del(cote, etat):',
+            '    valeur = 1 if etat else 0',
+            '    if cote != "droit":',
+            '        pin8.write_digital(valeur)',
+            '    if cote != "gauche":',
+            '        pin12.write_digital(valeur)',
+            '',
+            'def _ml_servo(canal, angle):',
+            '    _ml_ecrire(0x14 if canal == "S1" else 0x15, int(angle))',
+        ]);
+    }
+
+    Blockly.Blocks['maqueenlite_moteur'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Lite : moteur")
+            .appendField(new Blockly.FieldDropdown(MENU_COTE_MAQUEEN_LITE), "COTE")
+            .appendField("à");
+        this.appendValueInput("VITESSE").setCheck("Number");
+        this.appendDummyInput().appendField("(-255 à 255)");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN_LITE);
+        this.setTooltip("Vitesse négative = marche arrière.");
+    }};
+    P.forBlock['maqueenlite_moteur'] = function(block) {
+        piloteMaqueenLite();
+        const vitesse = P.valueToCode(block, 'VITESSE', P.ORDER_NONE) || '0';
+        return '_ml_moteur("' + block.getFieldValue('COTE') + '", ' + vitesse + ')\n';
+    };
+
+    Blockly.Blocks['maqueenlite_arreter'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Lite : arrêter le moteur")
+            .appendField(new Blockly.FieldDropdown(MENU_COTE_MAQUEEN_LITE), "COTE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN_LITE);
+    }};
+    P.forBlock['maqueenlite_arreter'] = function(block) {
+        piloteMaqueenLite();
+        return '_ml_moteur("' + block.getFieldValue('COTE') + '", 0)\n';
+    };
+
+    Blockly.Blocks['maqueenlite_distance'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Lite : distance (cm) capteur ultrason");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_MAQUEEN_LITE);
+        this.setTooltip("Broches fixes (P1 = émission, P2 = écho), pas de choix possible sur ce chassis.");
+    }};
+    P.forBlock['maqueenlite_distance'] = function(block) {
+        piloteMaqueenLite();
+        return ['_ml_distance()', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['maqueenlite_ligne'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Lite : capteur de ligne")
+            .appendField(new Blockly.FieldDropdown([["gauche", "gauche"], ["droit", "droit"]]), "COTE")
+            .appendField("(0 ou 1)");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_MAQUEEN_LITE);
+        this.setTooltip("Valeur brute de la broche, sens (0/1 = sur la ligne ou non) non vérifié sur une vraie carte.");
+    }};
+    P.forBlock['maqueenlite_ligne'] = function(block) {
+        piloteMaqueenLite();
+        return ['_ml_ligne("' + block.getFieldValue('COTE') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['maqueenlite_del'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Lite : DEL")
+            .appendField(new Blockly.FieldDropdown(MENU_COTE_MAQUEEN_LITE), "COTE")
+            .appendField(new Blockly.FieldDropdown([["allumée", "TRUE"], ["éteinte", "FALSE"]]), "ETAT");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN_LITE);
+    }};
+    P.forBlock['maqueenlite_del'] = function(block) {
+        piloteMaqueenLite();
+        const etat = block.getFieldValue('ETAT') === 'TRUE' ? 'True' : 'False';
+        return '_ml_del("' + block.getFieldValue('COTE') + '", ' + etat + ')\n';
+    };
+
+    Blockly.Blocks['maqueenlite_servo'] = { init: function() {
+        this.appendDummyInput().appendField("Maqueen Lite : servo")
+            .appendField(new Blockly.FieldDropdown([["S1", "S1"], ["S2", "S2"]]), "CANAL")
+            .appendField("angle");
+        this.appendValueInput("ANGLE").setCheck("Number");
+        this.appendDummyInput().appendField("°");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_MAQUEEN_LITE);
+    }};
+    P.forBlock['maqueenlite_servo'] = function(block) {
+        piloteMaqueenLite();
+        const angle = P.valueToCode(block, 'ANGLE', P.ORDER_NONE) || '90';
+        return '_ml_servo("' + block.getFieldValue('CANAL') + '", ' + angle + ')\n';
+    };
+
+    Blockly.Blocks['lorsque_maqueenlite_ligne'] = { init: function() {
+        this.appendDummyInput().appendField("lorsque le capteur de ligne")
+            .appendField(new Blockly.FieldDropdown([["gauche", "gauche"], ["droit", "droit"]]), "COTE")
+            .appendField("passe à l'état")
+            .appendField(new Blockly.FieldDropdown([["haut (1)", "haut"], ["bas (0)", "bas"]]), "ETAT");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(300);
+    }};
+    P.forBlock['lorsque_maqueenlite_ligne'] = function(block) {
+        piloteMaqueenLite();
+        const nom = 'on_ml_ligne_' + block.getFieldValue('COTE') + '_' + block.getFieldValue('ETAT');
+        return declarerGestionnaire(nom, P.statementToCode(block, 'DO'));
+    };
+
     // ---------- Kitrobot v2 (chassis Grove : servos, ultrason, ruban, buzzer, lignes) ----------
     //
     // Contrairement au Maqueen (une puce I2C dediee, protocole documente),
@@ -3977,6 +4151,23 @@ try {
               { "kind": "block", "type": "lorsque_ir_grise" },
               { "kind": "block", "type": "maqueen_ir_decoder" },
               { "kind": "block", "type": "maqueen_ir_dernier_code" }
+            ]
+          },
+          {
+            "kind": "category", "name": "Maqueen Lite", "colour": String(COULEUR_MAQUEEN_LITE),
+            "contents": [
+              { "kind": "label", "text": "Moteurs" },
+              { "kind": "block", "type": "maqueenlite_moteur", "inputs": { "VITESSE": { "shadow": { "type": "math_number", "fields": { "NUM": "150" } } } } },
+              { "kind": "block", "type": "maqueenlite_arreter" },
+
+              { "kind": "label", "text": "Capteurs" },
+              { "kind": "block", "type": "maqueenlite_distance" },
+              { "kind": "block", "type": "maqueenlite_ligne" },
+              { "kind": "block", "type": "lorsque_maqueenlite_ligne" },
+
+              { "kind": "label", "text": "DEL et servos" },
+              { "kind": "block", "type": "maqueenlite_del" },
+              { "kind": "block", "type": "maqueenlite_servo", "inputs": { "ANGLE": { "shadow": { "type": "math_number", "fields": { "NUM": "90" } } } } }
             ]
           },
           {
@@ -5183,6 +5374,13 @@ try {
         // Meme principe que la radio : pas d'interruption materielle non plus
         // pour l'infrarouge, une seule fonction de tri appelee a chaque tour.
         ['def on_ir_',                '_ir_traiter()'],
+        // Capteurs de ligne du Maqueen Lite : condition directement
+        // calculable a chaque tour, comme les boutons/broches ci-dessus —
+        // pas besoin d'un dispatcher dedie.
+        ['def on_ml_ligne_gauche_haut(', "if _ml_ligne('gauche') == 1: on_ml_ligne_gauche_haut()"],
+        ['def on_ml_ligne_gauche_bas(',  "if _ml_ligne('gauche') == 0: on_ml_ligne_gauche_bas()"],
+        ['def on_ml_ligne_droit_haut(',  "if _ml_ligne('droit') == 1: on_ml_ligne_droit_haut()"],
+        ['def on_ml_ligne_droit_bas(',   "if _ml_ligne('droit') == 0: on_ml_ligne_droit_bas()"],
     ];
 
     // ------------------------------------------
@@ -5298,6 +5496,7 @@ try {
         if (panneauMaqueenPret) rafraichirPanneauMaqueen();
         if (panneauKitrobotPret) rafraichirPanneauKitrobot();
         if (panneauLidarPret) rafraichirPanneauLidar();
+        if (panneauMaqueenLitePret) rafraichirPanneauMaqueenLite();
 
         const wrapAB = document.getElementById('wrap-ab');
         if (wrapAB) {
@@ -5891,6 +6090,20 @@ try {
     // précédent visuellement terminé — un capteur lu au tour 2 voit donc la
     // position mise à jour par le tour 1, pas celle du tour 0.
 
+    // Piste et canevas PARTAGÉS par les trois robots (Maqueen Plus, Kitrobot
+    // v2, Maqueen Lite) : un seul actif à la fois, celui dont un bloc est
+    // posé sur l'espace de travail. Les blocs IR (lorsque_ir_*) comptent
+    // pour Maqueen Plus (même chassis), la télécommande n'a pas son propre
+    // robot. Function déclarée tôt (hoisting) : utilisée par les trois
+    // sections qui suivent avant que celle-ci ne soit "physiquement" lue.
+    function robotActifDetecte() {
+        const blocs = window.workspace.getAllBlocks(false);
+        if (blocs.some(b => b.type.startsWith('maqueen_') || b.type === 'lorsque_ir_noire' || b.type === 'lorsque_ir_grise')) return 'maqueen';
+        if (blocs.some(b => b.type.startsWith('kitrobot_'))) return 'kitrobot';
+        if (blocs.some(b => b.type.startsWith('maqueenlite_') || b.type === 'lorsque_maqueenlite_ligne')) return 'maqueenlite';
+        return null;
+    }
+
     const MQ_LARGEUR = 300, MQ_HAUTEUR = 220;
     const MQ_EMPATTEMENT = 20;        // distance entre les deux roues, en px
     const MQ_VITESSE_MAX = 70;        // px/s a vitesse moteur 255
@@ -5947,6 +6160,20 @@ try {
                 ctx.stroke();
                 ctx.beginPath();
                 ctx.roundRect(120, 30, 140, MQ_HAUTEUR - 60, 38);
+                ctx.stroke();
+            }
+        },
+        depart_arrivee: {
+            // Tracé ouvert (pas refermé), à l'origine dédié au Kitrobot v2 —
+            // désormais un choix de piste comme un autre, utilisable par
+            // n'importe quel robot. Les fanions "Départ"/"Arrivée" (voir
+            // rafraichirPisteEtRobots) ne s'affichent que sur ce tracé.
+            nom: 'Ligne droite (départ/arrivée)',
+            depart: { x: 40, y: MQ_HAUTEUR / 2, cap: 0 },
+            dessiner(ctx) {
+                ctx.beginPath();
+                ctx.moveTo(30, MQ_HAUTEUR / 2);
+                ctx.lineTo(MQ_LARGEUR - 30, MQ_HAUTEUR / 2);
                 ctx.stroke();
             }
         }
@@ -6064,13 +6291,23 @@ try {
     const btnEffacerPisteMaqueen = document.getElementById('maqueen-piste-effacer');
 
     /** Dessinée à chaque changement de piste ; c'est aussi elle qu'on relit pour les capteurs de ligne. */
+    // Kitrobot v2 lit un pixel SOMBRE comme "sur la ligne" (inverse des deux
+    // autres robots) : la piste doit donc s'inverser avec lui, pas seulement
+    // changer de déco — sinon ses capteurs ne détecteraient jamais rien.
+    function couleursPisteRobotActif() {
+        return robotActifDetecte() === 'kitrobot'
+            ? { fond: '#ffffff', trait: '#111111' }
+            : { fond: '#3aa66b', trait: '#ffffff' };
+    }
+
     function dessinerPisteMaqueen() {
         if (!ctxPisteMaqueen) return;
         const ctx = ctxPisteMaqueen;
+        const couleurs = couleursPisteRobotActif();
         ctx.clearRect(0, 0, MQ_LARGEUR, MQ_HAUTEUR);
-        ctx.fillStyle = '#3aa66b';
+        ctx.fillStyle = couleurs.fond;
         ctx.fillRect(0, 0, MQ_LARGEUR, MQ_HAUTEUR);
-        ctx.strokeStyle = '#ffffff';
+        ctx.strokeStyle = couleurs.trait;
         ctx.lineWidth = MQ_LARGEUR_LIGNE;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
@@ -6082,8 +6319,13 @@ try {
         if (!PISTES_MAQUEEN[cle]) return;
         pisteMaqueenActuelle = cle;
         MQ_DEPART = { ...PISTES_MAQUEEN[cle].depart };
-        dessinerPisteMaqueen();
+        // Les trois robots partagent MQ_DEPART : réinitialiser les trois est
+        // sans effet sur celui qui n'est pas affiché, inutile de savoir
+        // lequel est actif ici.
         reinitialiserMaqueen();
+        reinitialiserKitrobot();
+        reinitialiserMaqueenLite();
+        rafraichirPisteEtRobots();
     }
 
     function remplirSelecteurPisteMaqueen() {
@@ -6113,10 +6355,11 @@ try {
     function redessinerApercuEditionPisteMaqueen() {
         if (!ctxPisteMaqueen) return;
         const ctx = ctxPisteMaqueen;
+        const couleurs = couleursPisteRobotActif();
         ctx.clearRect(0, 0, MQ_LARGEUR, MQ_HAUTEUR);
-        ctx.fillStyle = '#3aa66b';
+        ctx.fillStyle = couleurs.fond;
         ctx.fillRect(0, 0, MQ_LARGEUR, MQ_HAUTEUR);
-        ctx.strokeStyle = '#ffffff';
+        ctx.strokeStyle = couleurs.trait;
         ctx.lineWidth = MQ_LARGEUR_LIGNE;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
@@ -6189,7 +6432,11 @@ try {
         pointsEditionPisteMaqueen = PISTES_MAQUEEN.perso
             ? PISTES_MAQUEEN.perso.points.map(p => ({ x: p.x, y: p.y }))
             : [];
+        // Cache les trois sprites (un seul est normalement visible, mais
+        // l'éditeur ne dépend d'aucun robot précis) le temps de l'édition.
         if (robotMaqueenEl) robotMaqueenEl.style.display = 'none';
+        if (robotKitrobotEl) robotKitrobotEl.style.display = 'none';
+        if (robotMaqueenLiteEl) robotMaqueenLiteEl.style.display = 'none';
         if (canevasPisteMaqueen) canevasPisteMaqueen.style.cursor = 'crosshair';
         afficherBarreEditionPisteMaqueen(true);
         redessinerApercuEditionPisteMaqueen();
@@ -6199,14 +6446,16 @@ try {
         modeEditionPisteMaqueen = false;
         while (poigneesEditionPisteMaqueen.length) poigneesEditionPisteMaqueen.pop().remove();
         if (robotMaqueenEl) robotMaqueenEl.style.display = '';
+        if (robotKitrobotEl) robotKitrobotEl.style.display = '';
+        if (robotMaqueenLiteEl) robotMaqueenLiteEl.style.display = '';
         if (canevasPisteMaqueen) canevasPisteMaqueen.style.cursor = '';
         afficherBarreEditionPisteMaqueen(false);
     }
 
     function annulerEditionPisteMaqueen() {
         sortirEditionPisteMaqueen();
-        dessinerPisteMaqueen();   // redessine la piste reellement active, pas l'ebauche abandonnee
-        deplacerRobotMaqueenInstantanement();
+        rafraichirPisteEtRobots();   // redessine la piste reellement active, pas l'ebauche abandonnee,
+                                      // et remontre le bon sprite (celui du robot actif)
     }
 
     function terminerEditionPisteMaqueen() {
@@ -6365,24 +6614,7 @@ try {
 
     // N'apparaît que si un bloc Maqueen est posé, comme les sections Grove.
     function rafraichirPanneauMaqueen() {
-        const panneau = document.getElementById('maqueen-panneau');
-        if (!panneau) return;
-        MQ.actif = window.workspace.getAllBlocks(false).some(b => b.type.startsWith('maqueen_'));
-        panneau.classList.toggle('replie', !MQ.actif);
-
-        // N'affiche que les capteurs de ligne que le programme lit vraiment :
-        // pas la peine de montrer les cinq si un seul sert au suivi de ligne.
-        const utilises = capteursLigneUtilisesMaqueen();
-        if (ligneCapteursMaqueenEl) ligneCapteursMaqueenEl.classList.toggle('visible', utilises.size > 0);
-        for (const capteur in chipsCapteursLigneMaqueen) {
-            chipsCapteursLigneMaqueen[capteur].classList.toggle('visible', utilises.has(capteur));
-        }
-        for (const capteur in chipsCapteursLigneSpriteMaqueen) {
-            chipsCapteursLigneSpriteMaqueen[capteur].classList.toggle('visible', utilises.has(capteur));
-        }
-        mettreAJourIndicateursLigneMaqueen();
-
-        Blockly.svgResize(window.workspace);
+        rafraichirPisteEtRobots();
     }
 
     window.simu_maqueenMoteur = function(cote, vitesse) {
@@ -6474,32 +6706,30 @@ try {
     };
 
     // ------------------------------------------
-    // KITROBOT V2 — piste droite, départ/arrivée
+    // KITROBOT V2 — même piste partagée que Maqueen Plus (voir plus haut)
     // ------------------------------------------
     // Même principe que Maqueen Plus (position réelle, avancée sur les
-    // 'sleep', capteurs qui relisent le canevas), mais piste dédiée : ligne
-    // droite, drapeaux Départ/Arrivée, noir sur blanc (inversé de Maqueen,
-    // pour qu'on les distingue au premier coup d'œil). Deux capteurs de
-    // ligne seulement (gauche/droit), comme le vrai jeu de blocs.
+    // 'sleep', capteurs qui relisent le canevas), mais lit un pixel SOMBRE
+    // comme "sur la ligne" (inverse de Maqueen) : la piste s'inverse en
+    // couleurs (blanc sur noir) quand ce robot est actif, voir
+    // couleursPisteRobotActif() plus haut. Deux capteurs de ligne seulement
+    // (gauche/droit), comme le vrai jeu de blocs. Partage le canevas
+    // (canevasPisteMaqueen/ctxPisteMaqueen) et le point de départ courant
+    // (MQ_DEPART) de la piste active : pas de piste ni de départ à lui.
 
-    const KB_LARGEUR = 320, KB_HAUTEUR = 140;
     const KB_EMPATTEMENT = 20;
     const KB_VITESSE_MAX = 70;          // px/s a vitesse moteur 100 (%)
     const KB_AVANT_CAPTEURS = 12;
     const KB_DECALAGE_CAPTEUR = { gauche: -8, droit: 8 };
-    const KB_DEPART = { x: 30, y: KB_HAUTEUR / 2, cap: 0 };
 
     const KB = {
         actif: false,
-        x: KB_DEPART.x, y: KB_DEPART.y, cap: KB_DEPART.cap,
+        x: MQ_DEPART.x, y: MQ_DEPART.y, cap: MQ_DEPART.cap,
         vGauche: 0, vDroite: 0
     };
 
-    const canevasPisteKitrobot = document.getElementById('kitrobot-piste-canevas');
     const robotKitrobotEl = document.getElementById('kitrobot-robot');
     const curseurDistanceKitrobot = document.getElementById('kitrobot-distance');
-    const ctxPisteKitrobot = canevasPisteKitrobot
-        ? canevasPisteKitrobot.getContext('2d', { willReadFrequently: true }) : null;
     const ligneCapteursKitrobotEl = document.getElementById('kitrobot-ligne-capteurs');
     const chipsCapteursLigneKitrobot = {};
     if (ligneCapteursKitrobotEl) {
@@ -6508,24 +6738,10 @@ try {
         });
     }
 
-    function dessinerPisteKitrobot() {
-        if (!ctxPisteKitrobot) return;
-        const ctx = ctxPisteKitrobot;
-        ctx.clearRect(0, 0, KB_LARGEUR, KB_HAUTEUR);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, KB_LARGEUR, KB_HAUTEUR);
-        ctx.strokeStyle = '#111111';
-        ctx.lineWidth = 22;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(30, KB_HAUTEUR / 2);
-        ctx.lineTo(KB_LARGEUR - 30, KB_HAUTEUR / 2);
-        ctx.stroke();
-    }
-
-    function pixelPisteKitrobot(x, y) {
-        if (!ctxPisteKitrobot || x < 0 || y < 0 || x >= KB_LARGEUR || y >= KB_HAUTEUR) return null;
-        return ctxPisteKitrobot.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+    /** Lecture d'un pixel du canevas partagé — nom générique, utilisé par les trois robots. */
+    function pixelPiste(x, y) {
+        if (!ctxPisteMaqueen || x < 0 || y < 0 || x >= MQ_LARGEUR || y >= MQ_HAUTEUR) return null;
+        return ctxPisteMaqueen.getImageData(Math.round(x), Math.round(y), 1, 1).data;
     }
 
     function positionCapteurKitrobot(decalageLateral) {
@@ -6540,9 +6756,10 @@ try {
 
     function dessinerRobotKitrobot() {
         if (!robotKitrobotEl) return;
-        robotKitrobotEl.style.left = (KB.x / KB_LARGEUR * 100) + '%';
-        robotKitrobotEl.style.top = (KB.y / KB_HAUTEUR * 100) + '%';
-        robotKitrobotEl.style.transform = 'translate(-50%, -50%) rotate(' + KB.cap + 'deg)';
+        robotKitrobotEl.style.left = (KB.x / MQ_LARGEUR * 100) + '%';
+        robotKitrobotEl.style.top = (KB.y / MQ_HAUTEUR * 100) + '%';
+        robotKitrobotEl.style.transform =
+            'translate(-50%, -50%) rotate(' + KB.cap + 'deg) scale(' + MQ_ECHELLE_ROBOT + ')';
         mettreAJourIndicateursLigneKitrobot();
     }
 
@@ -6591,25 +6808,13 @@ try {
     }
 
     function reinitialiserKitrobot() {
-        KB.x = KB_DEPART.x; KB.y = KB_DEPART.y; KB.cap = KB_DEPART.cap;
+        KB.x = MQ_DEPART.x; KB.y = MQ_DEPART.y; KB.cap = MQ_DEPART.cap;
         KB.vGauche = 0; KB.vDroite = 0;
         deplacerRobotKitrobotInstantanement();
     }
 
     function rafraichirPanneauKitrobot() {
-        const panneau = document.getElementById('kitrobot-panneau');
-        if (!panneau) return;
-        KB.actif = window.workspace.getAllBlocks(false).some(b => b.type.startsWith('kitrobot_'));
-        panneau.classList.toggle('replie', !KB.actif);
-
-        const utilises = capteursLigneUtilisesKitrobot();
-        if (ligneCapteursKitrobotEl) ligneCapteursKitrobotEl.classList.toggle('visible', utilises.size > 0);
-        for (const capteur in chipsCapteursLigneKitrobot) {
-            chipsCapteursLigneKitrobot[capteur].classList.toggle('visible', utilises.has(capteur));
-        }
-        mettreAJourIndicateursLigneKitrobot();
-
-        Blockly.svgResize(window.workspace);
+        rafraichirPisteEtRobots();
     }
 
     window.simu_kitrobotMoteur = function(cote, vitesse) {
@@ -6626,7 +6831,7 @@ try {
         const decalage = KB_DECALAGE_CAPTEUR[capteur];
         if (decalage === undefined) return false;
         const p = positionCapteurKitrobot(decalage);
-        const pix = pixelPisteKitrobot(p.x, p.y);
+        const pix = pixelPiste(p.x, p.y);
         // Piste noire sur blanc (inverse de Maqueen) : ligne detectee = pixel sombre.
         return !!pix && pix[0] < 100 && pix[1] < 100 && pix[2] < 100;
     };
@@ -6706,6 +6911,221 @@ try {
         direction: () => window.simu_lidarDirection(),
         urgence: () => window.simu_lidarUrgence()
     };
+
+    // ------------------------------------------
+    // MAQUEEN LITE — même piste partagée que Maqueen Plus/Kitrobot v2
+    // ------------------------------------------
+    // Même principe que les deux autres (position réelle, capteurs qui
+    // relisent le canevas), avec la même convention de couleur que Maqueen
+    // Plus (pixel clair = sur la ligne, pas d'inversion comme Kitrobot,
+    // même famille de chassis). Deux capteurs de ligne (gauche/droit),
+    // comme le vrai jeu de blocs (P13/P14).
+
+    const ML_EMPATTEMENT = 20;
+    const ML_VITESSE_MAX = 70;
+    const ML_AVANT_CAPTEURS = 12;
+    const ML_DECALAGE_CAPTEUR = { gauche: -8, droit: 8 };
+
+    const ML = {
+        actif: false,
+        x: MQ_DEPART.x, y: MQ_DEPART.y, cap: MQ_DEPART.cap,
+        vGauche: 0, vDroite: 0
+    };
+
+    const robotMaqueenLiteEl = document.getElementById('maqueenlite-robot');
+    const curseurDistanceMaqueenLite = document.getElementById('maqueenlite-distance');
+    const ligneCapteursMaqueenLiteEl = document.getElementById('maqueenlite-ligne-capteurs');
+    const chipsCapteursLigneMaqueenLite = {};
+    if (ligneCapteursMaqueenLiteEl) {
+        ligneCapteursMaqueenLiteEl.querySelectorAll('.maqueen-capteur-ligne').forEach(chip => {
+            chipsCapteursLigneMaqueenLite[chip.dataset.capteur] = chip;
+        });
+    }
+    const delsSpriteMaqueenLite = {
+        gauche: document.getElementById('maqueenlite-sprite-del-g'),
+        droit: document.getElementById('maqueenlite-sprite-del-d')
+    };
+
+    function positionCapteurMaqueenLite(decalageLateral) {
+        const rad = ML.cap * Math.PI / 180;
+        const avantX = Math.cos(rad), avantY = Math.sin(rad);
+        const lateralX = -avantY, lateralY = avantX;
+        return {
+            x: ML.x + avantX * ML_AVANT_CAPTEURS + lateralX * decalageLateral,
+            y: ML.y + avantY * ML_AVANT_CAPTEURS + lateralY * decalageLateral
+        };
+    }
+
+    function dessinerRobotMaqueenLite() {
+        if (!robotMaqueenLiteEl) return;
+        robotMaqueenLiteEl.style.left = (ML.x / MQ_LARGEUR * 100) + '%';
+        robotMaqueenLiteEl.style.top = (ML.y / MQ_HAUTEUR * 100) + '%';
+        robotMaqueenLiteEl.style.transform =
+            'translate(-50%, -50%) rotate(' + ML.cap + 'deg) scale(' + MQ_ECHELLE_ROBOT + ')';
+        mettreAJourIndicateursLigneMaqueenLite();
+    }
+
+    function deplacerRobotMaqueenLiteInstantanement() {
+        if (robotMaqueenLiteEl) robotMaqueenLiteEl.style.transition = 'none';
+        dessinerRobotMaqueenLite();
+    }
+
+    function mettreAJourIndicateursLigneMaqueenLite() {
+        for (const capteur in chipsCapteursLigneMaqueenLite) {
+            const chip = chipsCapteursLigneMaqueenLite[capteur];
+            if (!chip.classList.contains('visible')) continue;
+            const point = chip.querySelector('.maqueen-capteur-point');
+            if (point) point.classList.toggle('sur-ligne', window.simu_mlLigne(capteur) === 1);
+        }
+    }
+
+    function capteursLigneUtilisesMaqueenLite() {
+        const utilises = new Set();
+        for (const bloc of window.workspace.getAllBlocks(false)) {
+            if (bloc.type === 'maqueenlite_ligne' || bloc.type === 'lorsque_maqueenlite_ligne') {
+                const capteur = bloc.getFieldValue('COTE');
+                if (capteur) utilises.add(capteur);
+            }
+        }
+        return utilises;
+    }
+
+    /** Cinématique différentielle identique aux deux autres robots : vitesse en -255..255. */
+    function avancerMaqueenLite(ms) {
+        if (!ML.actif) return;
+        const dt = ms / 1000;
+        const vG = ML.vGauche / 255 * ML_VITESSE_MAX;
+        const vD = ML.vDroite / 255 * ML_VITESSE_MAX;
+        const v = (vG + vD) / 2;
+        const omega = (vG - vD) / ML_EMPATTEMENT;
+        const rad = ML.cap * Math.PI / 180;
+        ML.x += v * dt * Math.cos(rad);
+        ML.y += v * dt * Math.sin(rad);
+        ML.cap += omega * dt * 180 / Math.PI;   // jamais replié dans [0,360[, comme les deux autres robots
+        if (robotMaqueenLiteEl) {
+            robotMaqueenLiteEl.style.transition =
+                'left ' + ms + 'ms linear, top ' + ms + 'ms linear, transform ' + ms + 'ms linear';
+        }
+        dessinerRobotMaqueenLite();
+    }
+
+    function reinitialiserMaqueenLite() {
+        ML.x = MQ_DEPART.x; ML.y = MQ_DEPART.y; ML.cap = MQ_DEPART.cap;
+        ML.vGauche = 0; ML.vDroite = 0;
+        deplacerRobotMaqueenLiteInstantanement();
+    }
+
+    function rafraichirPanneauMaqueenLite() {
+        rafraichirPisteEtRobots();
+    }
+
+    window.simu_mlMoteur = function(cote, vitesse) {
+        window.simuQueue.push({ type: 'mlMoteur', cote: String(cote),
+                                vitesse: Math.max(-255, Math.min(255, Math.round(Number(vitesse)))) });
+    };
+    window.simu_mlDistance = function() {
+        return curseurDistanceMaqueenLite ? Number(curseurDistanceMaqueenLite.value) : 0;
+    };
+    window.simu_mlLigne = function(cote) {
+        const decalage = ML_DECALAGE_CAPTEUR[cote];
+        if (decalage === undefined) return 0;
+        const p = positionCapteurMaqueenLite(decalage);
+        const pix = pixelPiste(p.x, p.y);
+        // Convention Maqueen (pas Kitrobot) : pixel CLAIR = sur la ligne.
+        return (pix && pix[0] > 150) ? 1 : 0;
+    };
+    window.simu_mlDel = function(cote, etat) {
+        const el = delsSpriteMaqueenLite[cote === 'droit' ? 'droit' : 'gauche'];
+        if (!el) return;
+        el.style.background = etat ? '#fff8dc' : '#333';
+        el.style.boxShadow = etat ? '0 0 3px #fff8dc' : 'none';
+    };
+
+    window.maqueenLiteTest = {
+        etat: () => ({ x: ML.x, y: ML.y, cap: ML.cap, vGauche: ML.vGauche, vDroite: ML.vDroite, actif: ML.actif }),
+        definirPosition: (x, y, cap) => { ML.x = x; ML.y = y; ML.cap = cap; deplacerRobotMaqueenLiteInstantanement(); },
+        avancer: ms => avancerMaqueenLite(ms),
+        surLaLigne: cote => window.simu_mlLigne(cote) === 1,
+        forcerActif: actif => { ML.actif = actif; },
+        rafraichirPanneau: rafraichirPanneauMaqueenLite,
+        capteursLigneUtilises: () => [...capteursLigneUtilisesMaqueenLite()],
+        definirDistance: cm => { if (curseurDistanceMaqueenLite) curseurDistanceMaqueenLite.value = cm; },
+        distance: () => window.simu_mlDistance(),
+        etatIndicateursLigne: () => {
+            const etat = {};
+            for (const capteur in chipsCapteursLigneMaqueenLite) {
+                const chip = chipsCapteursLigneMaqueenLite[capteur];
+                etat[capteur] = {
+                    visible: chip.classList.contains('visible'),
+                    surLigne: chip.querySelector('.maqueen-capteur-point').classList.contains('sur-ligne')
+                };
+            }
+            return etat;
+        }
+    };
+
+    // ------------------------------------------
+    // PISTE PARTAGÉE — un seul robot affiché/actif à la fois
+    // ------------------------------------------
+    // Regroupe ce que les trois rafraichirPanneauX() faisaient chacun de
+    // leur côté : détecter le robot actif, (dés)activer son état physique,
+    // montrer son sprite et ses indicateurs, redessiner la piste dans les
+    // bonnes couleurs, afficher/masquer les fanions "Départ/Arrivée".
+
+    const drapeauxPiste = [...document.querySelectorAll('.piste-drapeau')];
+    const pisteTitreEl = document.getElementById('piste-titre');
+    const NOM_ROBOT_ACTIF = { maqueen: 'Maqueen Plus', kitrobot: 'Kitrobot v2', maqueenlite: 'Maqueen Lite' };
+
+    function rafraichirPisteEtRobots() {
+        const panneau = document.getElementById('piste-panneau');
+        if (!panneau) return;
+        const robot = robotActifDetecte();
+        MQ.actif = robot === 'maqueen';
+        KB.actif = robot === 'kitrobot';
+        ML.actif = robot === 'maqueenlite';
+        panneau.classList.toggle('replie', !robot);
+        if (pisteTitreEl) pisteTitreEl.textContent = robot ? NOM_ROBOT_ACTIF[robot] : 'Piste';
+
+        if (robotMaqueenEl) robotMaqueenEl.classList.toggle('replie', robot !== 'maqueen');
+        if (robotKitrobotEl) robotKitrobotEl.classList.toggle('replie', robot !== 'kitrobot');
+        if (robotMaqueenLiteEl) robotMaqueenLiteEl.classList.toggle('replie', robot !== 'maqueenlite');
+        const maqueenExtraEl = document.getElementById('maqueen-extra');
+        const kitrobotExtraEl = document.getElementById('kitrobot-extra');
+        const maqueenliteExtraEl = document.getElementById('maqueenlite-extra');
+        if (maqueenExtraEl) maqueenExtraEl.classList.toggle('replie', robot !== 'maqueen');
+        if (kitrobotExtraEl) kitrobotExtraEl.classList.toggle('replie', robot !== 'kitrobot');
+        if (maqueenliteExtraEl) maqueenliteExtraEl.classList.toggle('replie', robot !== 'maqueenlite');
+
+        drapeauxPiste.forEach(d => d.classList.toggle('visible', pisteMaqueenActuelle === 'depart_arrivee'));
+
+        dessinerPisteMaqueen();
+
+        const utilisesMaqueen = capteursLigneUtilisesMaqueen();
+        if (ligneCapteursMaqueenEl) ligneCapteursMaqueenEl.classList.toggle('visible', utilisesMaqueen.size > 0);
+        for (const capteur in chipsCapteursLigneMaqueen) {
+            chipsCapteursLigneMaqueen[capteur].classList.toggle('visible', utilisesMaqueen.has(capteur));
+        }
+        for (const capteur in chipsCapteursLigneSpriteMaqueen) {
+            chipsCapteursLigneSpriteMaqueen[capteur].classList.toggle('visible', utilisesMaqueen.has(capteur));
+        }
+        mettreAJourIndicateursLigneMaqueen();
+
+        const utilisesKitrobot = capteursLigneUtilisesKitrobot();
+        if (ligneCapteursKitrobotEl) ligneCapteursKitrobotEl.classList.toggle('visible', utilisesKitrobot.size > 0);
+        for (const capteur in chipsCapteursLigneKitrobot) {
+            chipsCapteursLigneKitrobot[capteur].classList.toggle('visible', utilisesKitrobot.has(capteur));
+        }
+        mettreAJourIndicateursLigneKitrobot();
+
+        const utilisesLite = capteursLigneUtilisesMaqueenLite();
+        if (ligneCapteursMaqueenLiteEl) ligneCapteursMaqueenLiteEl.classList.toggle('visible', utilisesLite.size > 0);
+        for (const capteur in chipsCapteursLigneMaqueenLite) {
+            chipsCapteursLigneMaqueenLite[capteur].classList.toggle('visible', utilisesLite.has(capteur));
+        }
+        mettreAJourIndicateursLigneMaqueenLite();
+
+        Blockly.svgResize(window.workspace);
+    }
 
     // Entrées : lues à l'instant où le programme les demande.
     window.simu_mesure = function(grandeur) {
@@ -6802,8 +7222,11 @@ try {
             MQ_ECHELLE_ROBOT = Number(curseurEchelleRobotMaqueen.value);
             valeurEchelleRobotMaqueen.textContent = '×' + curseurEchelleRobotMaqueen.value;
             // Purement visuel : pas de transition, le changement d'échelle
-            // doit être immédiat, pas glisser comme un déplacement.
+            // doit être immédiat, pas glisser comme un déplacement. Les
+            // trois robots partagent le même curseur (un seul est affiché).
             deplacerRobotMaqueenInstantanement();
+            deplacerRobotKitrobotInstantanement();
+            deplacerRobotMaqueenLiteInstantanement();
         });
     }
     const valeurDistanceKitrobot = document.getElementById('kitrobot-distance-val');
@@ -6813,7 +7236,8 @@ try {
         });
     }
     [['lidar-gauche', 'lidar-gauche-val'], ['lidar-avant', 'lidar-avant-val'],
-     ['lidar-droite', 'lidar-droite-val']].forEach(([idCurseur, idValeur]) => {
+     ['lidar-droite', 'lidar-droite-val'],
+     ['maqueenlite-distance', 'maqueenlite-distance-val']].forEach(([idCurseur, idValeur]) => {
         const c = document.getElementById(idCurseur);
         const v = document.getElementById(idValeur);
         if (c && v) c.addEventListener('input', () => { v.textContent = c.value; });
@@ -7030,15 +7454,25 @@ try {
         }
         else if (action.type === 'sleep') {
             // Avancer AVANT la vraie pause : au moment ou suiteApres() reprendra
-            // la main, le robot doit deja avoir parcouru ce temps-la.
+            // la main, le robot doit deja avoir parcouru ce temps-la. Les
+            // trois fonctions se protègent elles-mêmes via leur .actif —
+            // appeler les trois à chaque pause, même quand un seul robot
+            // est réellement posé, ne coûte rien.
             avancerMaqueen(action.value);
             avancerKitrobot(action.value);
+            avancerMaqueenLite(action.value);
             suiteApres(action.value);
         }
         else if (action.type === 'kitrobotMoteur') {
             if (action.cote === 'g') KB.vGauche = action.vitesse;
             else KB.vDroite = action.vitesse;
             dessinerRobotKitrobot();
+            window.simu_playQueue();
+        }
+        else if (action.type === 'mlMoteur') {
+            if (action.cote !== 'droit') ML.vGauche = action.vitesse;
+            if (action.cote !== 'gauche') ML.vDroite = action.vitesse;
+            dessinerRobotMaqueenLite();
             window.simu_playQueue();
         }
     };
@@ -7169,6 +7603,7 @@ try {
         reinitialiserGrove();
         reinitialiserMaqueen();
         reinitialiserKitrobot();
+        reinitialiserMaqueenLite();
         afficherEtat('', false);
     };
 
@@ -7241,15 +7676,13 @@ try {
     panneauGrovePret = true;
     rafraichirPanneauGrove();
 
-    dessinerPisteMaqueen();
     deplacerRobotMaqueenInstantanement();
-    panneauMaqueenPret = true;
-    rafraichirPanneauMaqueen();
-
-    dessinerPisteKitrobot();
     deplacerRobotKitrobotInstantanement();
+    deplacerRobotMaqueenLiteInstantanement();
+    panneauMaqueenPret = true;
     panneauKitrobotPret = true;
-    rafraichirPanneauKitrobot();
+    panneauMaqueenLitePret = true;
+    rafraichirPisteEtRobots();   // dessine la piste une fois pour les trois
 
     panneauLidarPret = true;
     rafraichirPanneauLidar();
@@ -7279,39 +7712,46 @@ try {
 
     // Glisser-deposer : place le robot n'importe ou sur la piste, a la souris
     // comme au doigt. Pointer Events unifie les deux sans code separe.
-    if (robotMaqueenEl && canevasPisteMaqueen) {
-        let deplacementMaqueenEnCours = false;
+    // Factorise pour les trois robots (piste partagee, voir robotActifDetecte) :
+    // seul celui reellement affiche recoit des pointerdown, mais le meme
+    // mecanisme doit fonctionner quel que soit le robot actif.
+    function positionPisteDepuisEvenement(e) {
+        const rect = canevasPisteMaqueen.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width * MQ_LARGEUR;
+        const y = (e.clientY - rect.top) / rect.height * MQ_HAUTEUR;
+        return {
+            x: Math.max(0, Math.min(MQ_LARGEUR, x)),
+            y: Math.max(0, Math.min(MQ_HAUTEUR, y))
+        };
+    }
 
-        function positionMaqueenDepuisEvenement(e) {
-            const rect = canevasPisteMaqueen.getBoundingClientRect();
-            const x = (e.clientX - rect.left) / rect.width * MQ_LARGEUR;
-            const y = (e.clientY - rect.top) / rect.height * MQ_HAUTEUR;
-            return {
-                x: Math.max(0, Math.min(MQ_LARGEUR, x)),
-                y: Math.max(0, Math.min(MQ_HAUTEUR, y))
-            };
-        }
-
-        robotMaqueenEl.addEventListener('pointerdown', e => {
-            deplacementMaqueenEnCours = true;
-            try { robotMaqueenEl.setPointerCapture(e.pointerId); } catch (erreur) { /* tant pis */ }
+    function activerGlisserDeposerRobot(el, etat, deplacerInstantanement) {
+        if (!el || !canevasPisteMaqueen) return;
+        let enCours = false;
+        el.addEventListener('pointerdown', e => {
+            enCours = true;
+            try { el.setPointerCapture(e.pointerId); } catch (erreur) { /* tant pis */ }
             e.preventDefault();
         });
-        robotMaqueenEl.addEventListener('pointermove', e => {
-            if (!deplacementMaqueenEnCours) return;
-            const p = positionMaqueenDepuisEvenement(e);
-            MQ.x = p.x; MQ.y = p.y;
-            deplacerRobotMaqueenInstantanement();
+        el.addEventListener('pointermove', e => {
+            if (!enCours) return;
+            const p = positionPisteDepuisEvenement(e);
+            etat.x = p.x; etat.y = p.y;
+            deplacerInstantanement();
         });
-        robotMaqueenEl.addEventListener('pointerup', e => {
-            if (!deplacementMaqueenEnCours) return;
-            deplacementMaqueenEnCours = false;
+        el.addEventListener('pointerup', () => {
+            if (!enCours) return;
+            enCours = false;
             // La position deposee devient le nouveau depart : "Reinitialiser"
             // doit repartir de la, pas annuler le placement choisi.
-            MQ_DEPART = { x: MQ.x, y: MQ.y, cap: MQ_DEPART.cap };
+            MQ_DEPART = { x: etat.x, y: etat.y, cap: MQ_DEPART.cap };
         });
-        robotMaqueenEl.addEventListener('pointercancel', () => { deplacementMaqueenEnCours = false; });
+        el.addEventListener('pointercancel', () => { enCours = false; });
     }
+
+    activerGlisserDeposerRobot(robotMaqueenEl, MQ, deplacerRobotMaqueenInstantanement);
+    activerGlisserDeposerRobot(robotKitrobotEl, KB, deplacerRobotKitrobotInstantanement);
+    activerGlisserDeposerRobot(robotMaqueenLiteEl, ML, deplacerRobotMaqueenLiteInstantanement);
 
     const btnAB = document.getElementById('btn-ab');
     if (btnAB) {
