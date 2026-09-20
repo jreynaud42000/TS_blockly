@@ -6945,6 +6945,12 @@ try {
         gauche: document.getElementById('maqueenlite-sprite-del-g'),
         droit: document.getElementById('maqueenlite-sprite-del-d')
     };
+    const chipsCapteursLigneSpriteMaqueenLite = {};
+    if (robotMaqueenLiteEl) {
+        robotMaqueenLiteEl.querySelectorAll('.mlite-capteur-sprite').forEach(chip => {
+            chipsCapteursLigneSpriteMaqueenLite[chip.dataset.capteur] = chip;
+        });
+    }
 
     function positionCapteurMaqueenLite(decalageLateral) {
         const rad = ML.cap * Math.PI / 180;
@@ -6976,6 +6982,11 @@ try {
             if (!chip.classList.contains('visible')) continue;
             const point = chip.querySelector('.maqueen-capteur-point');
             if (point) point.classList.toggle('sur-ligne', window.simu_mlLigne(capteur) === 1);
+        }
+        for (const capteur in chipsCapteursLigneSpriteMaqueenLite) {
+            const chip = chipsCapteursLigneSpriteMaqueenLite[capteur];
+            if (!chip.classList.contains('visible')) continue;
+            chip.classList.toggle('sur-ligne', window.simu_mlLigne(capteur) === 1);
         }
     }
 
@@ -7061,6 +7072,17 @@ try {
                 };
             }
             return etat;
+        },
+        etatIndicateursLigneSprite: () => {
+            const etat = {};
+            for (const capteur in chipsCapteursLigneSpriteMaqueenLite) {
+                const chip = chipsCapteursLigneSpriteMaqueenLite[capteur];
+                etat[capteur] = {
+                    visible: chip.classList.contains('visible'),
+                    surLigne: chip.classList.contains('sur-ligne')
+                };
+            }
+            return etat;
         }
     };
 
@@ -7121,6 +7143,9 @@ try {
         if (ligneCapteursMaqueenLiteEl) ligneCapteursMaqueenLiteEl.classList.toggle('visible', utilisesLite.size > 0);
         for (const capteur in chipsCapteursLigneMaqueenLite) {
             chipsCapteursLigneMaqueenLite[capteur].classList.toggle('visible', utilisesLite.has(capteur));
+        }
+        for (const capteur in chipsCapteursLigneSpriteMaqueenLite) {
+            chipsCapteursLigneSpriteMaqueenLite[capteur].classList.toggle('visible', utilisesLite.has(capteur));
         }
         mettreAJourIndicateursLigneMaqueenLite();
 

@@ -422,6 +422,19 @@
     #maqueenlite-robot .mlite-avant { position: absolute; top: 50%; right: -2px; width: 5px; height: 5px;
                                        background: #7c4dff; border-radius: 50%; transform: translateY(-50%);
                                        box-shadow: 0 0 3px #7c4dff; z-index: 2; }
+    /* Indicateurs de capteurs de ligne directement sur le robot (comme
+       Maqueen Plus) : caches par defaut, affiches seulement pour les
+       capteurs reellement lus par le programme (classe "visible"), verts
+       quand ils detectent la ligne (classe "sur-ligne") — meme mecanisme
+       que la ligne "Ligne : G/D" sous la piste, juste un second endroit
+       ou l'afficher (mettreAJourIndicateursLigneMaqueenLite). */
+    #maqueenlite-robot .mlite-capteur-sprite { position: absolute; right: -1.5px; width: 4px; height: 3px;
+                                                border-radius: 1px; background: #e8e8e8; border: 0.5px solid #888;
+                                                display: none; z-index: 2; }
+    #maqueenlite-robot .mlite-capteur-sprite.visible { display: block; }
+    #maqueenlite-robot .mlite-capteur-sprite.sur-ligne { background: #4caf50; border-color: #2e7d32; box-shadow: 0 0 3px #4caf50; }
+    #maqueenlite-robot .mlite-capteur-sprite-gauche { top: 8px; }
+    #maqueenlite-robot .mlite-capteur-sprite-droit { top: 17px; }
 
     #kitrobot-ligne-capteurs { display: none; }
     #kitrobot-ligne-capteurs.visible { display: flex; align-items: center; gap: 6px;
@@ -918,6 +931,8 @@
             <div class="mlite-del mlite-del-g" id="maqueenlite-sprite-del-g"></div>
             <div class="mlite-del mlite-del-d" id="maqueenlite-sprite-del-d"></div>
             <div class="mlite-avant"></div>
+            <div class="mlite-capteur-sprite mlite-capteur-sprite-gauche" data-capteur="gauche"></div>
+            <div class="mlite-capteur-sprite mlite-capteur-sprite-droit" data-capteur="droit"></div>
           </div>
         </div>
 

@@ -746,7 +746,10 @@ chromes a la pointe, compartiment a piles noir a l'arriere, grandes roues
 blanches/argentees. Le bloc moteur deplace donc vraiment le robot, et le
 bloc/l'evenement capteur de ligne lisent vraiment la piste sous lui - les
 deux anciennes cases a cocher qui simulaient ces capteurs ont disparu, plus
-necessaires. Seul le bloc servo reste sans effet visuel (aucun panneau
+necessaires. L'etat des deux capteurs (gauche/droit) s'affiche a la fois
+sous la piste ("Ligne : G/D") et directement sur le robot (deux points sur
+le bord avant, comme le Maqueen Plus), vert quand le capteur est sur la
+ligne. Seul le bloc servo reste sans effet visuel (aucun panneau
 dedie pour ca, comme le Maqueen Plus).
 
 Aucun materiel Maqueen Lite n'a servi a verifier ceci : le protocole vient

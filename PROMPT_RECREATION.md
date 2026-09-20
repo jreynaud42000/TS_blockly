@@ -2065,6 +2065,31 @@ fonction de redessin instantané — même schéma que PIÈGE nº 38, mais pour 
 pendant `pointermove`, conservée après `pointerup`), et non-régression
 confirmée sur Maqueen Plus.
 
+**PIÈGE nº 40 — même schéma que nº 38/39, une troisième fois : une
+fonctionnalité ajoutée pour Maqueen Plus doit être explicitement reportée
+aux deux autres, elle ne l'est jamais automatiquement.** Les indicateurs de
+capteurs de ligne directement sur le robot (points verts/gris sur le bord
+avant) n'existaient que pour Maqueen Plus (5 capteurs) ; Kitrobot v2 et
+Maqueen Lite (2 capteurs chacun) n'avaient que la ligne « Ligne : G/D » sous
+la piste. Signalé par l'utilisateur (« l'état des capteurs sur la
+simulation ne fonctionne pas pour le maqueen lite ») de façon ambiguë :
+avant de coder quoi que ce soit, vérifier par des tests automatisés que
+rien n'était réellement cassé (génération de code, déclenchement de
+l'événement `lorsque le capteur de ligne...`, DEL qui s'allume, indicateur
+sous la piste qui suit la position du robot pendant une vraie exécution
+via le bouton « Lancer ») — tout fonctionnait. Une question à choix
+multiples (« pas de point sur le robot » / « l'indicateur sous la piste ne
+bouge pas » / « l'événement ne se déclenche jamais ») a confirmé la vraie
+cause avant d'écrire du code : ne jamais supposer qu'un rapport utilisateur
+vague décrit un bug plutôt qu'une fonctionnalité absente, surtout après
+avoir soi-même vérifié que le mécanisme sous-jacent marche. Corrigé en
+ajoutant deux `<div class="mlite-capteur-sprite">` (gauche en haut, droit
+en bas, même schéma de coordonnées `ML_DECALAGE_CAPTEUR` que le calcul de
+lecture) et en étendant `mettreAJourIndicateursLigneMaqueenLite()` /
+`rafraichirPisteEtRobots()` pour les piloter, au lieu de dupliquer un
+mécanisme séparé — exactement le même registre de visibilité
+(`capteursLigneUtilisesMaqueenLite`) que la ligne sous la piste.
+
 ## 20. Lanceur et empaquetage
 
 `lancer_projet.bat` :
