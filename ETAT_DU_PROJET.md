@@ -177,6 +177,38 @@ nouveau retour de l'utilisateur :
     partiellement recouvert par lui. Vérifié par capture d'écran ciblée sur
     chaque groupe (0-1 et 3V-GND en particulier) et par comptage DOM des 24
     traits.
+14. **« je veux que les 20 pistes dorées aient toutes la même largeur »** :
+    avec des positions de dômes fixes et un espace identique (20px) pour
+    chaque groupe interne, un groupe à 4 pistes et un groupe à 5 pistes ne
+    peuvent **pas** avoir la même largeur de piste avec la même largeur de
+    trait — plus de pistes dans le même espace donne forcément des pistes
+    plus étroites. Recalculé en sens inverse : largeur de piste fixée à
+    2,6 (constante voulue), largeur de trait fixée à 2, puis la largeur
+    d'espace nécessaire déduite pour chaque groupe (4 pistes + 5 traits =
+    20,4 ; 5 pistes + 6 traits = 25) — ce qui déplace les dômes eux-mêmes
+    (ils ne sont plus espacés uniformément), avec un effet en cascade sur
+    toutes les coordonnées dépendantes : les 5 chemins de dôme, les 20
+    positions de traits séparateurs, les 5 trous clairs, les 5 étiquettes,
+    les points de l'ondulation du bord bas (recalés sur les nouveaux
+    centres de dôme, sinon l'encoche ne serait plus centrée dessous), et
+    les 5 zones cliquables (bornées aux nouveaux milieux d'espace plutôt
+    qu'à des tranches fixes de 56px). Vérifié par calcul direct sur le DOM
+    plutôt qu'à l'œil : distance entre chaque paire de traits consécutifs
+    (hors largeur des dômes eux-mêmes) — les 20 pistes mesurent exactement
+    2,6 partout, aucune exception.
+15. **« les connecteurs 0/1/2/3V/GND [doivent avoir] une largeur égale à 5
+    fois la largeur d'une piste dorée »** : contrainte de ratio en plus des
+    deux déjà acquises (largeur totale = 280, les 20 pistes égales entre
+    elles) — un système à résoudre, pas une valeur à changer isolément.
+    Largeur de trait gardée fixe (2), largeur de piste P et largeur de dôme
+    5P posées comme inconnues, résolu via `45P + 24×2 = 280` (équation
+    obtenue en sommant tous les espaces et dômes en fonction de P) →
+    P ≈ 5,1556, dôme ≈ 25,78 (`rx` 12,89). Toutes les coordonnées
+    dépendantes recalculées en cascade une nouvelle fois (dômes, traits,
+    trous, étiquettes, ondulation du bord bas, zones cliquables) selon la
+    même méthode que la passe 14. Vérifié par script : les 20 pistes
+    mesurent 5,15–5,16 (uniforme), et largeur dôme ÷ largeur piste = 5,0
+    exactement.
 
 Leçon retenue pour la suite : un même mot (« encoches », « bord ») a désigné
 successivement trois défauts différents selon la capture en main à ce

@@ -696,21 +696,30 @@
                    bande a y=12 (pas 18) : mesure sur la capture de reference
                    (echantillonnage de colonnes), la zone noire au-dessus des
                    dents est nettement plus basse que ce que donnait 18. -->
-              <path d="M0,12 L280,12 L280,58 L268,58 Q252,51 236,58 L212,58 Q196,51 180,58
-                       L156,58 Q140,51 124,58 L100,58 Q84,51 68,58 L44,58 Q28,51 12,58
+              <path d="M0,12 L280,12 L280,58 L275.96,58 Q259.96,51 243.96,58 L219.56,58 Q203.56,51 187.56,58
+                       L156,58 Q140,51 124,58 L92.44,58 Q76.44,51 60.44,58 L36.04,58 Q20.04,51 4.04,58
                        L0,58 Z" fill="#d9b41c"/>
-              <!-- Domes : un par plot, en or plein, arc elliptique (rx=18,
-                   ry=12) pour rester larges mais plus bas, qui chevauchent
-                   la bande de 7px pour ne laisser aucune couture visible
-                   avec elle. Peints AVANT les dents (voir plus bas) pour que
-                   les traits separateurs, y compris ceux colles au bord d'un
-                   dome, restent entiers sur toute leur hauteur au lieu
-                   d'etre partiellement recouverts par le dome. -->
-              <path d="M10,19 L10,12 A18,12 0 0,1 46,12 L46,19 Z" fill="#d9b41c"/>
-              <path d="M66,19 L66,12 A18,12 0 0,1 102,12 L102,19 Z" fill="#d9b41c"/>
-              <path d="M122,19 L122,12 A18,12 0 0,1 158,12 L158,19 Z" fill="#d9b41c"/>
-              <path d="M178,19 L178,12 A18,12 0 0,1 214,12 L214,19 Z" fill="#d9b41c"/>
-              <path d="M234,19 L234,12 A18,12 0 0,1 270,12 L270,19 Z" fill="#d9b41c"/>
+              <!-- Domes : un par plot, en or plein, arc elliptique. Largeur
+                   fixee a 5x la largeur d'une piste doree (demande explicite
+                   de l'utilisateur : largeur piste = 5.1556, largeur dome =
+                   25.7778 -> rx=12.89), ry=12 inchange. Peints AVANT les
+                   dents (voir plus bas) pour que les traits separateurs, y
+                   compris ceux colles au bord d'un dome, restent entiers sur
+                   toute leur hauteur au lieu d'etre partiellement recouverts
+                   par le dome.
+                   Positions recalculees en resolvant ensemble trois
+                   contraintes : largeur totale = 280 (largeur de la carte),
+                   les 20 pistes dorees egales entre elles (deja acquis),
+                   ET desormais largeur dome = 5x largeur piste. Un dome plus
+                   etroit qu'avant (25.78 au lieu de 36) laisse plus de place
+                   aux espaces, donc largeur de piste recalculee a 5.1556 (au
+                   lieu de 2.6) pour que tout reboucle exactement sur 280 —
+                   voir le calcul complet dans ETAT_DU_PROJET.md. -->
+              <path d="M7.16,19 L7.16,12 A12.89,12 0 0,1 32.93,12 L32.93,19 Z" fill="#d9b41c"/>
+              <path d="M63.56,19 L63.56,12 A12.89,12 0 0,1 89.33,12 L89.33,19 Z" fill="#d9b41c"/>
+              <path d="M127.11,19 L127.11,12 A12.89,12 0 0,1 152.89,12 L152.89,19 Z" fill="#d9b41c"/>
+              <path d="M190.67,19 L190.67,12 A12.89,12 0 0,1 216.44,12 L216.44,19 Z" fill="#d9b41c"/>
+              <path d="M247.07,19 L247.07,12 A12.89,12 0 0,1 272.84,12 L272.84,19 Z" fill="#d9b41c"/>
               <!-- Dents = traits separateurs entre les PISTES dorees (pas les
                    pistes elles-memes) : nombre exact precise par l'utilisateur
                    — 1 piste a gauche de 0, 4 entre 0 et 1, 5 entre 1 et 2, 5
@@ -718,52 +727,53 @@
                    pistes visibles et bien separees dans un espace, il faut
                    N+1 traits (un a CHAQUE bord, colle au dome voisin, sinon
                    la piste du bord se fond dans le dome, meme couleur, sans
-                   frontiere visible — c'etait le bug signale : les groupes
-                   de dents internes seules donnaient N-1 pistes clairement
-                   detachees, pas N). Un seul trait suffit cote piste
+                   frontiere visible). Un seul trait suffit cote piste
                    d'extremite (bord gauche/droit de la carte) puisqu'il n'y
                    a rien de l'autre cote a separer. -->
               <g fill="#2e2500">
-                <rect x="9" y="12" width="2" height="46"/>
-                <rect x="45" y="12" width="2" height="46"/>
-                <rect x="50" y="12" width="2" height="46"/>
-                <rect x="55" y="12" width="2" height="46"/>
-                <rect x="60" y="12" width="2" height="46"/>
-                <rect x="65" y="12" width="2" height="46"/>
-                <rect x="101" y="12" width="2" height="46"/>
-                <rect x="105" y="12" width="2" height="46"/>
-                <rect x="109" y="12" width="2" height="46"/>
-                <rect x="113" y="12" width="2" height="46"/>
-                <rect x="117" y="12" width="2" height="46"/>
-                <rect x="121" y="12" width="2" height="46"/>
-                <rect x="157" y="12" width="2" height="46"/>
-                <rect x="161" y="12" width="2" height="46"/>
-                <rect x="165" y="12" width="2" height="46"/>
-                <rect x="169" y="12" width="2" height="46"/>
-                <rect x="173" y="12" width="2" height="46"/>
-                <rect x="177" y="12" width="2" height="46"/>
-                <rect x="213" y="12" width="2" height="46"/>
-                <rect x="218" y="12" width="2" height="46"/>
-                <rect x="223" y="12" width="2" height="46"/>
-                <rect x="228" y="12" width="2" height="46"/>
-                <rect x="233" y="12" width="2" height="46"/>
-                <rect x="269" y="12" width="2" height="46"/>
+                <rect x="5.16" y="12" width="2" height="46"/>
+                <rect x="32.93" y="12" width="2" height="46"/>
+                <rect x="40.09" y="12" width="2" height="46"/>
+                <rect x="47.24" y="12" width="2" height="46"/>
+                <rect x="54.4" y="12" width="2" height="46"/>
+                <rect x="61.56" y="12" width="2" height="46"/>
+                <rect x="89.33" y="12" width="2" height="46"/>
+                <rect x="96.49" y="12" width="2" height="46"/>
+                <rect x="103.64" y="12" width="2" height="46"/>
+                <rect x="110.8" y="12" width="2" height="46"/>
+                <rect x="117.96" y="12" width="2" height="46"/>
+                <rect x="125.11" y="12" width="2" height="46"/>
+                <rect x="152.89" y="12" width="2" height="46"/>
+                <rect x="160.04" y="12" width="2" height="46"/>
+                <rect x="167.2" y="12" width="2" height="46"/>
+                <rect x="174.36" y="12" width="2" height="46"/>
+                <rect x="181.51" y="12" width="2" height="46"/>
+                <rect x="188.67" y="12" width="2" height="46"/>
+                <rect x="216.44" y="12" width="2" height="46"/>
+                <rect x="223.6" y="12" width="2" height="46"/>
+                <rect x="230.76" y="12" width="2" height="46"/>
+                <rect x="237.91" y="12" width="2" height="46"/>
+                <rect x="245.07" y="12" width="2" height="46"/>
+                <rect x="272.84" y="12" width="2" height="46"/>
               </g>
-              <circle class="mb-edge-trou" cx="28" cy="7" r="5"/>
-              <circle class="mb-edge-trou" cx="84" cy="7" r="5"/>
+              <circle class="mb-edge-trou" cx="20.04" cy="7" r="5"/>
+              <circle class="mb-edge-trou" cx="76.44" cy="7" r="5"/>
               <circle class="mb-edge-trou" cx="140" cy="7" r="5"/>
-              <circle class="mb-edge-trou" cx="196" cy="7" r="5"/>
-              <circle class="mb-edge-trou" cx="252" cy="7" r="5"/>
-              <text class="mb-edge-txt" x="28" y="29">0</text>
-              <text class="mb-edge-txt" x="84" y="29">1</text>
+              <circle class="mb-edge-trou" cx="203.56" cy="7" r="5"/>
+              <circle class="mb-edge-trou" cx="259.96" cy="7" r="5"/>
+              <text class="mb-edge-txt" x="20.04" y="29">0</text>
+              <text class="mb-edge-txt" x="76.44" y="29">1</text>
               <text class="mb-edge-txt" x="140" y="29">2</text>
-              <text class="mb-edge-txt mb-edge-txt-petit" x="196" y="28">3V</text>
-              <text class="mb-edge-txt mb-edge-txt-petit" x="252" y="28">GND</text>
-              <rect class="mb-edge-zone" id="pin0" x="0" y="0" width="56" height="58" fill="transparent"/>
-              <rect class="mb-edge-zone" id="pin1" x="56" y="0" width="56" height="58" fill="transparent"/>
-              <rect class="mb-edge-zone" id="pin2" x="112" y="0" width="56" height="58" fill="transparent"/>
-              <rect class="mb-edge-zone" x="168" y="0" width="56" height="58" fill="transparent"/>
-              <rect class="mb-edge-zone" x="224" y="0" width="56" height="58" fill="transparent"/>
+              <text class="mb-edge-txt mb-edge-txt-petit" x="203.56" y="28">3V</text>
+              <text class="mb-edge-txt mb-edge-txt-petit" x="259.96" y="28">GND</text>
+              <!-- Zones cliquables : bornees aux milieux des espaces entre
+                   domes (recalcules avec les nouvelles positions), pas des
+                   tranches fixes comme avant. -->
+              <rect class="mb-edge-zone" id="pin0" x="0" y="0" width="48.25" height="58" fill="transparent"/>
+              <rect class="mb-edge-zone" id="pin1" x="48.25" y="0" width="59.97" height="58" fill="transparent"/>
+              <rect class="mb-edge-zone" id="pin2" x="108.22" y="0" width="63.56" height="58" fill="transparent"/>
+              <rect class="mb-edge-zone" x="171.78" y="0" width="59.98" height="58" fill="transparent"/>
+              <rect class="mb-edge-zone" x="231.76" y="0" width="48.24" height="58" fill="transparent"/>
             </svg>
           </div>
       </div>
