@@ -683,10 +683,6 @@
           <div class="mb-edge">
             <svg viewBox="0 0 280 58" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <pattern id="mb-edge-dents" width="6" height="58" patternUnits="userSpaceOnUse">
-                  <rect width="6" height="58" fill="#d9b41c"/>
-                  <rect x="2" width="2" height="58" fill="#2e2500"/>
-                </pattern>
                 <radialGradient id="mb-edge-trou" cx="35%" cy="30%" r="70%">
                   <stop offset="0%" stop-color="#ffffff"/>
                   <stop offset="60%" stop-color="#e2e2e2"/>
@@ -702,16 +698,57 @@
                    dents est nettement plus basse que ce que donnait 18. -->
               <path d="M0,12 L280,12 L280,58 L268,58 Q252,51 236,58 L212,58 Q196,51 180,58
                        L156,58 Q140,51 124,58 L100,58 Q84,51 68,58 L44,58 Q28,51 12,58
-                       L0,58 Z" fill="url(#mb-edge-dents)"/>
-              <!-- Domes : un par plot, en or plein (pas le motif de dents),
-                   arc elliptique (rx=18, ry=12) pour rester larges mais plus
-                   bas, qui chevauchent la bande de 7px pour ne laisser aucune
-                   couture visible avec elle. -->
+                       L0,58 Z" fill="#d9b41c"/>
+              <!-- Domes : un par plot, en or plein, arc elliptique (rx=18,
+                   ry=12) pour rester larges mais plus bas, qui chevauchent
+                   la bande de 7px pour ne laisser aucune couture visible
+                   avec elle. Peints AVANT les dents (voir plus bas) pour que
+                   les traits separateurs, y compris ceux colles au bord d'un
+                   dome, restent entiers sur toute leur hauteur au lieu
+                   d'etre partiellement recouverts par le dome. -->
               <path d="M10,19 L10,12 A18,12 0 0,1 46,12 L46,19 Z" fill="#d9b41c"/>
               <path d="M66,19 L66,12 A18,12 0 0,1 102,12 L102,19 Z" fill="#d9b41c"/>
               <path d="M122,19 L122,12 A18,12 0 0,1 158,12 L158,19 Z" fill="#d9b41c"/>
               <path d="M178,19 L178,12 A18,12 0 0,1 214,12 L214,19 Z" fill="#d9b41c"/>
               <path d="M234,19 L234,12 A18,12 0 0,1 270,12 L270,19 Z" fill="#d9b41c"/>
+              <!-- Dents = traits separateurs entre les PISTES dorees (pas les
+                   pistes elles-memes) : nombre exact precise par l'utilisateur
+                   — 1 piste a gauche de 0, 4 entre 0 et 1, 5 entre 1 et 2, 5
+                   entre 2 et 3V, 4 entre 3V et GND, 1 a droite de GND. Pour N
+                   pistes visibles et bien separees dans un espace, il faut
+                   N+1 traits (un a CHAQUE bord, colle au dome voisin, sinon
+                   la piste du bord se fond dans le dome, meme couleur, sans
+                   frontiere visible — c'etait le bug signale : les groupes
+                   de dents internes seules donnaient N-1 pistes clairement
+                   detachees, pas N). Un seul trait suffit cote piste
+                   d'extremite (bord gauche/droit de la carte) puisqu'il n'y
+                   a rien de l'autre cote a separer. -->
+              <g fill="#2e2500">
+                <rect x="9" y="12" width="2" height="46"/>
+                <rect x="45" y="12" width="2" height="46"/>
+                <rect x="50" y="12" width="2" height="46"/>
+                <rect x="55" y="12" width="2" height="46"/>
+                <rect x="60" y="12" width="2" height="46"/>
+                <rect x="65" y="12" width="2" height="46"/>
+                <rect x="101" y="12" width="2" height="46"/>
+                <rect x="105" y="12" width="2" height="46"/>
+                <rect x="109" y="12" width="2" height="46"/>
+                <rect x="113" y="12" width="2" height="46"/>
+                <rect x="117" y="12" width="2" height="46"/>
+                <rect x="121" y="12" width="2" height="46"/>
+                <rect x="157" y="12" width="2" height="46"/>
+                <rect x="161" y="12" width="2" height="46"/>
+                <rect x="165" y="12" width="2" height="46"/>
+                <rect x="169" y="12" width="2" height="46"/>
+                <rect x="173" y="12" width="2" height="46"/>
+                <rect x="177" y="12" width="2" height="46"/>
+                <rect x="213" y="12" width="2" height="46"/>
+                <rect x="218" y="12" width="2" height="46"/>
+                <rect x="223" y="12" width="2" height="46"/>
+                <rect x="228" y="12" width="2" height="46"/>
+                <rect x="233" y="12" width="2" height="46"/>
+                <rect x="269" y="12" width="2" height="46"/>
+              </g>
               <circle class="mb-edge-trou" cx="28" cy="7" r="5"/>
               <circle class="mb-edge-trou" cx="84" cy="7" r="5"/>
               <circle class="mb-edge-trou" cx="140" cy="7" r="5"/>

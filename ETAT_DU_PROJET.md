@@ -151,6 +151,32 @@ nouveau retour de l'utilisateur :
     lieu d'un cercle `18,18`) pour rester aussi larges mais moins hauts,
     trou et étiquettes repositionnés en conséquence. Vérifié par capture
     d'écran à fort zoom et sur la réglette complète.
+12. **Nombre exact de petites pistes précisé par l'utilisateur** : « une
+    piste à gauche du connecteur 0 ; entre 0 et 1, 4 pistes ; entre 1 et 2,
+    5 ; entre 2 et 3V, 5 ; entre 3V et GND, 4 ; une piste à droite de GND ».
+    Le motif `<pattern>` répété (une dent tous les 6px, sans se soucier du
+    compte final dans chaque espace) ne pouvait pas garantir ce genre de
+    nombre exact — remplacé par des `<rect>` individuels, un par dent,
+    positionnés par calcul (chaque groupe de N dents réparti à intervalles
+    égaux dans son espace disponible). Vérifié en comptant par le DOM
+    (`querySelectorAll` sur les dents, tri des `x`) plutôt qu'à l'œil :
+    1/4/5/5/4/1, conforme à la demande.
+13. **« il n'y a pas 4 pistes dorées entre 0 et 1 ni entre 3v et GND »** :
+    confusion de vocabulaire trouvée après coup — « piste » désigne le
+    segment **doré** (la trace du connecteur), pas le trait **sombre**
+    séparateur compté à la passe 12. Pour N pistes visibles et bien
+    détachées dans un espace, il faut N+1 traits séparateurs (un contre
+    chaque dôme voisin, pas seulement entre les pistes internes) : avec
+    seulement N-1 traits internes (passe 12), la piste tout contre chaque
+    dôme se fondait dans sa couleur, sans frontière visible — d'où N-1
+    pistes clairement détachées à l'écran au lieu de N (invisible pour les
+    groupes à 5, plus flagrant pour les groupes à 4). Recalculé en
+    conséquence (24 traits au lieu de 20) et corrigé aussi l'ordre de
+    peinture : les dômes sont maintenant peints AVANT les traits (pas
+    après), pour qu'un trait collé pile sur le bord d'un dôme ne soit plus
+    partiellement recouvert par lui. Vérifié par capture d'écran ciblée sur
+    chaque groupe (0-1 et 3V-GND en particulier) et par comptage DOM des 24
+    traits.
 
 Leçon retenue pour la suite : un même mot (« encoches », « bord ») a désigné
 successivement trois défauts différents selon la capture en main à ce
