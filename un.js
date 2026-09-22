@@ -7652,12 +7652,23 @@ try {
     function lierCapteurTactile(idHTML, nomVariableGlobale) {
         const element = document.getElementById(idHTML);
         if(element) {
+            // La broche est un <rect> SVG transparent (voir .mb-edge) : ":active"
+            // seul n'est pas assez fiable pour donner un retour visuel au clic,
+            // d'ou une classe posee/retiree explicitement, comme le reste du
+            // retour visuel de la carte (boutons, DEL).
             element.addEventListener('mousedown', () => {
                 window[nomVariableGlobale] = true;
+                element.classList.add('mb-edge-zone-active');
                 btnLancer.click();
             });
-            element.addEventListener('mouseup', () => window[nomVariableGlobale] = false);
-            element.addEventListener('mouseleave', () => window[nomVariableGlobale] = false);
+            element.addEventListener('mouseup', () => {
+                window[nomVariableGlobale] = false;
+                element.classList.remove('mb-edge-zone-active');
+            });
+            element.addEventListener('mouseleave', () => {
+                window[nomVariableGlobale] = false;
+                element.classList.remove('mb-edge-zone-active');
+            });
         }
     }
 

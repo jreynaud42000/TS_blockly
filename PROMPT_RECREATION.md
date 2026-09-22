@@ -590,6 +590,68 @@ actualBoundingBoxRight` pour l'encre réelle, comparé à la largeur de la
 cellule. Ne pas mesurer avec un `Range` sur le contenu — cela donne la boîte de
 ligne, identique pour tous les caractères, donc inutile.
 
+**PIÈGE nº 41 — un dégradé de fond partagé entre deux formes voisines peut
+cacher une collision géométrique, puis la révéler brutalement dès qu'on le
+modifie.** Le connecteur de bord du micro:bit (`#microbit-board`, réglette
+`.mb-edge`) simulait ses petites dents dorées avec un seul
+`repeating-linear-gradient` en fond, et les gros plots ronds (`.mb-pin`,
+coins arrondis à 15px) posés PAR-DESSUS avec `justify-content: space-around`
+pour laisser voir le dégradé dans les interstices. Avec un motif dense et
+fin (2px/2px), ça passait inaperçu. Signalé une première fois par
+l'utilisateur (deux captures d'écran comparant notre rendu et le diagramme
+officiel) comme trop dense — rendu plus épars par pixel-diffing des deux
+images (voir plus haut) — puis, deuxième signalement (« c'est encore pire »),
+il est apparu que le motif épars révélait un vrai défaut resté invisible
+jusque-là : dans l'espace étroit laissé entre deux plots voisins, leurs
+coins à 15px de rayon se rapprochaient presque jusqu'à se toucher, dessinant
+une pointe triangulaire parasite au lieu d'une dent verticale nette — un
+défaut de géométrie, pas de couleur, que la densité de l'ancien motif
+masquait simplement en noyant le tracé dans une texture uniforme. Confirmé
+en isolant un seul espace inter-plot à fort zoom (`element.cloneNode` dans
+un conteneur `position:fixed` séparé — nécessaire ici car l'appli réapplique
+elle-même une échelle responsive sur `#microbit-board`, qui écrasait un
+`style.transform` posé directement dessus). Corrigé en séparant les deux
+rôles en deux éléments : les dents deviennent un rectangle plein à part
+(`.mb-dents`, `flex: 1 1 auto`, son propre dégradé), les plots gardent des
+coins à peine arrondis (4px) — aucune circonstance où les deux formes
+peuvent se chevaucher. Leçon générale : quand deux formes voisines
+partagent un même fond dégradé pour économiser du balisage, une modification
+de l'une (ici, l'espacement du motif) peut rendre visible un défaut de
+l'autre (ici, le rayon des coins) qui n'a rien à voir avec ce qu'on vient de
+changer — vérifier la géométrie sous-jacente, pas seulement retoucher les
+couleurs/espacements en boucle.
+
+**PIÈGE nº 42 — un même mot de l'utilisateur peut désigner un défaut
+différent à chaque fois ; et une forme organique (bord ondulé) résiste au
+CSS, pas au SVG.** Le connecteur de bord du micro:bit a traversé huit passes
+de corrections successives, chacune déclenchée par un nouveau message
+utilisateur contenant le mot « encoches » ou « bord » — mais visant à
+chaque fois un défaut réellement différent : d'abord un rayon de coin trop
+grand qui grignotait la réglette (§ précédent), puis un motif de dents trop
+dense, puis une collision géométrique entre deux formes voisines, puis un
+style de référence entièrement différent (photo produit vs simulateur
+MakeCode officiel), et enfin le vrai bord « bosselé » propre au V2
+(explicitement documenté sur microbit.org : bord ondulé sur V2, plat sur
+V1) — une caractéristique réelle de la carte que la toute première capture
+de référence utilisée ne montrait simplement pas, d'où une fausse piste
+tenue pour acquise pendant plusieurs passes. Leçon : ne jamais supposer que
+deux signalements qui se ressemblent en surface parlent du même défaut —
+demander ou obtenir une capture/un repère visuel précis dès que la première
+correction ne suffit pas, plutôt que de deviner une deuxième fois. Deuxième
+leçon, technique celle-ci : le bord ondulé (une suite d'arcs peu profonds)
+a résisté à plusieurs tentatives en CSS pur (`border-radius`, dégradés
+partagés entre éléments voisins) qui ratent systématiquement les formes
+organiques — un simple `<path>` SVG avec des commandes `Q` (courbe
+quadratique) le trace directement, sans recoller des rectangles/cercles
+entre eux. Le motif de petites dents, peint dans le même `<path>` via un
+`<pattern>` en remplissage, ne déborde plus jamais du contour ondulé
+(contrairement à un dégradé CSS posé à côté d'une forme découpée par
+ailleurs). Les identifiants `#pin0`/`#pin1`/`#pin2` utilisés par
+`lierCapteurTactile()` (écouteurs `mousedown`/`mouseup`) portent aussi bien
+sur un `<rect>` SVG que sur un `<div>` — `getElementById` et
+`addEventListener` ne distinguent pas les deux, aucune adaptation JS n'a
+été nécessaire pour ce changement de balisage.
+
 ## 8. Servomoteurs
 
 Catégorie « Servos » sur P0, P1, P2. Conventions reprises de MakeCode

@@ -187,7 +187,11 @@
     #carte-cadre { width: 100%; margin-top: 20px; display: flex; justify-content: center;
                    flex: 0 0 auto; }
     #microbit-board {
-        width: 280px; height: 230px; background: #191919; border-radius: 15px 15px 25px 25px;
+        /* Coins bas peu arrondis (pas 25px) : sur la vraie carte, le bord du
+           bas est quasiment droit — un grand rayon ici "grignotait" en
+           arrondi les coins de la reglette de connecteurs, donnant a tort
+           l'impression d'encoches decoupees dans le bord dore. */
+        width: 280px; height: 230px; background: #191919; border-radius: 15px 15px 6px 6px;
         position: relative; box-shadow: 0px 15px 25px rgba(0,0,0,0.6);
         overflow: hidden; user-select: none;
         /* flex: 0 0 auto — sinon la colonne, en min-height: 0, ecrase la carte
@@ -197,7 +201,10 @@
     }
 
     #led-grid { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;}
-    .led { width: 8px; height: 14px; background: #2a2a2a; border-radius: 2px; transition: 0.05s; }
+    /* LED eteinte : sur la vraie carte, le composant reste visible (petit
+       boitier blanc/argente), pas un carre sombre quasi invisible comme
+       avant — d'apres la photo officielle micro:bit V2 (microbit.org). */
+    .led { width: 8px; height: 14px; background: linear-gradient(180deg, #e2ded1, #b8b3a3); border-radius: 2px; transition: 0.05s; box-shadow: inset 0 0 1px rgba(0,0,0,0.4); }
     .led.on { background: #ff3333; box-shadow: 0 0 8px #ff3333; }
     
     /* --- NOUVEAU : GESTION DU TEXTE SUR LES LEDS --- */
@@ -218,27 +225,68 @@
 
     .mb-btn-wrap { position: absolute; top: 95px; display: flex; flex-direction: column; align-items: center;}
     #wrap-a { left: 15px; } #wrap-b { right: 15px; }
-    .mb-btn-outer { width: 32px; height: 32px; background: #888; border-radius: 3px; position: relative; }
+    .mb-btn-outer { width: 32px; height: 32px; background: linear-gradient(180deg, #a8a8a8, #7d7d7d); border-radius: 2px; position: relative; }
     .mb-btn-inner { position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; background: #111; border-radius: 50%; cursor: pointer; box-shadow: inset 0 2px 5px rgba(0,0,0,0.8); }
     .mb-btn-inner:active { background: #333; }
-    .mb-btn-dot { position: absolute; width: 3px; height: 3px; background: #7a3f3f; border-radius: 50%; }
-    .dot-tl { top: 3px; left: 3px; } .dot-tr { top: 3px; right: 3px; }
-    .dot-bl { bottom: 3px; left: 3px; } .dot-br { bottom: 3px; right: 3px; }
-    .mb-btn-label { color: #33ccff; font-weight: bold; font-size: 16px; margin-top: 5px; }
-    #wrap-b .mb-btn-label { position: absolute; top: -25px; left: 15px; } 
+    /* Deux petites pattes claires au bord bas du bouton (photo officielle :
+       pas de 4 points aux coins, ce sont deux languettes en bas). */
+    .mb-btn-tab { position: absolute; bottom: -2px; width: 6px; height: 3px; background: #d6d6d6; border-radius: 0 0 1px 1px; }
+    .mb-btn-tab-l { left: 4px; } .mb-btn-tab-r { right: 4px; }
+    /* Etiquette A/B : sur la vraie carte c'est un petit triangle bleu avec la
+       lettre imprimee dedans, pas juste une lettre coloree isolee. */
+    .mb-btn-label { position: relative; width: 26px; height: 22px; margin-top: 6px; }
+    .mb-btn-label-tri { position: absolute; inset: 0; background: #0396d6; clip-path: polygon(0 0, 0 100%, 100% 100%); }
+    .mb-btn-label-lettre { position: absolute; left: 5px; bottom: 1px; color: #111; font-weight: 800; font-size: 12px; font-family: sans-serif; }
+    #wrap-b .mb-btn-label { position: absolute; top: -30px; left: 12px; }
 
     .mb-btn-label-ab { position: absolute; color: white; font-weight: bold; font-size: 13px; left: -32px; top: 8px; }
 
-    .mb-badge { position: absolute; bottom: 50px; right: 25px; width: 28px; height: 28px; background: white; border-radius: 50%; color: #191919; font-family: sans-serif; font-weight: bold; font-size: 14px; display: flex; justify-content: center; align-items: center; }
-    .mb-accent { position: absolute; top: 0; left: 0; width: 100px; height: 60px; background: #33ccff; clip-path: polygon(0 0, 100% 0, 75% 25%, 55% 0, 30% 25%, 0 60%); }
+    /* Indicateur "V2" : sur la vraie carte, ce texte est serigraphie au DOS
+       (pres du logo "micro:bit"), jamais sur la face avant que montre le
+       simulateur — un rond blanc pose sur la coque suggerait a tort une
+       impression qui n'y est pas. Deplace en etiquette d'interface a cote
+       du titre, pas sur le dessin de la carte lui-meme. */
+    #mb-version-tag { display: inline-block; background: #e4c558; color: #191919; font-family: sans-serif;
+                       font-weight: bold; font-size: 11px; padding: 2px 7px; border-radius: 10px; vertical-align: middle; }
+    /* Accent en coin : deux triangles bleus separes (pas un seul zigzag),
+       d'apres la photo officielle micro:bit V2 — un grand triangle et un
+       plus petit distinct, avec un espace noir entre les deux. */
+    .mb-accent { position: absolute; top: 0; left: 0; width: 68px; height: 68px; background: #0396d6; clip-path: polygon(0 0, 100% 0, 0 100%); }
+    .mb-accent2 { position: absolute; top: 0; left: 78px; width: 34px; height: 34px; background: #0396d6; clip-path: polygon(0 0, 100% 0, 0 100%); }
+    /* Connecteur micro-USB : petit boitier gris qui depasse du bord haut. */
+    .mb-usb { position: absolute; top: -3px; left: 90px; width: 26px; height: 9px;
+              background: linear-gradient(180deg, #cfcfcf, #8f8f8f); border-radius: 2px 2px 0 0;
+              border: 1px solid #6b6b6b; border-bottom: none; }
+    .mb-usb-notch { position: absolute; top: 2px; left: 3px; right: 3px; height: 3px; background: #4a4a4a; border-radius: 1px; }
     .mb-logo { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); width: 40px; height: 18px; border: 4px solid #e4c558; border-radius: 12px; display: flex; justify-content: center; align-items: center; gap: 6px; cursor: pointer; transition: 0.1s; }
     .mb-logo:active { background: rgba(228, 197, 88, 0.3); }
     .mb-logo-dot { width: 4px; height: 4px; background: #e4c558; border-radius: 50%; }
-    .mb-edge { position: absolute; bottom: 0; left: 0; right: 0; height: 40px; background: repeating-linear-gradient(to right, #cba135, #cba135 2px, #e4c558 2px, #e4c558 4px); display: flex; justify-content: space-around; padding: 0 5px; }
-    .mb-pin { width: 40px; background: #e4c558; border-radius: 15px 15px 0 0; display: flex; flex-direction: column; align-items: center; padding-top: 5px; cursor: pointer; position: relative; }
-    .mb-pin:active { filter: brightness(0.8); }
-    .mb-pin-hole { width: 16px; height: 16px; background: #191919; border-radius: 50%; border: 2px solid #cba135; }
-    .mb-pin span { font-family: monospace; font-size: 11px; font-weight: bold; color: #191919; margin-top: 2px; }
+    /* Indicateur du microphone (nouveaute V2, voir microbit.org/fr) : petit
+       cercle temoin + icone micro imprimee, a droite du logo tactile. */
+    .mb-mic-indicateur { position: absolute; top: 18px; right: 34px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .mb-mic-point { width: 5px; height: 5px; border-radius: 50%; border: 1px solid #666; background: transparent; }
+    .mb-mic-icone { width: 8px; height: 10px; position: relative; }
+    .mb-mic-icone-tete { position: absolute; top: 0; left: 1px; width: 6px; height: 7px; border-radius: 3px; background: #e53935; }
+    .mb-mic-icone-pied { position: absolute; bottom: 0; left: 3px; width: 2px; height: 3px; background: #e53935; }
+    /* Connecteur, en SVG : image de reference fournie par l'utilisateur
+       (« je veux ça ») combinant les deux styles precedents — un dome rond
+       avec trou clair au-dessus de chaque etiquette (comme le simulateur
+       MakeCode, passe 6/7) ET le bord du bas onduleux "bosselé" du V2
+       (passe 8). Le dome est peint APRES la bande a dents (donc par-dessus,
+       en or plein uni, sans motif) pour eviter que les dents ne traversent
+       visuellement le dome — plus simple et plus fiable qu'exclure une
+       region d'un degrade de fond partage (voir le piege des coins qui se
+       touchaient, plus haut). */
+    .mb-edge { position: absolute; bottom: 0; left: 0; right: 0; height: 58px; }
+    .mb-edge svg { display: block; width: 100%; height: 100%; }
+    .mb-edge-txt { font-family: sans-serif; font-weight: 800; font-size: 12px; fill: #141414; text-anchor: middle; }
+    .mb-edge-txt-petit { font-size: 8px; }
+    .mb-edge-trou { fill: url(#mb-edge-trou); }
+    /* Retour visuel manquant apres le passage en SVG : le <rect> transparent
+       (voir un.js, lierCapteurTactile) n'assombrissait plus rien au clic,
+       contrairement a l'ancien filter: brightness() sur le <div> de plot. */
+    .mb-edge-zone { cursor: pointer; fill: transparent; }
+    .mb-edge-zone.mb-edge-zone-active { fill: rgba(0, 0, 0, 0.28); }
 
     #run-sim { margin-top: 15px; background: #2ecc71; width: 100%; font-size: 16px; padding: 12px;}
     #run-sim:hover { background: #27ae60; }
@@ -589,19 +637,24 @@
       <textarea id="code-edit" spellcheck="false"></textarea>
     </div>
     <div id="simulator-container">
-      <h3>Simulateur visuel</h3>
+      <h3>Simulateur visuel <span id="mb-version-tag">V2</span></h3>
       <div id="carte-cadre">
       <div id="microbit-board">
           <div class="mb-accent"></div>
+          <div class="mb-accent2"></div>
+          <div class="mb-usb"><div class="mb-usb-notch"></div></div>
           <div class="mb-logo" id="mb-logo"><div class="mb-logo-dot"></div><div class="mb-logo-dot"></div></div>
-          
+          <div class="mb-mic-indicateur">
+              <div class="mb-mic-point"></div>
+              <div class="mb-mic-icone"><div class="mb-mic-icone-tete"></div><div class="mb-mic-icone-pied"></div></div>
+          </div>
+
           <div class="mb-btn-wrap" id="wrap-a">
               <div class="mb-btn-outer">
-                  <div class="mb-btn-dot dot-tl"></div><div class="mb-btn-dot dot-tr"></div>
-                  <div class="mb-btn-dot dot-bl"></div><div class="mb-btn-dot dot-br"></div>
+                  <div class="mb-btn-tab mb-btn-tab-l"></div><div class="mb-btn-tab mb-btn-tab-r"></div>
                   <div class="mb-btn-inner" id="btn-a"></div>
               </div>
-              <div class="mb-btn-label">A</div>
+              <div class="mb-btn-label"><div class="mb-btn-label-tri"></div><span class="mb-btn-label-lettre">A</span></div>
           </div>
           
           <div id="led-grid"></div>
@@ -612,31 +665,69 @@
           </div>
           
           <div class="mb-btn-wrap" id="wrap-b">
-              <div class="mb-btn-label">B</div>
+              <div class="mb-btn-label"><div class="mb-btn-label-tri"></div><span class="mb-btn-label-lettre">B</span></div>
               <div class="mb-btn-outer">
-                  <div class="mb-btn-dot dot-tl"></div><div class="mb-btn-dot dot-tr"></div>
-                  <div class="mb-btn-dot dot-bl"></div><div class="mb-btn-dot dot-br"></div>
+                  <div class="mb-btn-tab mb-btn-tab-l"></div><div class="mb-btn-tab mb-btn-tab-r"></div>
                   <div class="mb-btn-inner" id="btn-b"></div>
               </div>
           </div>
-          
+
           <div class="mb-btn-wrap" id="wrap-ab" style="display: none; top: 140px; right: 15px;">
               <div class="mb-btn-label-ab">A+B</div>
               <div class="mb-btn-outer">
-                  <div class="mb-btn-dot dot-tl"></div><div class="mb-btn-dot dot-tr"></div>
-                  <div class="mb-btn-dot dot-bl"></div><div class="mb-btn-dot dot-br"></div>
+                  <div class="mb-btn-tab mb-btn-tab-l"></div><div class="mb-btn-tab mb-btn-tab-r"></div>
                   <div class="mb-btn-inner" id="btn-ab"></div>
               </div>
           </div>
 
-          <div class="mb-badge">V2</div>
-          
           <div class="mb-edge">
-              <div class="mb-pin" id="pin0"><div class="mb-pin-hole"></div><span>0</span></div>
-              <div class="mb-pin" id="pin1"><div class="mb-pin-hole"></div><span>1</span></div>
-              <div class="mb-pin" id="pin2"><div class="mb-pin-hole"></div><span>2</span></div>
-              <div class="mb-pin"><div class="mb-pin-hole"></div><span>3V</span></div>
-              <div class="mb-pin"><div class="mb-pin-hole"></div><span>GND</span></div>
+            <svg viewBox="0 0 280 58" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <pattern id="mb-edge-dents" width="6" height="58" patternUnits="userSpaceOnUse">
+                  <rect width="6" height="58" fill="#d9b41c"/>
+                  <rect x="2" width="2" height="58" fill="#2e2500"/>
+                </pattern>
+                <radialGradient id="mb-edge-trou" cx="35%" cy="30%" r="70%">
+                  <stop offset="0%" stop-color="#ffffff"/>
+                  <stop offset="60%" stop-color="#e2e2e2"/>
+                  <stop offset="100%" stop-color="#b7b7b7"/>
+                </radialGradient>
+              </defs>
+              <!-- Bande a dents, pleine largeur, bord du bas onduleux (encoche
+                   peu profonde sous chaque etiquette) : "bosselé", propre au
+                   V2. Le haut reste droit ici ; les domes sont un calque a
+                   part, peints par-dessus (voir plus bas). Frontiere domes/
+                   bande a y=12 (pas 18) : mesure sur la capture de reference
+                   (echantillonnage de colonnes), la zone noire au-dessus des
+                   dents est nettement plus basse que ce que donnait 18. -->
+              <path d="M0,12 L280,12 L280,58 L268,58 Q252,51 236,58 L212,58 Q196,51 180,58
+                       L156,58 Q140,51 124,58 L100,58 Q84,51 68,58 L44,58 Q28,51 12,58
+                       L0,58 Z" fill="url(#mb-edge-dents)"/>
+              <!-- Domes : un par plot, en or plein (pas le motif de dents),
+                   arc elliptique (rx=18, ry=12) pour rester larges mais plus
+                   bas, qui chevauchent la bande de 7px pour ne laisser aucune
+                   couture visible avec elle. -->
+              <path d="M10,19 L10,12 A18,12 0 0,1 46,12 L46,19 Z" fill="#d9b41c"/>
+              <path d="M66,19 L66,12 A18,12 0 0,1 102,12 L102,19 Z" fill="#d9b41c"/>
+              <path d="M122,19 L122,12 A18,12 0 0,1 158,12 L158,19 Z" fill="#d9b41c"/>
+              <path d="M178,19 L178,12 A18,12 0 0,1 214,12 L214,19 Z" fill="#d9b41c"/>
+              <path d="M234,19 L234,12 A18,12 0 0,1 270,12 L270,19 Z" fill="#d9b41c"/>
+              <circle class="mb-edge-trou" cx="28" cy="7" r="5"/>
+              <circle class="mb-edge-trou" cx="84" cy="7" r="5"/>
+              <circle class="mb-edge-trou" cx="140" cy="7" r="5"/>
+              <circle class="mb-edge-trou" cx="196" cy="7" r="5"/>
+              <circle class="mb-edge-trou" cx="252" cy="7" r="5"/>
+              <text class="mb-edge-txt" x="28" y="29">0</text>
+              <text class="mb-edge-txt" x="84" y="29">1</text>
+              <text class="mb-edge-txt" x="140" y="29">2</text>
+              <text class="mb-edge-txt mb-edge-txt-petit" x="196" y="28">3V</text>
+              <text class="mb-edge-txt mb-edge-txt-petit" x="252" y="28">GND</text>
+              <rect class="mb-edge-zone" id="pin0" x="0" y="0" width="56" height="58" fill="transparent"/>
+              <rect class="mb-edge-zone" id="pin1" x="56" y="0" width="56" height="58" fill="transparent"/>
+              <rect class="mb-edge-zone" id="pin2" x="112" y="0" width="56" height="58" fill="transparent"/>
+              <rect class="mb-edge-zone" x="168" y="0" width="56" height="58" fill="transparent"/>
+              <rect class="mb-edge-zone" x="224" y="0" width="56" height="58" fill="transparent"/>
+            </svg>
           </div>
       </div>
       </div>

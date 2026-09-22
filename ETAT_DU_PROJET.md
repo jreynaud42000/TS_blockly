@@ -7,7 +7,7 @@ Ce fichier dit **où on en est** : ce qui a été vérifié, ce qui ne peut l'ê
 sans matériel, et ce qui a été écarté. Les deux autres documents complètent :
 
 - `readme.txt` — mode d'emploi et pièges d'usage
-- `PROMPT_RECREATION.md` — tout reconstruire de zéro, avec les 41 pièges connus (nº 0 à nº 40)
+- `PROMPT_RECREATION.md` — tout reconstruire de zéro, avec les 43 pièges connus (nº 0 à nº 42)
 
 ---
 
@@ -28,6 +28,7 @@ se fiant à l'absence d'erreur.
 | Grove | 11 modules, code généré conforme aux sources Seeed, affichage conditionnel des sections |
 | Servos | bornes, intervalle, rotation continue, arrêt au neutre, animation des cadrans |
 | Mise en page | canevas synchronisé avec Blockly dans 9 situations, corbeille et zoom toujours visibles |
+| Simulateur : fidélité visuelle de la carte micro:bit | Voir le détail complet (8 passes) dans la section dédiée ci-dessous, « Historique — fidélité visuelle de la carte micro:bit ». État actuel : LED éteintes visibles (boîtier clair), connecteur de bord en **SVG** (réglette plate, dents fines denses, bord du bas **onduleux** — le vrai trait distinctif du V2, « bosselé » vs le bord plat du V1, mentionné sur microbit.org/fr), USB et indicateur micro ajoutés, étiquettes A/B en triangle bleu avec lettre imprimée, badge « V2 » déplacé en étiquette d'interface (il est en réalité sérigraphié au dos, jamais sur la face avant) |
 | Envoi sur la carte | écriture simulée avec un faux lecteur : 1 877 004 octets, tous les cas d'erreur |
 | Panneau administrateur | Ctrl+Alt+Maj+A active/désactive, bouton ⚙ rouge caché sinon. Réordonner/masquer/renommer/**recolorer** une catégorie (pastille `<input type="color">`, conversion teinte Blockly → hex vérifiée par calcul), idem pour les sous-menus natifs (Communication, Grove) et les sous-menus personnalisés, création d'un sous-menu personnalisé avec extraction des blocs choisis, renommage d'un libellé de bloc appliqué aux blocs déjà posés et aux nouveaux, onglet Aide qui charge `readme.txt` par `fetch()` (28 420 caractères reçus, testé aussi après un blocage transitoire du serveur mono-thread — voir « détail agaçant » plus bas). Persisté en localStorage (sauf l'onglet Aide, sans état), testé via `window.adminTest` (voir un.js) faute de pouvoir simuler un glisser-déposer ou un clic sur un `<input type="color">` |
 | Édition manuelle du code | Bouton « ✎ Éditer » : bascule vers un `<textarea>`, gèle le canevas Blockly (voile visuel qui capte aussi les clics), la saisie remplace `window.currentPythonCode` en direct — vérifié que `.hex`/`.py`/simulateur le lisent bien à cet instant. « Revenir aux blocs » restaure le code généré et dégèle. Testé via `window.editionCodeTest` (voir un.js), non persisté (perdu au rechargement, comme l'espace de travail lui-même) |
@@ -46,6 +47,121 @@ se fiant à l'absence d'erreur.
 | Maqueen Lite | Registres I2C vérifiés depuis le dépôt GitHub officiel `DFRobot/pxt-maqueen` (namespace `maqueen`, socle commun — l'extension `Maqueen_V5` plus récente du même dépôt est hors périmètre) — jamais sur du vrai matériel. Module séparé du Maqueen Plus (catégorie et pilote `_ml_*` distincts). Depuis la fusion des pistes (entrée suivante), dispose d'un robot animé sur la piste partagée, remplaçant les deux cases à cocher d'origine. Génération de code vérifiée pour les 7 blocs (dont l'événement `lorsque le capteur de ligne...`) ; simulation testée sans erreur, et l'événement confirmé se déclencher exactement au changement d'état du capteur (position réelle sur la piste, vérifié via un effet observable sur un autre module) ; mouvement réel confirmé (`_ml_moteur` déplace vraiment `ML.x`/`ML.y` via le pipeline de blocs complet). Sprite initial (placeholder gris-violet) remplacé par un **SVG tracé** d'après deux photos officielles DFRobot du produit réel (`ROB0148-EN_Main_01.jpg` vue 3/4, `ROB0148-EN_Dim_02.jpg` vue de dessus de la carte « shield ») fournies par l'utilisateur via le lien produit : carte bleue en pointe vers l'avant, deux capteurs ultrasons chromés montés sur une petite sous-carte à la pointe, compartiment à piles noir avec contacts métal à l'arrière, grandes roues blanches/argentées à pneu noir — même technique hybride que Maqueen Plus (carrosserie **statique** en SVG, DEL/marqueur avant restés en `<div>` JS inchangés). Vérifié : les 18 formes du SVG (roues, coque, pile, sous-carte ultrasons, vis) ont toutes une `getBBox()` non nulle et cohérente avec le `viewBox` 22×28 ; les 6 dégradés référencés (`mlg-corps`, `mlg-batt`, `mlg-pneu`, `mlg-jante`, `mlg-us`, `mlg-vis`) existent tous dans `<defs>` (pas de référence cassée) ; `window.simu_mlDel('gauche', true)` confirmé toujours mettre à jour `#maqueenlite-sprite-del-g` (élément sorti de l'ancien `.mlite-corps` supprimé, code JS inchangé) |
 | Piste partagée entre les trois robots | Demande explicite de l'utilisateur : « je veux que la partie simulation piste soit la même et disponible pour tous les robots ». Un seul panneau/canevas (`#piste-panneau`, 300×220) pour Maqueen Plus, Kitrobot v2 et Maqueen Lite — un seul robot affiché à la fois, déterminé par `robotActifDetecte()` (quels blocs sont posés). Le tracé « Ligne droite (départ/arrivée) », auparavant la piste dédiée et séparée de Kitrobot (choix explicite antérieur de NE PAS réutiliser celle de Maqueen), est désormais un 4ᵉ choix dans le même sélecteur que les tracés Maqueen, utilisable par n'importe quel robot. Les couleurs de la piste (vert/blanc ou blanc/noir) suivent le **robot actif**, pas le tracé choisi (`couleursPisteRobotActif()`) — Kitrobot lit un pixel sombre comme « sur la ligne », l'inverse des deux autres, donc la piste doit s'inverser avec lui quel que soit le tracé. Largeur de piste et échelle du robot (curseurs déjà existants pour Maqueen Plus) désormais partagés par les trois. Vérifié : changement de robot actif change le titre du panneau, montre le bon sprite, cache les deux autres, redessine la piste dans les bonnes couleurs ; capteurs de ligne testés sur la piste partagée pour les trois robots ; fanions Départ/Arrivée affichés uniquement sur ce tracé, quel que soit le robot ; curseur d'échelle confirmé agir sur le robot réellement affiché (bug trouvé et corrigé : ne mettait à jour que le sprite Maqueen Plus au premier essai). Glisser-déposer du robot (souris/tactile via Pointer Events) également manquant pour Kitrobot v2 et Maqueen Lite après la fusion — signalé par l'utilisateur, pas trouvé par les tests — corrigé en factorisant l'écouteur (`activerGlisserDeposerRobot`) et en l'attachant aux trois robots au lieu du seul `#maqueen-robot` d'origine ; vérifié par `PointerEvent` synthétiques sur les trois |
 | Kitrobot v2 | Module séparé de Maqueen : broches **facultatives et configurables** par des blocs « définir » (pas de câblage réel vérifié pour ce kit), piste dédiée départ/arrivée (droite, noir sur blanc — inversée de Maqueen exprès pour les distinguer d'un coup d'œil). Génération de code vérifiée (tous les blocs, y compris ceux à l'intérieur du pilote retiré côté simulateur). Les 16 fonctions `_kb_*` du pilote — entièrement à l'intérieur du bloc `# >>> pilote kitrobot`, donc retirées avant exécution — ont chacune leur substitut dans le simulateur ; vérifié en exécutant un programme qui les appelle toutes (`_kb_avancer`, `_kb_pivoter`, `_kb_moteur`, `_kb_case`, `_kb_virage`, `_kb_buzzer`, `_kb_del_couleur`, `_kb_del_rgb`, `_kb_clignoter`, `_kb_arcenciel`…) sans aucune erreur. Cinématique et capteurs de ligne réutilisent le modèle de Maqueen (même formule différentielle), avec seulement deux capteurs (gauche/droit) et une détection **inversée** (ligne sombre sur fond clair). Panneau affiché/masqué selon les blocs posés, vérifié via `window.kitrobotTest` (même limite déjà connue : `workspace.clear()` synthétique ne déclenche pas l'écouteur de changement, la fonction de rafraîchissement appelée directement si). Non-régression sur Maqueen confirmée (les deux panneaux réagissent indépendamment) |
+
+## Historique — fidélité visuelle de la carte micro:bit
+
+Signalé par l'utilisateur (« le visuel de la carte micro:bit n'est pas conforme
+à l'original »), avec `microbit.org/fr/get-started/features/overview/` comme
+référence de départ. Huit passes successives, chacune déclenchée par un
+nouveau retour de l'utilisateur :
+
+1. **Premier passage** (diagrammes officiels V2 de la page microbit.org) :
+   LED éteintes quasi invisibles (fond très sombre `#2a2a2a`) → recolorées en
+   boîtier clair. Plots du connecteur en grand trou noir → refaits pleins or.
+   Trois éléments manquants ajoutés en CSS pur : connecteur micro-USB,
+   indicateur du microphone (nouveauté V2), deuxième triangle d'accent en coin.
+2. **« le bord inférieur n'est pas plat, il y a des encoches »** : le grand
+   rayon de coin bas (25px) grignotait les coins de la réglette dorée en un
+   arrondi parasite — réduit à 6px. Conclusion **erronée** à ce stade (voir
+   passe 8) : le diagramme alors utilisé ne montrait pas le bord « bosselé »
+   propre au V2 (mentionné sur microbit.org), d'où l'hypothèse à tort qu'un
+   bord plat était correct.
+3. **Capture avant/dos envoyée, clarifiée « ce sont les 2 faces de la
+   carte »** : le texte « V2 » est en réalité sérigraphié au **dos**, jamais
+   sur la face avant simulée — déplacé de la carte vers une étiquette
+   d'interface à côté du titre (`#mb-version-tag`).
+4. **« pourquoi ne dessines-tu pas les encoches correctement »** : analyse
+   pixel par pixel (Pillow) plutôt qu'une relecture à l'œil — le motif
+   `repeating-linear-gradient` était trop dense/uniforme ; espacé pour
+   imiter des dents individuelles.
+5. **« c'est encore pire »** : l'espacement a révélé un défaut géométrique
+   jusque-là masqué par la densité — les coins très arrondis (15px) de deux
+   plots voisins se touchaient dans l'espace laissé par `space-around`,
+   dessinant une pointe triangulaire parasite. Corrigé en séparant plots et
+   dents en deux éléments distincts (`.mb-pin`, `.mb-dents`).
+6. **« N'es-tu pas capable de le faire ? »** : téléchargement local du
+   diagramme officiel + échantillonnage Pillow ciblé (bouton A, triangle
+   d'accent) — a trouvé deux écarts réels invisibles sur petites captures :
+   étiquettes A/B en triangle bleu avec lettre imprimée dedans (pas une
+   lettre isolée), bouton à deux languettes au bord bas (pas 4 pastilles aux
+   coins). Bleu d'accent corrigé à la valeur mesurée `rgb(1,145,220)`.
+7. **« pourquoi refuses-tu de dessiner le connecteur ainsi ? » (capture
+   jointe)** : cette capture montrait le style du **simulateur MakeCode
+   officiel** (pxt-microbit), pas une photo du circuit imprimé — plots en
+   dôme très arrondi, trou clair gris/blanc, dents confinées à une bande
+   basse. Reconstruit en conséquence.
+8. **« toujours pas », puis nouvelle capture confirmée comme référence** :
+   cette capture montrait encore un **troisième style différent** — réglette
+   plate (pas de dômes), dents fines denses sur toute la largeur, et surtout
+   un **bord du bas onduleux** avec une encoche peu profonde sous chaque
+   étiquette. Ce bord ondulé est exactement le « bord inférieur bosselé »
+   propre au V2 mentionné dès le début sur microbit.org/fr (par opposition
+   au bord plat du V1) — la conclusion de la passe 2 était donc fausse : ce
+   diagramme-là ne montrait simplement pas ce détail, il n'était pas absent
+   de la vraie carte. Après plusieurs échecs à obtenir cette forme en CSS
+   (dégradés/`border-radius` qui ne collent jamais bien un bord ondulé),
+   **le connecteur est passé en SVG** (`<path>` avec des arcs pour
+   l'ondulation, motif de dents en `<pattern>` peint directement dans le
+   tracé — donc jamais de débordement hors du contour, contrairement aux
+   tentatives CSS précédentes). Les identifiants `#pin0`/`#pin1`/`#pin2`
+   (écouteurs tactiles dans `un.js`) portés sur des `<rect>` transparentes
+   superposées ; aucune modification JS nécessaire. Vérifié : `getElementById`
+   fonctionne sur les éléments SVG comme sur des `<div>`, `mousedown`/`mouseup`
+   synthétiques confirmés déclencher `window.simu_pin0_pressed`, rendu net à
+   taille réelle comme en gros plan (vectoriel, pas de crénelage).
+9. **« le problème d'encoches est résolu mais maintenant il y a un problème
+   au niveau de l'affichage des broches »** : régression réelle introduite
+   par le passage en SVG (passe 8), pas trouvée par les tests de la passe 8
+   (qui vérifiaient seulement que le clic déclenchait bien
+   `window.simu_pin0_pressed`, pas l'apparence). L'ancien `.mb-pin:active {
+   filter: brightness(0.8) }` sur un `<div>` plein n'a pas d'équivalent
+   direct sur un `<rect>` SVG à `fill="transparent"` : rien à assombrir. Au
+   clic, plus aucun retour visuel sur la broche pressée, alors que la
+   fonction marchait toujours (confirmé par `MouseEvent` synthétique avant
+   de corriger : `pressed` passait bien à `true`, seul le rendu ne bougeait
+   pas). Corrigé dans `lierCapteurTactile()` (`un.js`) en posant/retirant
+   explicitement une classe (`mb-edge-zone-active`, remplie
+   `rgba(0,0,0,0.28)`) sur `mousedown`/`mouseup`/`mouseleave`, plutôt que de
+   compter sur `:active` seul — plus fiable, et surtout testable par les
+   mêmes événements synthétiques qui avaient validé la fonction.
+10. **« je veux ça » (capture jointe, sans ambiguïté cette fois)** : combine
+    en réalité les deux styles précédents plutôt que d'en remplacer un par
+    l'autre — le dôme rond à trou clair de la passe 6/7 **et** le bord bas
+    onduleux « bosselé » de la passe 8. Le SVG existant (passe 8) a été
+    étendu plutôt que reconstruit : la bande à dents onduleuse reste
+    inchangée (fond, `y` décalé de +18 pour laisser la place aux dômes
+    au-dessus), et cinq petits `<path>` en dôme (arc `A`) sont peints
+    **par-dessus**, en or plein sans motif de dents, avec un léger
+    chevauchement (10px) vers le bas pour ne laisser aucune couture visible
+    avec la bande — même principe que la passe 5 (deux formes distinctes
+    plutôt qu'un fond partagé retouché), mais cette fois en complément l'une
+    de l'autre au lieu d'être des alternatives. Vérifié par capture d'écran
+    à fort zoom, comparé côte à côte, et non-régression du retour visuel au
+    clic (passe 9) et de la génération de code confirmées.
+11. **« c'est mieux mais, c'est pas encore correct »** : cette fois une
+    mesure de proportions plutôt qu'une nouvelle capture — échantillonnage
+    de colonnes verticales (Pillow) pour trouver où le fond passe du noir
+    (au-dessus) à l'or des dents (en dessous), entre deux dômes. Mesuré
+    ≈ 21 % de hauteur noire chez la référence contre 31 % dans notre rendu
+    (frontière dôme/bande à `y=18` sur un total de 58) : les dômes étaient
+    trop hauts par rapport à la bande à dents. Confirmé par l'utilisateur
+    avant de corriger (question à choix : zone noire/dents, taille des
+    dômes, ou autre — réponse « oui, la zone noire/dents »). Frontière
+    ramenée à `y=12`, arcs des dômes passés en ellipse (`rx=18 ry=12` au
+    lieu d'un cercle `18,18`) pour rester aussi larges mais moins hauts,
+    trou et étiquettes repositionnés en conséquence. Vérifié par capture
+    d'écran à fort zoom et sur la réglette complète.
+
+Leçon retenue pour la suite : un même mot (« encoches », « bord ») a désigné
+successivement trois défauts différents selon la capture en main à ce
+moment-là — ne jamais supposer que deux signalements consécutifs parlent du
+même défaut sans une capture ou un repère visuel précis à l'appui. Autre
+leçon (passe 9) : un changement de balisage (`<div>` → SVG) peut préserver
+la logique (l'ID, l'écouteur, la variable globale) tout en perdant un
+comportement purement visuel qui reposait sur une propriété CSS différente
+(`filter` sur un fond opaque vs `fill` sur un fond transparent) — tester
+« ça déclenche toujours » ne suffit pas, il faut aussi retester « ça se
+voit toujours » après ce genre de changement.
 
 ## À vérifier avec du matériel — je n'ai pas de carte
 
