@@ -127,6 +127,10 @@
     #copyright-toolbar { margin-left: auto; margin-right: 12px; color: #9fb3c8; font-size: 12px; white-space: nowrap; }
     button { padding: 8px 16px; cursor: pointer; font-weight: bold; border-radius: 4px; border: none; background: #3498db; color: white; transition: 0.2s; margin-right: 10px;}
     button:hover { background: #2980b9; }
+    /* Icones emoji des boutons de la barre d'outils : rendues nettement plus
+       grandes que le texte par defaut du navigateur, reduites ici pour rester
+       proportionnees au reste du bouton. */
+    .icone-bouton { font-size: 0.75em; margin-right: 2px; }
     #download-py-btn { background: #9b59b6; }
     #download-py-btn:hover { background: #8e44ad; }
     /* Menu "Fichier" : regroupe les deux telechargements, ouverts avant en
@@ -160,6 +164,7 @@
     .btn-vue.inactif { background: #22303d; color: #7f8c8d; }
     .btn-vue.actif { background: #e67e22; color: #fff; }
     .btn-vue.actif:hover { background: #d35400; }
+    .btn-vue:disabled, .btn-vue:disabled:hover { background: #22303d; color: #7f8c8d; cursor: not-allowed; }
     /* Le bouton du panneau administrateur reste cache tant que le raccourci
        secret (Ctrl+Alt+Maj+A) n'a pas ete utilise : voir activerAdmin() dans
        un.js. Pas une vraie protection, juste evite qu'un eleve tombe dessus. */
@@ -310,12 +315,56 @@
        carte, ce qui ramene la barre. */
     #simulator-container { flex: 0 0 24%; min-width: 250px; min-height: 0; height: 100%; background: var(--fond-chrome); display: flex; flex-direction: column; align-items: center; padding: 20px; box-sizing: border-box; border-left: 2px solid var(--fond-chrome-profond); overflow-y: auto; scrollbar-gutter: stable;}
     #simulator-container h3 { margin-top: 0; color: #2ecc71; font-size: 14px; text-transform: uppercase; width: 100%; text-align: left;}
+
+    /* Repositionnement automatique selon la place disponible (demande de
+       l'utilisateur, dans le prolongement de la mise a l'echelle fixe de la
+       carte micro:bit — voir adapterEchelleSimulateur dans un.js) : agrandir
+       le panneau simulateur par glisser ne doit ni etirer ni rapetisser la
+       carte, les boutons ou les panneaux Grove/Piste/LiDAR — seulement
+       reorganiser leur PLACEMENT. Chacun garde sa largeur "naturelle" — celle
+       du panneau par defaut (24% d'une fenetre courante, moins son padding),
+       la taille a laquelle toute l'interface a ete concue et testee jusqu'ici
+       — et se repositionne via un simple retour a la ligne CSS (`flex-wrap`
+       pour la carte+les boutons, `grid` pour les panneaux repliables), sans
+       JS ni requete de conteneur : pas assez de place, tout reste empile en
+       une colonne comme avant ; assez de place, les blocs se rangent
+       cote a cote. Les trois panneaux repliables (Grove/Piste/LiDAR) sont
+       des cartes independantes qui peuvent legitimement se cotoyer ; la carte
+       micro:bit et ses 3 boutons d'action forment un groupe a part (une
+       "console") qui se range a cote de la carte plutot qu'au milieu des
+       panneaux, pour rester lisible comme un tout. */
+    #simulateur-console { width: 100%; margin-top: 20px; display: flex; flex-wrap: wrap;
+        justify-content: center; align-items: flex-start; gap: 20px; }
+    /* `auto-fit` (pas `auto-fill`) + `minmax(268px, 1fr)` : une piste vide est
+       repliee au lieu de garder sa largeur fixe, et les pistes restantes se
+       partagent l'espace libere — un seul panneau visible (LiDAR seul, par
+       exemple) occupe alors toute la largeur au lieu de rester coince a
+       268px avec du vide a cote. Signale par l'utilisateur, capture d'ecran
+       du panneau Grove a l'appui : « pourquoi les elements s'affichent en
+       colonne ? j'avais demande un affichage auto adaptatif sur la zone ». */
+    #simulateur-panneaux { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+        justify-content: center; gap: 20px; }
+    #simulateur-actions { width: 268px; flex: 0 0 auto; display: flex; flex-direction: column; gap: 12px; }
+
+    /* Redimensionnement du panneau simulateur par glisser — seulement quand
+       la transcription est masquee (voir basculerPanneau dans un.js) : c'est
+       le seul cas ou cette bordure separe directement le simulateur de la
+       zone de blocs, sans le panneau de code entre les deux. */
+    #simulateur-redimensionneur { display: none; flex: 0 0 6px; min-height: 0; height: 100%;
+        cursor: col-resize; background: var(--fond-chrome-profond); }
+    #simulateur-redimensionneur:hover, #simulateur-redimensionneur.actif { background: #e67e22; }
+    #simulateur-redimensionneur.visible { display: block; }
     
     /* Le cadre porte la place occupee, la carte porte l'echelle. Un transform
        ne modifie pas la mise en page : sans ce cadre dont on ajuste la hauteur,
        la carte reduite laisserait un vide, ou la carte agrandie deborderait. */
-    #carte-cadre { width: 100%; margin-top: 20px; display: flex; justify-content: center;
-                   flex: 0 0 auto; }
+    /* Largeur fixe (pas 100%) : depuis que la carte est nichee dans
+       #simulateur-console (flex-wrap, voir plus haut), elle doit avoir sa
+       propre largeur pour que le retour a la ligne sache quand agir, plutot
+       que de s'etirer pour occuper toute la rangee. 210px = 280px (largeur
+       de la carte) x 0.75 (REDUCTION, voir adapterEchelleSimulateur) : la
+       largeur reellement occupee une fois la carte mise a l'echelle. */
+    #carte-cadre { width: 210px; flex: 0 0 auto; display: flex; justify-content: center; }
     #microbit-board {
         /* Coins bas peu arrondis (pas 25px) : sur la vraie carte, le bord du
            bas est quasiment droit — un grand rayon ici "grignotait" en
@@ -418,13 +467,13 @@
     .mb-edge-zone { cursor: pointer; fill: transparent; }
     .mb-edge-zone.mb-edge-zone-active { fill: rgba(0, 0, 0, 0.28); }
 
-    #run-sim { margin-top: 15px; background: #2ecc71; width: 100%; font-size: 16px; padding: 12px;}
+    #run-sim { background: #2ecc71; width: 100%; font-size: 16px; padding: 12px; box-sizing: border-box; margin: 0; }
     #run-sim:hover { background: #27ae60; }
 
     /* Le geste « secouer » n'a pas de zone cliquable sur la carte : il lui faut
        son propre bouton, sans quoi accelerometer.was_gesture() reste toujours
        faux et les blocs correspondants ne se declenchent jamais. */
-    #btn-shake { margin-top: 25px; background: #e67e22; width: 100%; font-size: 15px; padding: 10px; }
+    #btn-shake { background: #e67e22; width: 100%; font-size: 15px; padding: 10px; box-sizing: border-box; margin: 0; }
     #btn-shake:hover { background: #d35400; }
     @keyframes secousse {
         0%, 100% { transform: translateX(0) rotate(0deg); }
@@ -435,12 +484,18 @@
     }
     #microbit-board.secoue { animation: secousse 0.4s ease-in-out; }
 
-    #btn-reset { margin-top: 10px; background: #7f8c8d; width: 100%; font-size: 14px; padding: 9px; }
+    #btn-reset { background: #7f8c8d; width: 100%; font-size: 14px; padding: 9px; box-sizing: border-box; margin: 0; }
     #btn-reset:hover { background: #616a6b; }
 
     /* --- Peripheriques Grove --- */
-    #grove-panneau { width: 100%; margin-top: 22px; border-top: 1px solid var(--bordure-chrome); padding-top: 12px; }
-    #grove-panneau h4 { margin: 0 0 10px 0; color: #b39ddb; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+    /* Chaque module Grove actif (.grove-bloc) est une carte independante des
+       autres : meme principe d'adaptation que #simulateur-panneaux (plus
+       haut) applique un niveau plus bas, pour que les modules se rangent a
+       plusieurs par ligne des que le panneau Grove a la largeur pour — pas
+       seulement le panneau Grove entier face aux panneaux Piste/LiDAR. */
+    #grove-panneau { width: 100%; box-sizing: border-box; border-top: 1px solid var(--bordure-chrome); padding-top: 12px;
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 18px; align-items: start; }
+    #grove-panneau h4 { grid-column: 1 / -1; margin: 0 0 10px 0; color: #b39ddb; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
     .grove-bloc { margin-bottom: 12px; font-size: 12px; color: var(--texte-chrome); }
     .grove-titre { display: block; margin-bottom: 4px; color: #9fb3c8; }
     .grove-bloc label { display: block; margin: 3px 0; }
@@ -451,7 +506,7 @@
     /* --- Piste + robot : panneau PARTAGÉ par Maqueen Plus, Kitrobot v2 et
        Maqueen Lite (un seul robot affiché à la fois, celui dont les blocs
        sont posés — voir robotActifDetecte() dans un.js). --- */
-    #piste-panneau { width: 100%; margin-top: 22px; border-top: 1px solid var(--bordure-chrome); padding-top: 12px; }
+    #piste-panneau { width: 100%; box-sizing: border-box; border-top: 1px solid var(--bordure-chrome); padding-top: 12px; }
     #piste-panneau h4 { margin: 0 0 10px 0; color: #ffb74d; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
     .maqueen-piste-barre { display: flex; gap: 6px; margin-bottom: 8px; }
     #maqueen-piste-select { flex: 1; min-width: 0; box-sizing: border-box; padding: 6px;
@@ -619,8 +674,12 @@
         margin-top: 8px; font-size: 11px; color: var(--texte-chrome); flex-wrap: wrap; }
 
     /* --- LiDAR matriciel : pas de robot, juste trois curseurs --- */
-    #lidar-panneau { width: 100%; margin-top: 22px; border-top: 1px solid var(--bordure-chrome); padding-top: 12px; }
-    #lidar-panneau h4 { margin: 0 0 10px 0; color: #7986cb; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+    /* Meme adaptation que le panneau Grove ci-dessus : les 3 curseurs
+       (gauche/devant/droite) se rangent sur plusieurs colonnes si la largeur
+       le permet, au lieu de rester empiles verticalement dans tous les cas. */
+    #lidar-panneau { width: 100%; box-sizing: border-box; border-top: 1px solid var(--bordure-chrome); padding-top: 12px;
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 18px; align-items: start; }
+    #lidar-panneau h4 { grid-column: 1 / -1; margin: 0 0 10px 0; color: #7986cb; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
 
     /* Maqueen Lite partage désormais #piste-panneau (voir plus haut) : plus
        de panneau séparé, seulement des sections #maqueenlite-extra/robot. */
@@ -736,25 +795,28 @@
   <div id="toolbar">
     <img src="logo.png" alt="Logo" style="height: 30px; margin-right: 15px; vertical-align: middle;">
     <div id="menu-fichier-conteneur">
-      <button id="menu-fichier-btn">📁 Fichier ▾</button>
+      <button id="menu-fichier-btn"><span class="icone-bouton">📁</span> Fichier ▾</button>
       <div id="menu-fichier-panneau">
-        <button id="download-btn">⬇ Télécharger le fichier .hex</button>
-        <button id="download-py-btn">⬇ Télécharger le script .py</button>
+        <button id="nouveau-projet-btn"><span class="icone-bouton">🆕</span> Nouveau projet</button>
         <div class="menu-fichier-separateur"></div>
-        <button id="import-hex-btn">⬆ Importer un fichier .hex</button>
-        <button id="import-py-btn">⬆ Importer un script .py</button>
+        <button id="download-btn"><span class="icone-bouton">⬇</span> Télécharger le fichier .hex</button>
+        <button id="download-py-btn"><span class="icone-bouton">⬇</span> Télécharger le script .py</button>
+        <div class="menu-fichier-separateur"></div>
+        <button id="import-hex-btn"><span class="icone-bouton">⬆</span> Importer un fichier .hex</button>
+        <button id="import-py-btn"><span class="icone-bouton">⬆</span> Importer un script .py</button>
         <input type="file" id="import-hex-input" accept=".hex" style="display:none;">
         <input type="file" id="import-py-input" accept=".py" style="display:none;">
-        <div class="menu-fichier-separateur"></div>
-        <button id="capture-ecran-btn">📷 Capture d'écran des blocs (.png)</button>
       </div>
     </div>
-    <button id="btn-envoyer" title="Écrire le programme sur le lecteur MICROBIT">📤 Envoyer sur la carte</button>
-    <button id="btn-options" class="btn-vue" title="Panneau administrateur">⚙</button>
+    <button id="capture-ecran-btn" title="Télécharger une image PNG des blocs"><span class="icone-bouton">📷</span> Capture d'écran des blocs (.png)</button>
+    <button id="btn-envoyer" title="Écrire le programme sur le lecteur MICROBIT"><span class="icone-bouton">📤</span> Envoyer sur la carte</button>
+    <button id="btn-annuler" class="btn-vue" title="Annuler (Ctrl+Z)"><span class="icone-bouton">↶</span> Annuler</button>
+    <button id="btn-refaire" class="btn-vue" title="Refaire (Ctrl+Maj+Z)"><span class="icone-bouton">↷</span> Refaire</button>
+    <button id="btn-options" class="btn-vue" title="Panneau administrateur"><span class="icone-bouton">⚙</span></button>
     <button id="btn-vue-code" class="btn-vue" title="Afficher ou masquer la transcription MicroPython">Code</button>
     <button id="btn-vue-simu" class="btn-vue" title="Afficher ou masquer le simulateur">Simulateur</button>
-    <button id="btn-theme" class="btn-vue" title="Passer au thème clair">🌙</button>
-    <button id="btn-contraste" class="btn-vue" title="Passer en contraste élevé">◐</button>
+    <button id="btn-theme" class="btn-vue" title="Passer au thème clair"><span class="icone-bouton">🌙</span></button>
+    <button id="btn-contraste" class="btn-vue" title="Passer en contraste élevé"><span class="icone-bouton">◐</span></button>
     <span id="copyright-toolbar">🄯 RAJ Editions</span>
     <span id="zoom-groupe">
       <button id="btn-zoom-moins" class="btn-zoom" title="Réduire les blocs">−</button>
@@ -780,8 +842,10 @@
       <div id="code-display">Le code s'affichera ici...</div>
       <textarea id="code-edit" spellcheck="false"></textarea>
     </div>
+    <div id="simulateur-redimensionneur" title="Glisser pour redimensionner le simulateur"></div>
     <div id="simulator-container">
       <h3>Simulateur visuel <span id="mb-version-tag">V2</span></h3>
+      <div id="simulateur-console">
       <div id="carte-cadre">
       <div id="microbit-board">
           <div class="mb-accent"></div>
@@ -922,10 +986,14 @@
           </div>
       </div>
       </div>
+      <div id="simulateur-actions">
       <button id="btn-shake">🤚 Secouer la carte</button>
       <button id="run-sim">▶ Lancer la simulation</button>
       <button id="btn-reset">⟲ Réinitialiser la simulation</button>
+      </div>
+      </div>
 
+      <div id="simulateur-panneaux">
       <div id="grove-panneau">
         <h4>Périphériques</h4>
 
@@ -1295,6 +1363,7 @@
           <label class="grove-titre" for="lidar-droite">Droite : <b id="lidar-droite-val">1000</b> mm</label>
           <input type="range" id="lidar-droite" min="0" max="2000" value="1000">
         </div>
+      </div>
       </div>
 
     </div>

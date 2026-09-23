@@ -1143,6 +1143,243 @@ la cascade CSS, en dessous de n'importe quelle règle d'auteur — `!important`
 n'est même pas strictement nécessaire ici, juste une garantie bon marché.
 Aucune modification du JS qui construit les blocs.
 
+**PIÈGE nº 46 — un SVG exporté seul (comme image autonome) a son PROPRE
+`:root`, qui n'est pas le `<html>` de la page.** Fonction "capture d'écran
+des blocs → PNG" (menu Fichier) : le premier jet réutilisait telles quelles
+les règles CSS `[data-theme="light"] ...`/`[data-contrast="high"] ...` du
+§11 en les recopiant (via `document.styleSheets`) dans un `<style>` intégré
+au SVG exporté. Ça fonctionne pour toutes les règles à sélecteur direct,
+mais échoue silencieusement pour celles écrites `:root[data-contrast="high"]
+.blocklyPath` : dans un document dont l'élément racine EST le `<svg>` (ce
+qui est le cas dès qu'on le charge seul dans une `<img>`, hors de la page),
+`:root` désigne ce `<svg>`, pas le `<html>` de la page d'origine — l'attribut
+`data-contrast="high"` vit sur le `<html>` de la page, jamais copié dans le
+SVG exporté, donc la règle ne correspond jamais et le contraste élevé
+exportait silencieusement les couleurs normales (blocs verts au lieu de
+noir/blanc). Repéré uniquement en comparant visuellement la capture aux 4
+combinaisons thème/contraste — un simple test « le PNG se télécharge » ne
+l'aurait pas révélé. Correction : recopier `data-theme`/`data-contrast`
+directement comme attributs du `<svg>` exporté lui-même :
+
+```js
+svgExport.setAttribute('data-theme', document.documentElement.dataset.theme || '');
+svgExport.setAttribute('data-contrast', document.documentElement.dataset.contrast || '');
+```
+
+Rappel plus général : `.blocklyText` n'a **aucun** attribut `fill` posé par
+Blockly (contrairement à `.blocklyPath`) — son rendu dépend à 100 % des
+feuilles de style, que Blockly injecte dans `<head>` et jamais dans le
+`<svg>` lui-même. Un SVG exporté sans recopier ces règles affiche donc des
+blocs sans aucun texte.
+
+Demande de suivi : sortir le bouton "Capture d'écran des blocs" du menu
+"Fichier" pour en faire un bouton autonome de la barre d'outils, entre
+"Fichier" et "Envoyer sur la carte" — pur déplacement de balisage HTML
+(retiré de `#menu-fichier-panneau`, inséré juste après `</div>` du menu),
+aucun changement du JS de capture lui-même ni de son style (`#capture-ecran-btn`
+gardait déjà sa propre couleur, indépendante des règles `#menu-fichier-panneau
+button`).
+
+**PIÈGE nº 47 — `workspace.undo()` déclenche le change listener général
+AVANT que la pile "refaire" ne soit à jour.** Boutons "Annuler"/"Refaire"
+ajoutés à droite de "Envoyer sur la carte", exposant `workspace.undo(false)`/
+`workspace.undo(true)` (API publique existante, avec `getUndoStack()`/
+`getRedoStack()` — pas besoin de manipuler des piles privées). Premier jet :
+un seul `addChangeListener` recalculant `disabled` à partir de la longueur
+des deux piles, en croyant qu'il suffisait pour tous les cas (glisser un
+bloc, annuler, refaire). Testé par un aller-retour complet piloté au clavier/
+souris (glisser un bloc, cliquer Annuler, cliquer Refaire, vérifier la
+position ET l'état des boutons à chaque étape) : après un clic sur
+« Annuler », le bouton « Refaire » restait grisé à tort alors que
+`getRedoStack().length === 1` juste après — le listener général s'était
+bien déclenché, mais avant que `redoStack_` ne soit repeuplée en interne.
+Un appel manuel de la même fonction de rafraîchissement juste après, hors du
+listener, donnait immédiatement le bon résultat. Corrigé en rafraîchissant
+explicitement l'état des deux boutons dans le gestionnaire de clic
+lui-même, juste après l'appel à `undo()`, en plus du `addChangeListener`
+conservé pour les autres cas (glisser un bloc, etc.) :
+
+```js
+boutonAnnuler.addEventListener('click', () => {
+    window.workspace.undo(false);
+    mettreAJourAnnulerRefaire();
+});
+```
+
+Piège à retenir plus généralement : ne pas supposer qu'un `addChangeListener`
+Blockly se déclenche APRÈS la mise à jour complète de l'état interne
+déclenchant l'événement — à vérifier au cas par cas plutôt qu'à supposer,
+en particulier pour tout ce qui touche aux piles annuler/refaire.
+
+**PIÈGE nº 48 — `element.textContent = ...` efface TOUS les enfants, pas
+seulement le texte visible.** Demande : « réduire la taille des icônes » de
+la barre d'outils. Chaque emoji (📁 📷 📤 ↶ ↷ ⚙ 🌙 ◐ ⬇ ⬆) enveloppé dans
+`<span class="icone-bouton">` avec un `font-size` réduit, pour ne pas
+toucher à la taille du texte du bouton. Ça casse silencieusement le bouton
+thème : `appliquerTheme()` faisait `btnTheme.textContent = clair ? '☀️' :
+'🌙'` pour changer l'icône au clic — correct tant que le bouton ne contenait
+QUE du texte, mais `.textContent =` remplace la totalité du contenu par un
+seul nœud texte, supprimant donc le `<span>` nouvellement ajouté (le bouton
+perd sa réduction de taille dès le premier clic sur le thème). Corrigé en
+ciblant le span lui-même plutôt que le bouton :
+
+```js
+const icone = btnTheme.querySelector('.icone-bouton') || btnTheme;
+icone.textContent = clair ? '☀️' : '🌙';
+```
+
+Piège à retenir plus généralement : toute réécriture ultérieure de
+`textContent`/`innerHTML` sur un élément qu'on vient d'enrichir avec du
+balisage interne (icône, badge, etc.) doit être relue et corrigée en même
+temps — sinon la régression n'apparaît qu'au premier clic, pas à l'oeil au
+chargement de la page.
+
+**PIÈGE nº 49 — un geste ponctuel (bouton, broche) réutilisant le bouton
+« Lancer la simulation » comme déclencheur casse tout s'il est réutilisé SANS
+regarder si un passage est déjà en cours.** Le simulateur n'exécute jamais le
+programme en continu : un clic sur « Lancer la simulation » (`lancer_simulation`,
+Brython) repart de zéro (file vidée, objets Grove/servos réinitialisés, code
+ré-exécuté depuis le haut) puis enchaîne EXACTEMENT 5 tours de la première
+boucle infinie (`window.simu_lancerTours(5)`, avec de vrais délais entre
+chaque tour pour laisser un robot bouger — voir §14). `lierCapteurTactile()`
+(bouton A/B, logo, broches 0/1/2) suit le même schéma que « Secouer la
+carte » : poser un drapeau puis appeler `btnLancer.click()` pour que le
+programme le voie. Ce schéma est correct quand la simulation est INACTIVE
+(rien d'autre ne la ferait avancer), mais devient un bug quand un passage de
+5 tours est DÉJÀ en train de tourner : l'appui redéclenche `lancer_simulation`
+en plein milieu, qui repart de zéro — position du robot perdue, musique de
+« Au démarrage » rejouée, etc. — alors que le passage déjà en cours aurait
+tout simplement lu le drapeau au tour suivant, sans rien redémarrer. Corrigé
+par un drapeau `window.simuEnCours` (vrai pendant les 5 tours, faux entre
+deux passages et pendant la réinitialisation) : `lierCapteurTactile()` ne
+relance `btnLancer.click()` que si `!window.simuEnCours`, sinon se contente
+de poser le drapeau. Vérifié avec un programme à `sleep(1000)` dans la
+boucle (fenêtre de plusieurs secondes réelles pour tester un appui pendant
+un passage) et un compteur des démarrages effectifs (`simu_lancerTours`
+appelé avec `n === 5`) : appui pendant un passage → 0 nouveau démarrage,
+drapeau quand même posé ; appui une fois inactif → démarrage normal. Portée
+délibérément limitée à `lierCapteurTactile()` : « Secouer la carte » et
+« Simuler la réception » radio utilisent un code séparé, non touché (geste
+ponctuel plutôt que maintenu, sémantique différente, pas demandé).
+
+Suivi immédiat, même signalement : « un appui sur A/B/broches 0-1-2/logo
+déclenche la simulation même si aucun de ces connecteurs [n'est] affecté ».
+Le drapeau `simuEnCours` ci-dessus ne réglait que la moitié du problème : il
+évite de redémarrer un passage déjà en cours, mais n'importe quel appui
+déclenchait quand même un PREMIER passage, même si le programme n'utilisait
+aucunement ce capteur précis (ex. appuyer sur la broche 2 alors que le
+programme ne lit que le bouton A) — un passage inutile, sans aucun effet
+visible puisque rien dans le code ne le regarde, mais qui rejoue quand même
+toute la mise en scène (musique de démarrage, mouvement du robot...).
+`lierCapteurTactile()` reçoit un 3ᵉ paramètre, l'identifiant MicroPython
+correspondant (`button_a`, `pin0`...) : `btnLancer.click()` n'est appelé que
+si `window.currentPythonCode.includes(identifiant)`. Recherche de
+sous-chaîne volontairement grossière (pas une analyse du code) : elle
+couvre aussi bien `button_a.is_pressed()` que les gestionnaires « lorsque »
+générés (`on_button_pressed_a`, qui scrutent le même identifiant en
+interne), et un faux positif (l'identifiant apparaît pour une tout autre
+raison) ne fait que retomber sur l'ancien comportement — inoffensif, jamais
+pire. Vérifié dans le navigateur : programme n'utilisant que `button_a` →
+B/logo/broches 0/1/2 ne déclenchent plus rien (0 démarrage chacun), A
+fonctionne toujours ; programme par défaut (`pass`) → aucun des 6 appuis ne
+déclenche quoi que ce soit ; programme utilisant `pin1` → la broche 1
+déclenche bien un passage (la détection n'est pas limitée aux boutons A/B).
+
+Deuxième suivi, même signalement : « le problème reste avec la broche 1 ».
+La recherche de sous-chaîne ci-dessus avait un angle mort précis à `pin1` :
+`"pin12".includes("pin1")` (comme `pin13`...`pin16`, des broches Grove
+valides et courantes, sans rapport avec la broche tactile 1) vaut `true` —
+confirmé en isolant le cas avant de corriger (programme n'utilisant QUE
+`pin12` → la broche 1 virtuelle déclenchait quand même un passage).
+`button_a`/`button_b`/`pin_logo`/`pin0`/`pin2` n'ont pas cet angle mort :
+aucun autre identifiant du jeu de broches ne les contient en préfixe, seul
+`pin1` est le préfixe de `pin12`...`pin16`. Remplacé par une recherche à
+limites de mot (`new RegExp('\\b' + identifiantPython + '\\b')`) : `\b` ne
+marque pas de limite entre le `1` de `pin1` et le `2` de `pin12` — les deux
+sont des caractères de mot — donc le motif ne correspond plus à l'intérieur
+de `pin12`. Vérifié dans le navigateur : programme utilisant `pin12`+`pin13`
+→ broche 1 virtuelle inerte (0 démarrage, contre 1 avant correction) ;
+programme utilisant réellement `pin1` → déclenche toujours normalement.
+
+Piège de méthode de test rencontré en vérifiant la non-régression : un
+premier essai enchaînant plusieurs appuis coup sur coup (50 ms d'attente
+entre chacun) a semblé montrer que `btn-a` ne déclenchait plus rien du
+tout — inquiétant, mais faux : un passage précédent (5 tours avec de vrais
+délais) n'avait simplement pas eu le temps de finir, laissant `simuEnCours`
+à `true` et bloquant le suivant pour la bonne raison (déjà en cours), pas à
+cause de ce correctif. Réisolé avec une attente suffisante entre chaque
+essai : `btn-a` fonctionne normalement. À retenir plus généralement : un
+test qui enchaîne plusieurs déclenchements du simulateur doit attendre la
+fin du passage précédent (`simuEnCours === false`) avant le suivant, sous
+peine de conclusions erronées.
+
+**PIÈGE nº 50 — recalculer un état dérivé À CHAQUE passage, au lieu de
+réagir aux seules TRANSITIONS, écrase silencieusement tout ce que
+l'utilisateur a choisi entre deux passages.** Signalé par l'utilisateur,
+capture d'écran du menu contextuel à l'appui : « la fonction "Activer le
+bloc" n'a pas l'air de fonctionner ». `mettreAJourBlocsOrphelins()` (§ blocs
+orphelins désactivés, plus haut) recalculait `actif` (le bloc est-il
+accroché à un conteneur légitime ?) à chaque passage sur `getAllBlocks()` et
+appelait `setEnabled(actif)` sans condition — y compris quand `actif`
+n'avait pas changé depuis le dernier passage. Le clic sur « Activer le
+bloc » (menu contextuel NATIF de Blockly, pas du code de ce projet)
+déclenche lui-même un événement de changement d'espace de travail, qui
+relance ce listener : pour un bloc toujours orphelin, `actif` reste `false`,
+donc `setEnabled(false)` réécrase aussitôt le choix de l'utilisateur — sans
+message, sans clignotement visible, juste un bouton qui « ne fait rien ».
+Deuxième effet de bord, plus grave, découvert en creusant : ça cassait
+« Désactiver le bloc » pour n'IMPORTE QUEL bloc correctement accroché — une
+fonctionnalité Blockly native, sans aucun rapport avec les orphelins,
+entièrement neutralisée par effet de bord. Corrigé en mémorisant le dernier
+état structurel connu de chaque bloc (`bloc.legitimeOrphelin_`, une
+propriété posée directement dessus) et en ne rappelant `setEnabled()` que
+si cet état vient de changer :
+
+```js
+function mettreAJourBlocsOrphelins() {
+    for (const bloc of window.workspace.getAllBlocks(false)) {
+        const legitime = estContainerLegitime(bloc.getRootBlock());
+        const etaitLegitime = bloc.legitimeOrphelin_;
+        if (etaitLegitime === undefined || legitime !== etaitLegitime) {
+            bloc.setEnabled(legitime);
+        }
+        bloc.legitimeOrphelin_ = legitime;
+    }
+}
+```
+
+Entre deux transitions (accroché ↔ détaché), l'état choisi par l'utilisateur
+reste intact ; à la transition elle-même, le comportement automatique
+d'origine (désactiver un bloc qui se détache, réactiver un bloc qui se
+rattache) continue de s'appliquer sans exception à mémoriser à la main.
+Vérifié avec de vrais clics de menu contextuel Blockly (coordonnées lues
+depuis `getBoundingClientRect()` des `.blocklyMenuItem` réels, pas un appel
+programmatique à `setEnabled()` — qui, lui, ne déclenche pas forcément le
+même événement de changement, un piège de méthode de test à part entière,
+rencontré en essayant de reproduire le bug avant de le corriger).
+
+Piège à retenir plus généralement : un listener qui recalcule un état à
+partir de zéro à chaque déclenchement, plutôt que de comparer à l'état
+précédent, ne peut pas cohabiter avec une action manuelle sur ce même état
+— quelle que soit sa source (menu contextuel natif, futur bouton, etc.).
+Comparer avant d'agir, pas juste appliquer.
+
+**PIÈGE nº 51 — le texte d'un `beforeunload` ne s'affiche jamais.** Demande
+de l'utilisateur : une confirmation « Êtes-vous sûr ? » à la fermeture de
+l'appli. `window.addEventListener('beforeunload', e => { e.preventDefault();
+e.returnValue = ''; })` est le seul mécanisme JS pour ça — mais tous les
+navigateurs modernes (depuis ~2011, contre les faux messages d'alerte
+trompeurs) ignorent délibérément tout texte personnalisé passé via
+`e.returnValue` ou `return` : ils affichent toujours leur propre message
+générique et non traduisible depuis le code (« Quitter le site ? »/« Leave
+site? » selon la langue du navigateur, pas celle de la page). Vérifié en
+lisant la spec avant d'essayer d'y passer le texte exact demandé — inutile
+d'y perdre du temps, seul `e.preventDefault()` compte, le texte n'a plus
+d'effet depuis longtemps. Se limite en plus à la fermeture d'onglet/fenêtre,
+au rechargement (F5) et à la navigation qui quitte la page — aucune barre
+d'outils/action interne à l'appli (téléchargement, envoi sur la carte) ne
+déclenche cet événement, ce n'est jamais qu'une navigation qui le fait.
+
 ## 12. Panneau administrateur
 
 Extension du principe du §5 (`updateToolbox` à chaud) en un vrai panneau à

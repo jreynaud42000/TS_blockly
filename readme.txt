@@ -167,6 +167,14 @@ MakeCode ne le reconnait pas. L'inverse est vrai aussi, un .hex MakeCode n'a pas
 de main.py.
 
 Ce qui fonctionne :
+- Menu "Fichier" > "Nouveau projet" : efface les blocs actuels et repart de
+  "Au demarrage" + "Repeter indefiniment", apres confirmation (rien n'est
+  jamais sauvegarde automatiquement, telechargez le programme actuel avant
+  si besoin).
+- Fermer l'onglet, recharger la page (F5) ou naviguer ailleurs declenche
+  la confirmation de fermeture du navigateur, pour la meme raison (rien
+  n'est sauvegarde automatiquement). Le texte exact de cette confirmation
+  est impose par le navigateur, pas par l'appli.
 - Sur la carte : glisser le .hex sur le lecteur MICROBIT. C'est l'essentiel.
 - Pour rouvrir un programme : menu "Fichier" > "Importer un fichier .hex" (ou
   ".py"). Meme bibliotheque microbit-fs que pour l'ecriture, utilisee cette
@@ -177,6 +185,26 @@ Ce qui fonctionne :
   meme chose (et fonctionne donc aussi), mais n'est plus necessaire.
 - Le bouton "Telecharger le script .py" donne le fichier directement ouvrable
   dans l'editeur Python officiel ou dans Mu.
+- Bouton "Capture d'ecran des blocs (.png)", dans la barre d'outils entre
+  "Fichier" et "Envoyer sur la carte" : telecharge une image PNG de tous les
+  blocs poses, telle qu'affiches a l'ecran a l'instant du clic (couleurs et
+  texte fideles au theme clair/sombre et au contraste normal/eleve en cours -
+  voir section theme plus haut).
+- Boutons "Annuler"/"Refaire", a droite de "Envoyer sur la carte" : annulent
+  ou refont la derniere action sur les blocs (equivalent des raccourcis
+  Ctrl+Z / Ctrl+Maj+Z, deja actifs par defaut). Grises tant qu'il n'y a rien
+  a annuler ou a refaire.
+- Quand le bouton "Code" est desactive (transcription masquee), une poignee
+  apparait entre la zone de blocs et le simulateur : glisser vers la gauche
+  agrandit le simulateur, vers la droite le reduit. La carte micro:bit, les
+  boutons et les panneaux (Peripheriques, Piste, LiDAR) gardent toujours la
+  meme taille : agrandir le panneau les reorganise plutot que de les etirer
+  - la carte et les 3 boutons se placent cote a cote si la largeur le permet,
+  et les panneaux peuvent se ranger a deux par ligne.
+- La colonne de categories (Temps, Affichage, Capteurs...) se masque le temps
+  de glisser un bloc - qu'il vienne d'etre pris dans le tiroir ou qu'il soit
+  deja pose sur l'espace de travail - et reapparait des que le bloc est
+  lache, pour laisser toute la place a la zone de blocs pendant le geste.
 
 Attention : la "Python" de MakeCode n'est pas MicroPython mais une variante de
 TypeScript a syntaxe Python. Le .py n'y est pas exploitable non plus.

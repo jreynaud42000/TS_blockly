@@ -4414,11 +4414,16 @@ try {
     // Emboites d'office via "next" (le bloc "Au démarrage" a une encoche du
     // bas depuis la demande de l'utilisateur) plutot que juste juxtaposes :
     // meme rendu que MakeCode des l'ouverture, sans action de l'utilisateur.
-    if (!window.workspace.getTopBlocks(false).length) {
+    // Reutilisee par « Nouveau projet » (menu Fichier, plus bas), d'ou le nom
+    // de fonction plutot qu'un bloc de code execute une seule fois ici.
+    function chargerEspaceDeDepart() {
         Blockly.serialization.workspaces.load({ blocks: { languageVersion: 0, blocks: [
             { type: 'au_demarrage', x: 40, y: 40,
               next: { block: { type: 'boucle_infinie' } } }
         ]}}, window.workspace);
+    }
+    if (!window.workspace.getTopBlocks(false).length) {
+        chargerEspaceDeDepart();
     }
 
     // ------------------------------------------
@@ -5112,25 +5117,126 @@ try {
     // sur la catégorie Grove il ne restait presque plus rien pour travailler.
     // Replier la transcription ou le simulateur rend cette largeur au canevas.
 
+    const resizerSimulateur = document.getElementById('simulateur-redimensionneur');
+    const conteneurCode = document.getElementById('code-container');
+    const conteneurSimulateur = document.getElementById('simulator-container');
+
+    /**
+     * La poignee de redimensionnement du simulateur n'a de sens que quand la
+     * transcription est masquee : c'est le seul cas ou sa bordure gauche
+     * touche directement la zone de blocs plutot que le panneau de code.
+     */
+    function synchroniserResizerSimulateur() {
+        if (!resizerSimulateur) return;
+        resizerSimulateur.classList.toggle('visible',
+            conteneurCode.classList.contains('replie') &&
+            !conteneurSimulateur.classList.contains('replie'));
+    }
+
     function basculerPanneau(bouton, panneau) {
         const replie = panneau.classList.toggle('replie');
         bouton.classList.toggle('inactif', replie);
         // Blockly ne s'apercoit pas tout seul qu'on lui a rendu de la place.
         Blockly.svgResize(window.workspace);
         adapterEchelleSimulateur();
+        synchroniserResizerSimulateur();
     }
 
     const btnVueCode = document.getElementById('btn-vue-code');
     const btnVueSimu = document.getElementById('btn-vue-simu');
     if (btnVueCode) {
         btnVueCode.addEventListener('click', () =>
-            basculerPanneau(btnVueCode, document.getElementById('code-container')));
+            basculerPanneau(btnVueCode, conteneurCode));
     }
     if (btnVueSimu) {
         btnVueSimu.addEventListener('click', () =>
-            basculerPanneau(btnVueSimu, document.getElementById('simulator-container')));
+            basculerPanneau(btnVueSimu, conteneurSimulateur));
     }
     window.addEventListener('resize', () => Blockly.svgResize(window.workspace));
+
+    // ------------------------------------------
+    // MASQUER LA COLONNE DE CATEGORIES PENDANT UN GLISSER DE BLOC
+    // ------------------------------------------
+    // Demande de l'utilisateur : la colonne (Temps, Affichage, Capteurs...)
+    // masquee le temps qu'un bloc soit glisse, qu'il vienne d'etre pris dans
+    // le tiroir ou deja pose sur l'espace de travail (« dans les 2 cas »),
+    // pour rendre le maximum de place a la zone de blocs pendant le geste.
+    // Le tiroir (la liste de blocs qui s'ouvre a cote d'une categorie), lui,
+    // se referme deja tout seul des le debut du glisser (`autoClose`,
+    // comportement Blockly par defaut) — seule la colonne elle-meme restait
+    // affichee jusqu'ici.
+    //
+    // `Blockly.Events.BLOCK_DRAG` (= 'drag') se declenche avec `isStart` a
+    // true puis false, aussi bien pour un bloc deja sur l'espace de travail
+    // que pour un bloc tout juste sorti du tiroir (Blockly fait passer les
+    // deux par le meme mecanisme de geste en interne) — verifie en direct
+    // dans le navigateur avant d'ecrire ce code plutot que suppose.
+    // `toolbox.setVisible()` s'occupe lui-meme de rendre l'espace a la zone
+    // de blocs (verifie : largeur de la zone de travail passee de 487 a
+    // 666px une fois la colonne masquee), `Blockly.svgResize()` reste
+    // necessaire ensuite car Blockly ne s'apercoit jamais tout seul qu'on
+    // lui a change sa place (meme motif que partout ailleurs dans ce fichier).
+    const boiteAOutils = window.workspace.getToolbox();
+    if (boiteAOutils) {
+        window.workspace.addChangeListener((evenement) => {
+            if (evenement.type !== Blockly.Events.BLOCK_DRAG) return;
+            boiteAOutils.setVisible(!evenement.isStart);
+            Blockly.svgResize(window.workspace);
+        });
+    }
+
+    // ------------------------------------------
+    // REDIMENSIONNEMENT DU SIMULATEUR PAR GLISSER (transcription masquee)
+    // ------------------------------------------
+    // Demande de l'utilisateur : agrandir/reduire le panneau simulateur en
+    // glissant sa bordure gauche, uniquement quand "Code" est masque (seul
+    // cas ou cette poignee separe directement le simulateur de la zone de
+    // blocs — voir synchroniserResizerSimulateur ci-dessus). La largeur du
+    // conteneur passe d'un pourcentage (`flex: 0 0 24%`) a une valeur fixe
+    // en pixels pendant le glisser. La carte micro:bit, elle, garde une
+    // taille fixe (voir adapterEchelleSimulateur, plus bas) : elle se
+    // recentre toute seule dans l'espace disponible via `align-items:
+    // center`, sans rien a recalculer ici. Blockly, lui, ne s'apercoit
+    // jamais tout seul qu'on lui a change sa place.
+    if (resizerSimulateur && conteneurSimulateur) {
+        let xDepart = 0;
+        let largeurDepart = 0;
+
+        function deplacerResizerSimulateur(evenement) {
+            // La poignee est a gauche du panneau : glisser vers la gauche
+            // (delta negatif) l'agrandit, glisser vers la droite le reduit.
+            const largeurBrute = largeurDepart - (evenement.clientX - xDepart);
+            // Plafond calcule a la volee (pas un pourcentage fixe) pour que
+            // la zone de blocs garde toujours au moins son min-width CSS
+            // (260px) : #blockly-wrapper a flex-shrink actif mais pas
+            // #simulator-container une fois sa largeur fixee en pixels, donc
+            // rien d'autre ne l'empecherait de deborder.
+            const largeurMax = document.getElementById('main-container').clientWidth - 260 - 6;
+            const nouvelleLargeur = Math.max(250, Math.min(largeurMax, largeurBrute));
+            conteneurSimulateur.style.flex = `0 0 ${nouvelleLargeur}px`;
+            Blockly.svgResize(window.workspace);
+        }
+
+        function relacherResizerSimulateur() {
+            document.removeEventListener('mousemove', deplacerResizerSimulateur);
+            document.removeEventListener('mouseup', relacherResizerSimulateur);
+            resizerSimulateur.classList.remove('actif');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+
+        resizerSimulateur.addEventListener('mousedown', (evenement) => {
+            if (!conteneurCode.classList.contains('replie')) return;
+            xDepart = evenement.clientX;
+            largeurDepart = conteneurSimulateur.getBoundingClientRect().width;
+            resizerSimulateur.classList.add('actif');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            document.addEventListener('mousemove', deplacerResizerSimulateur);
+            document.addEventListener('mouseup', relacherResizerSimulateur);
+            evenement.preventDefault();
+        });
+    }
 
     // ------------------------------------------
     // THÈME CLAIR / SOMBRE, ET CONTRASTE NORMAL / ÉLEVÉ
@@ -5210,7 +5316,11 @@ try {
         document.documentElement.dataset.theme = clair ? 'light' : '';
         appliquerThemeBlockly();
         if (btnTheme) {
-            btnTheme.textContent = clair ? '☀️' : '🌙';
+            // `.textContent` sur le bouton lui-même effacerait le <span
+            // class="icone-bouton"> (taille réduite) posé autour de l'icône :
+            // on cible ce span, avec repli sur le bouton si jamais absent.
+            const icone = btnTheme.querySelector('.icone-bouton') || btnTheme;
+            icone.textContent = clair ? '☀️' : '🌙';
             btnTheme.title = clair ? 'Passer au thème sombre' : 'Passer au thème clair';
         }
         try { localStorage.setItem('themeApp', clair ? 'light' : 'dark'); }
@@ -5681,11 +5791,33 @@ try {
      * type d'emboîtement (pile "suivant", entrée d'instruction, entrée de
      * valeur), donc un bloc qui devient correctement accroché est
      * automatiquement réactivé au prochain passage, sans cas particulier.
+     *
+     * Ne réagit qu'aux TRANSITIONS (orphelin ↔ rattaché), pas à chaque appel :
+     * un premier jet forçait `setEnabled(actif)` à chaque passage, donc sur
+     * CHAQUE changement de l'espace de travail — y compris le menu contextuel
+     * natif de Blockly « Activer/Désactiver le bloc », dont le clic déclenche
+     * lui-même un changement, aussitôt écrasé au passage suivant. Signalé par
+     * l'utilisateur : « la fonction Activer le bloc n'a pas l'air de
+     * fonctionner » — en fait le clic fonctionnait bel et bien, mais ce
+     * correctif le rétablissait desactivé une fraction de seconde plus tard,
+     * silencieusement. Pire : un bloc correctement accroché mais désactivé À
+     * LA MAIN (pour le mettre de côté sans le retirer) se retrouvait réactivé
+     * de force au même titre, cassant cette fonctionnalité native de Blockly
+     * pour TOUT bloc, pas seulement les orphelins. Mémoriser le dernier état
+     * structurel connu de chaque bloc (`legitimeOrphelin_`, propriété posée
+     * directement dessus) permet de ne forcer `setEnabled()` que lorsque cet
+     * état vient de changer (accroché → détaché, ou l'inverse) ; entre deux
+     * transitions, l'état choisi par l'utilisateur — via le menu contextuel —
+     * reste intact.
      */
     function mettreAJourBlocsOrphelins() {
         for (const bloc of window.workspace.getAllBlocks(false)) {
-            const actif = estContainerLegitime(bloc.getRootBlock());
-            if (bloc.isEnabled() !== actif) bloc.setEnabled(actif);
+            const legitime = estContainerLegitime(bloc.getRootBlock());
+            const etaitLegitime = bloc.legitimeOrphelin_;
+            if (etaitLegitime === undefined || legitime !== etaitLegitime) {
+                bloc.setEnabled(legitime);
+            }
+            bloc.legitimeOrphelin_ = legitime;
         }
     }
     window.blocsOrphelinsTest = { estContainerLegitime, mettreAJourBlocsOrphelins };
@@ -5702,6 +5834,37 @@ try {
     }
     window.workspace.addChangeListener(updatePythonCode);
     updatePythonCode();
+
+    // ------------------------------------------
+    // ANNULER / REFAIRE
+    // ------------------------------------------
+    // Blockly gere deja sa propre pile annuler/refaire (et les raccourcis
+    // clavier Ctrl+Z / Ctrl+Maj+Z) ; ces deux boutons ne font qu'exposer
+    // `workspace.undo()` dans la barre d'outils, avec le meme grisage que
+    // les autres boutons desactives (`disabled`, pas la classe `.inactif`
+    // qui sert aux boutons a bascule comme le theme).
+    const boutonAnnuler = document.getElementById('btn-annuler');
+    const boutonRefaire = document.getElementById('btn-refaire');
+    function mettreAJourAnnulerRefaire() {
+        if (boutonAnnuler) boutonAnnuler.disabled = window.workspace.getUndoStack().length === 0;
+        if (boutonRefaire) boutonRefaire.disabled = window.workspace.getRedoStack().length === 0;
+    }
+    // `workspace.undo()` déclenche bien le change listener général, mais
+    // celui-ci s'exécute avant que la pile inverse (refaire) ne soit à jour :
+    // constaté en testant un aller-retour annuler/refaire complet, où le
+    // bouton restait grisé à tort. On rafraîchit donc aussi explicitement
+    // juste après l'appel, en plus du change listener pour les autres cas
+    // (glisser un bloc, etc.).
+    if (boutonAnnuler) boutonAnnuler.addEventListener('click', () => {
+        window.workspace.undo(false);
+        mettreAJourAnnulerRefaire();
+    });
+    if (boutonRefaire) boutonRefaire.addEventListener('click', () => {
+        window.workspace.undo(true);
+        mettreAJourAnnulerRefaire();
+    });
+    window.workspace.addChangeListener(mettreAJourAnnulerRefaire);
+    mettreAJourAnnulerRefaire();
 
     // ------------------------------------------
     // ÉDITION MANUELLE DU CODE
@@ -5766,6 +5929,48 @@ try {
     };
 
     // ------------------------------------------
+    // NOUVEAU PROJET — menu "Fichier"
+    // ------------------------------------------
+    // Demande de l'utilisateur. Efface les blocs actuels et recharge l'espace
+    // de depart (« Au démarrage » + « Répéter indéfiniment »), comme au tout
+    // premier chargement de la page — confirmation prealable car rien n'est
+    // jamais sauvegarde automatiquement (voir aussi la confirmation de
+    // fermeture juste apres, meme raison).
+    const nouveauProjetBtn = document.getElementById('nouveau-projet-btn');
+    if (nouveauProjetBtn) {
+        nouveauProjetBtn.addEventListener('click', () => {
+            const confirme = window.confirm(
+                'Créer un nouveau projet ? Le programme actuel sera perdu ' +
+                '(téléchargez-le avant si vous voulez le garder).'
+            );
+            if (!confirme) return;
+            if (editionManuelleActive) sortirEditionManuelle();
+            window.workspace.clear();
+            window.workspace.clearUndo();
+            chargerEspaceDeDepart();
+            afficherEtat('Nouveau projet créé.', false);
+        });
+    }
+
+    // ------------------------------------------
+    // CONFIRMATION A LA FERMETURE DE L'ONGLET/FENETRE
+    // ------------------------------------------
+    // Demande de l'utilisateur : « Etes-vous sûr ? » avant de fermer l'appli.
+    // Aucune sauvegarde automatique (le programme est perdu au rechargement,
+    // voir readme.txt) : ce filet de securite couvre la fermeture de
+    // l'onglet/fenetre, le rechargement (F5) et toute navigation qui quitte
+    // la page. Les navigateurs modernes ignorent le texte passe ici et
+    // affichent systematiquement leur propre message generique (« Quitter
+    // le site ? »/« Leave site? »), par securite — pour empecher un site de
+    // faire croire a un faux message trompeur — donc le texte exact demande
+    // par l'utilisateur ne peut pas s'afficher tel quel, seul le PRINCIPE
+    // d'une confirmation est reglable ici.
+    window.addEventListener('beforeunload', (evenement) => {
+        evenement.preventDefault();
+        evenement.returnValue = '';
+    });
+
+    // ------------------------------------------
     // IMPORT D'UN FICHIER .py OU .hex — menu "Fichier"
     // ------------------------------------------
     // Blockly ne sait pas transformer du Python en blocs (voir plus haut) :
@@ -5817,6 +6022,119 @@ try {
             }
         });
     }
+
+    // ==========================================
+    // CAPTURE D'ÉCRAN DES BLOCS — export PNG, menu "Fichier"
+    // ==========================================
+    // Blockly ne pose AUCUN attribut `fill`/`font` inline sur le texte des blocs
+    // (vérifié en direct : `.blocklyText` n'a pas d'attribut `fill`) — tout son
+    // rendu vient des feuilles de style qu'il injecte dans <head>, jamais dans le
+    // <svg> lui-même. Un SVG autonome exporté sans ces règles affiche donc des
+    // blocs sans aucun texte : il faut les recopier dans un <style> embarqué.
+    function collecterCssBlockly() {
+        let css = '';
+        for (const feuille of document.styleSheets) {
+            try {
+                for (const regle of feuille.cssRules) css += regle.cssText + '\n';
+            } catch (erreur) {
+                // Feuille d'une autre origine (CDN) : illisible depuis JS, ignorée.
+            }
+        }
+        return css;
+    }
+
+    async function exporterCaptureBlocs() {
+        const blocs = window.workspace.getAllBlocks(false);
+        if (!blocs.length) {
+            afficherEtat("Aucun bloc à capturer : ajoutez d'abord des blocs sur l'espace de travail.", true);
+            return;
+        }
+
+        const MARGE = 20;
+        const ECHELLE_EXPORT = 2; // export en 2x pour un PNG net sur écrans HiDPI
+
+        try {
+            const boite = window.workspace.getBlocksBoundingBox();
+            const largeur = (boite.right - boite.left) + MARGE * 2;
+            const hauteur = (boite.bottom - boite.top) + MARGE * 2;
+
+            const theme = window.workspace.getTheme();
+            const couleurFond = (theme && theme.getComponentStyle('workspaceBackgroundColour')) || '#ffffff';
+
+            const NS_SVG = 'http://www.w3.org/2000/svg';
+            const svgExport = document.createElementNS(NS_SVG, 'svg');
+            svgExport.setAttribute('xmlns', NS_SVG);
+            svgExport.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+            // Les règles de thème/contraste sont écrites `:root[data-theme=...] ...` :
+            // dans un SVG autonome (chargé seul comme image), `:root` désigne le
+            // <svg> racine lui-même, pas le <html> de la page — sans ces deux
+            // attributs recopiés ici, ces règles ne correspondent jamais et le
+            // contraste élevé, par exemple, exporte les couleurs du thème normal.
+            svgExport.setAttribute('data-theme', document.documentElement.dataset.theme || '');
+            svgExport.setAttribute('data-contrast', document.documentElement.dataset.contrast || '');
+            svgExport.setAttribute('width', String(largeur));
+            svgExport.setAttribute('height', String(hauteur));
+            svgExport.setAttribute('viewBox', `0 0 ${largeur} ${hauteur}`);
+
+            const style = document.createElementNS(NS_SVG, 'style');
+            style.textContent = collecterCssBlockly();
+            svgExport.appendChild(style);
+
+            const fond = document.createElementNS(NS_SVG, 'rect');
+            fond.setAttribute('width', '100%');
+            fond.setAttribute('height', '100%');
+            fond.setAttribute('fill', couleurFond);
+            svgExport.appendChild(fond);
+
+            // Les champs (menus déroulants, icônes) référencent des `clip-path`
+            // définis dans les <defs> du <svg> principal — sans eux, recopiés tels
+            // quels, les références `url(#...)` de la copie pointent dans le vide.
+            const defsOriginal = window.workspace.getParentSvg().querySelector('defs');
+            if (defsOriginal) svgExport.appendChild(defsOriginal.cloneNode(true));
+
+            const groupe = window.workspace.getCanvas().cloneNode(true);
+            groupe.setAttribute('transform', `translate(${MARGE - boite.left}, ${MARGE - boite.top})`);
+            svgExport.appendChild(groupe);
+
+            const texteSvg = new XMLSerializer().serializeToString(svgExport);
+            const blobSvg = new Blob([texteSvg], { type: 'image/svg+xml;charset=utf-8' });
+            const urlSvg = URL.createObjectURL(blobSvg);
+
+            const image = new Image();
+            await new Promise((resolue, echoue) => {
+                image.onload = resolue;
+                image.onerror = () => echoue(new Error("Le SVG généré n'a pas pu être chargé comme image."));
+                image.src = urlSvg;
+            });
+
+            const canevas = document.createElement('canvas');
+            canevas.width = largeur * ECHELLE_EXPORT;
+            canevas.height = hauteur * ECHELLE_EXPORT;
+            const contexte = canevas.getContext('2d');
+            contexte.drawImage(image, 0, 0, canevas.width, canevas.height);
+            URL.revokeObjectURL(urlSvg);
+
+            const blobPng = await new Promise((resolue) => canevas.toBlob(resolue, 'image/png'));
+            if (!blobPng) throw new Error("La conversion en PNG a échoué.");
+
+            const urlPng = URL.createObjectURL(blobPng);
+            const a = document.createElement('a');
+            a.href = urlPng;
+            a.download = 'programme-microbit.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(urlPng);
+
+            afficherEtat('Capture d\'écran téléchargée.', false);
+        } catch (erreur) {
+            console.error('Erreur lors de la capture des blocs :', erreur);
+            afficherEtat('Capture échouée : ' + erreur.message, true);
+        }
+    }
+
+    const btnCaptureEcran = document.getElementById('capture-ecran-btn');
+    if (btnCaptureEcran) btnCaptureEcran.addEventListener('click', exporterCaptureBlocs);
 
     // ==========================================
     // 5. FONCTIONS GRAPHIQUES POUR LE SIMULATEUR (AVEC ANIMATION TEXTE)
@@ -7756,11 +8074,13 @@ try {
     // délais avant d'enchaîner) est imposé.
     window.simu_lancerTours = function(nRestants) {
         if (nRestants <= 0) {
+            window.simuEnCours = false;
             if (typeof window.simu_finDesTours === 'function') window.simu_finDesTours();
             return;
         }
+        window.simuEnCours = true;
         const succes = typeof window.simu_tourSuivant === 'function' ? window.simu_tourSuivant() : false;
-        if (succes === false) return;   // l'erreur est déjà affichée côté Brython
+        if (succes === false) { window.simuEnCours = false; return; }   // l'erreur est déjà affichée côté Brython
         const jeton = jetonSimulation;
         window._simuApresVidageFile = () => {
             if (jeton === jetonSimulation) window.simu_lancerTours(nRestants - 1);
@@ -7777,6 +8097,14 @@ try {
     window.simu_pin0_pressed = false;
     window.simu_pin1_pressed = false;
     window.simu_pin2_pressed = false;
+
+    // Vrai pendant les 5 tours d'un passage (voir simu_lancerTours plus bas) :
+    // permet aux boutons/broches virtuels de ne PAS relancer toute la
+    // simulation quand elle tourne déjà (voir lierCapteurTactile) — sinon un
+    // appui pendant un passage en cours redémarre le programme depuis « Au
+    // démarrage » (position du robot, musique de lancement... tout repart de
+    // zéro), au lieu d'être simplement vu par le passage déjà en cours.
+    window.simuEnCours = false;
 
     // Geste en attente ('shake' ou null). Un geste est ponctuel : il ne vaut que
     // pour une exécution de la simulation, contrairement aux boutons qui sont
@@ -7801,34 +8129,30 @@ try {
     // ------------------------------------------
     // MISE A L'ECHELLE DU SIMULATEUR
     // ------------------------------------------
-    // La carte est dessinee en pixels fixes. Plutot que de la laisser deborder
-    // ou flotter dans une colonne trop large, on l'agrandit ou on la reduit pour
-    // qu'elle occupe la largeur disponible.
-
+    // La carte est dessinee en pixels fixes, a une taille volontairement
+    // reduite d'un quart (elle ne doit pas remplir toute la largeur offerte,
+    // ce qui laisse respirer les sections du panneau — peripheriques Grove,
+    // radio, servomoteurs — placees au-dessous).
+    //
+    // Anciennement recalculee dynamiquement selon la largeur disponible
+    // (agrandie jusqu'a 1.5x, reduite jusqu'a 0.55x) : demande explicite de
+    // l'utilisateur de faire l'inverse, une fois le panneau redimensionnable
+    // a la souris ajoute (voir plus haut) — agrandir le panneau ne doit PAS
+    // agrandir la carte elle-meme, seulement lui laisser plus d'espace vide
+    // autour (deja le cas tel quel : #simulator-container centre son contenu
+    // via `align-items: center`, donc la carte se repositionne toute seule
+    // sans qu'on ait besoin d'y toucher).
     const cadreCarte = document.getElementById('carte-cadre');
-    const LARGEUR_CARTE = 280;
     const HAUTEUR_CARTE = 230;
-    // La carte ne remplit pas toute la largeur offerte : elle est volontairement
-    // reduite d'un quart, ce qui laisse respirer les sections du panneau
-    // (peripheriques Grove, radio, servomoteurs) placees au-dessous.
     const REDUCTION = 0.75;
 
     function adapterEchelleSimulateur() {
         if (!cadreCarte || !carte) return;
-        const disponible = cadreCarte.clientWidth;
-        // Panneau replie : largeur nulle, rien a calculer.
-        if (!disponible) return;
-        const echelle = REDUCTION *
-            Math.max(0.55, Math.min(1.5, disponible / LARGEUR_CARTE));
-        carte.style.transform = 'scale(' + echelle.toFixed(3) + ')';
+        carte.style.transform = 'scale(' + REDUCTION + ')';
         // Un transform ne modifie pas la place occupee : le cadre s'en charge.
-        cadreCarte.style.height = Math.round(HAUTEUR_CARTE * echelle) + 'px';
+        cadreCarte.style.height = Math.round(HAUTEUR_CARTE * REDUCTION) + 'px';
     }
 
-    window.addEventListener('resize', adapterEchelleSimulateur);
-    if (window.ResizeObserver && cadreCarte) {
-        new ResizeObserver(adapterEchelleSimulateur).observe(cadreCarte);
-    }
     adapterEchelleSimulateur();
 
     /**
@@ -7861,6 +8185,7 @@ try {
         window.simu_pin1_pressed = false;
         window.simu_pin2_pressed = false;
         window.simu_geste = null;
+        window.simuEnCours = false;
         window._simuApresVidageFile = null;
 
         reinitialiserGrove();
@@ -7887,8 +8212,31 @@ try {
         });
     }
 
-    function lierCapteurTactile(idHTML, nomVariableGlobale) {
+    /**
+     * @param identifiantPython  L'identifiant MicroPython correspondant
+     *   (`button_a`, `pin0`...) : si le code actuel ne le contient nulle
+     *   part — ni lecture directe (`button_a.is_pressed()`), ni gestionnaire
+     *   « lorsque » (`on_button_pressed_a`, qui scrute aussi `button_a`) —
+     *   rien dans le programme ne peut réagir à cet appui, donc lancer une
+     *   simulation pour lui n'aurait aucun effet visible : autant ne pas la
+     *   déclencher. Signalé par l'utilisateur : « un appui sur A/B/broches
+     *   0-1-2/logo déclenche la simulation même si aucun de ces connecteurs
+     *   [n'est] affecté ». Simple recherche de sous-chaîne, pas une analyse
+     *   du code : un faux positif (l'identifiant apparaît pour une autre
+     *   raison, ex. une broche câblée à un module Grove) déclenche une
+     *   simulation inutile mais inoffensive — c'est l'absence totale de
+     *   l'identifiant qui est le seul cas visé ici.
+     */
+    function lierCapteurTactile(idHTML, nomVariableGlobale, identifiantPython) {
         const element = document.getElementById(idHTML);
+        // Une simple sous-chaîne ne suffit pas : « pin1 » est aussi une
+        // sous-chaîne de « pin12 »/« pin13 »/.../« pin16 » (broches Grove
+        // valides, sans rapport avec la broche tactile 1) — un programme les
+        // utilisant redéclenchait donc à tort la simulation en appuyant sur
+        // la broche 1 virtuelle. `\b` (limite de mot) exclut ce cas : aucune
+        // limite entre le « 1 » de « pin1 » et le « 2 » de « pin12», les deux
+        // étant des caractères de mot.
+        const motifIdentifiant = new RegExp('\\b' + identifiantPython + '\\b');
         if(element) {
             // La broche est un <rect> SVG transparent (voir .mb-edge) : ":active"
             // seul n'est pas assez fiable pour donner un retour visuel au clic,
@@ -7897,7 +8245,14 @@ try {
             element.addEventListener('mousedown', () => {
                 window[nomVariableGlobale] = true;
                 element.classList.add('mb-edge-zone-active');
-                btnLancer.click();
+                // Un passage (5 tours, voir simu_lancerTours) est déjà en
+                // cours : le drapeau qu'on vient de poser sera vu par ses
+                // prochains tours tout seul. Relancer ici redémarrerait tout
+                // le programme depuis « Au démarrage » — position du robot,
+                // musique de lancement, etc. — pour un simple appui de
+                // bouton pendant que ça tourne déjà.
+                const codeUtiliseCeCapteur = motifIdentifiant.test(window.currentPythonCode || '');
+                if (codeUtiliseCeCapteur && !window.simuEnCours) btnLancer.click();
             });
             element.addEventListener('mouseup', () => {
                 window[nomVariableGlobale] = false;
@@ -7910,12 +8265,12 @@ try {
         }
     }
 
-    lierCapteurTactile('btn-a', 'simu_btnA_pressed');
-    lierCapteurTactile('btn-b', 'simu_btnB_pressed');
-    lierCapteurTactile('mb-logo', 'simu_logo_pressed');
-    lierCapteurTactile('pin0', 'simu_pin0_pressed');
-    lierCapteurTactile('pin1', 'simu_pin1_pressed');
-    lierCapteurTactile('pin2', 'simu_pin2_pressed');
+    lierCapteurTactile('btn-a', 'simu_btnA_pressed', 'button_a');
+    lierCapteurTactile('btn-b', 'simu_btnB_pressed', 'button_b');
+    lierCapteurTactile('mb-logo', 'simu_logo_pressed', 'pin_logo');
+    lierCapteurTactile('pin0', 'simu_pin0_pressed', 'pin0');
+    lierCapteurTactile('pin1', 'simu_pin1_pressed', 'pin1');
+    lierCapteurTactile('pin2', 'simu_pin2_pressed', 'pin2');
 
     // Bouton « Secouer la carte » : arme le geste, lance la simulation, puis
     // désarme. Le tout est synchrone — le gestionnaire Brython de #run-sim
