@@ -1,5 +1,5 @@
 // un.js : Interface complète avec Animation du Texte
-import { genererFichierHexFinal } from './deux.js';
+import { genererFichierHexFinal, extraireCodeDepuisHex } from './deux.js';
 
 try {
     // ==========================================
@@ -636,6 +636,15 @@ try {
     Blockly.Blocks['au_demarrage'] = { init: function() {
         this.appendDummyInput().appendField("Au démarrage");
         this.appendStatementInput("DO").setCheck(null);
+        // Encoche du bas seulement (pas du haut) : "Au démarrage" reste
+        // toujours le bloc le plus haut — rien ne s'accroche AU-DESSUS —
+        // mais peut désormais s'emboîter avec "Répéter indéfiniment" en
+        // dessous, comme dans MakeCode, plutôt que de rester deux blocs
+        // simplement juxtaposés sans lien physique. Purement visuel : le
+        // code généré ne change pas (l'ordre suivait déjà la position
+        // verticale, voir readme.txt), c'est juste que la position devient
+        // garantie par l'accrochage plutôt que laissée au hasard.
+        this.setNextStatement(true, null);
         this.setColour(120);
         this.setTooltip("Exécuté une seule fois au démarrage de la carte, avant les boucles.");
     }};
@@ -4402,10 +4411,13 @@ try {
     // Espace de depart : le demarrage puis la boucle, comme dans MakeCode.
     // Les blocs de premier niveau sont generes dans l'ordre de leur position,
     // le demarrage est donc pose au-dessus pour s'executer en premier.
+    // Emboites d'office via "next" (le bloc "Au démarrage" a une encoche du
+    // bas depuis la demande de l'utilisateur) plutot que juste juxtaposes :
+    // meme rendu que MakeCode des l'ouverture, sans action de l'utilisateur.
     if (!window.workspace.getTopBlocks(false).length) {
         Blockly.serialization.workspaces.load({ blocks: { languageVersion: 0, blocks: [
-            { type: 'au_demarrage', x: 40, y: 40 },
-            { type: 'boucle_infinie', x: 40, y: 190 }
+            { type: 'au_demarrage', x: 40, y: 40,
+              next: { block: { type: 'boucle_infinie' } } }
         ]}}, window.workspace);
     }
 
@@ -5120,6 +5132,116 @@ try {
     }
     window.addEventListener('resize', () => Blockly.svgResize(window.workspace));
 
+    // ------------------------------------------
+    // THÈME CLAIR / SOMBRE, ET CONTRASTE NORMAL / ÉLEVÉ
+    // ------------------------------------------
+    // Les grandes surfaces (barre d'outils, panneaux, code) passent par des
+    // variables CSS (voir index.html) ; Blockly n'a pas de thème sombre livré
+    // (seuls "Classic" et "Zelos" existent) — quatre thèmes personnalisés
+    // couvrent l'espace de travail, la boîte à outils et le tiroir (un par
+    // combinaison clair/sombre × normal/élevé ; "clair normal" seul reste le
+    // "Classic" fourni par Blockly, inchangé). Les couleurs "d'appareil"
+    // (sprites, carte micro:bit, DEL...) ne suivent ni l'un ni l'autre :
+    // elles représentent quelque chose de réel, comme les couleurs des
+    // boutons d'action — un robot ne devient pas "plus accessible" en
+    // changeant de couleur, ce n'est pas du texte à lire.
+    const THEME_SOMBRE_NORMAL = Blockly.Theme.defineTheme('sombreMicrobitV2', {
+        base: Blockly.Themes.Classic,
+        componentStyles: {
+            workspaceBackgroundColour: '#1e1e2e',
+            toolboxBackgroundColour: '#2c3e50',
+            toolboxForegroundColour: '#ecf0f1',
+            flyoutBackgroundColour: '#26333f',
+            flyoutForegroundColour: '#ecf0f1',
+            flyoutOpacity: 1,
+            scrollbarColour: '#4a5a6a',
+            insertionMarkerColour: '#ffffff',
+            insertionMarkerOpacity: 0.3,
+            cursorColour: '#ffffff'
+        }
+    });
+    const THEME_SOMBRE_ELEVE = Blockly.Theme.defineTheme('sombreEleveMicrobitV2', {
+        base: Blockly.Themes.Classic,
+        componentStyles: {
+            workspaceBackgroundColour: '#000000',
+            toolboxBackgroundColour: '#000000',
+            toolboxForegroundColour: '#ffffff',
+            flyoutBackgroundColour: '#000000',
+            flyoutForegroundColour: '#ffffff',
+            flyoutOpacity: 1,
+            scrollbarColour: '#ffffff',
+            insertionMarkerColour: '#ffffff',
+            insertionMarkerOpacity: 0.5,
+            cursorColour: '#ffffff'
+        }
+    });
+    const THEME_CLAIR_ELEVE = Blockly.Theme.defineTheme('clairEleveMicrobitV2', {
+        base: Blockly.Themes.Classic,
+        componentStyles: {
+            workspaceBackgroundColour: '#ffffff',
+            toolboxBackgroundColour: '#ffffff',
+            toolboxForegroundColour: '#000000',
+            flyoutBackgroundColour: '#ffffff',
+            flyoutForegroundColour: '#000000',
+            flyoutOpacity: 1,
+            scrollbarColour: '#000000',
+            insertionMarkerColour: '#000000',
+            insertionMarkerOpacity: 0.3,
+            cursorColour: '#000000'
+        }
+    });
+
+    function themeClairActif() {
+        return document.documentElement.dataset.theme === 'light';
+    }
+    function contrasteEleveActif() {
+        return document.documentElement.dataset.contrast === 'high';
+    }
+    function appliquerThemeBlockly() {
+        const clair = themeClairActif(), eleve = contrasteEleveActif();
+        const theme = clair
+            ? (eleve ? THEME_CLAIR_ELEVE : Blockly.Themes.Classic)
+            : (eleve ? THEME_SOMBRE_ELEVE : THEME_SOMBRE_NORMAL);
+        window.workspace.setTheme(theme);
+    }
+
+    const btnTheme = document.getElementById('btn-theme');
+    function appliquerTheme(clair) {
+        document.documentElement.dataset.theme = clair ? 'light' : '';
+        appliquerThemeBlockly();
+        if (btnTheme) {
+            btnTheme.textContent = clair ? '☀️' : '🌙';
+            btnTheme.title = clair ? 'Passer au thème sombre' : 'Passer au thème clair';
+        }
+        try { localStorage.setItem('themeApp', clair ? 'light' : 'dark'); }
+        catch (erreur) { /* navigation privee : le choix ne survivra pas au rechargement, tant pis */ }
+    }
+
+    const btnContraste = document.getElementById('btn-contraste');
+    function appliquerContraste(eleve) {
+        document.documentElement.dataset.contrast = eleve ? 'high' : '';
+        appliquerThemeBlockly();
+        if (btnContraste) {
+            btnContraste.classList.toggle('actif', eleve);
+            btnContraste.title = eleve ? 'Revenir au contraste normal' : 'Passer en contraste élevé';
+        }
+        try { localStorage.setItem('contrasteApp', eleve ? 'high' : 'normal'); }
+        catch (erreur) { /* navigation privee : le choix ne survivra pas au rechargement, tant pis */ }
+    }
+
+    // Les attributs peuvent déjà être posés par le petit script en tête de
+    // index.html (qui évite un flash) : on part de leur état plutôt que de
+    // relire localStorage une deuxième fois, les deux doivent de toute façon
+    // rester d'accord.
+    appliquerTheme(themeClairActif());
+    appliquerContraste(contrasteEleveActif());
+    if (btnTheme) {
+        btnTheme.addEventListener('click', () => appliquerTheme(!themeClairActif()));
+    }
+    if (btnContraste) {
+        btnContraste.addEventListener('click', () => appliquerContraste(!contrasteEleveActif()));
+    }
+
     // Filet principal : on surveille la taille du canevas lui-meme. Blockly garde
     // en cache les dimensions de son conteneur et place corbeille et barres de
     // defilement d'apres ce cache ; des qu'il est perime, ils partent hors de
@@ -5345,6 +5467,29 @@ try {
         afficherEtat('Script .py téléchargé.', false);
     });
 
+    // Menu "Fichier" : regroupe les deux telechargements (demande de
+    // l'utilisateur, avec une image de reference). Les boutons #download-btn
+    // et #download-py-btn gardent leurs ecouteurs ci-dessus inchanges — seul
+    // le balisage autour a bouge, pas leur id.
+    const menuFichierBtn = document.getElementById('menu-fichier-btn');
+    const menuFichierPanneau = document.getElementById('menu-fichier-panneau');
+    if (menuFichierBtn && menuFichierPanneau) {
+        menuFichierBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            menuFichierPanneau.classList.toggle('visible');
+        });
+        // Un clic n'importe ou ailleurs referme le menu, comme un menu
+        // deroulant classique.
+        document.addEventListener('click', e => {
+            if (!menuFichierPanneau.contains(e.target) && e.target !== menuFichierBtn) {
+                menuFichierPanneau.classList.remove('visible');
+            }
+        });
+        menuFichierPanneau.querySelectorAll('button').forEach(bouton => {
+            bouton.addEventListener('click', () => menuFichierPanneau.classList.remove('visible'));
+        });
+    }
+
     // ==========================================
     // 4. AFFICHAGE ET INJECTION AUTOMATIQUE DES ÉVÉNEMENTS
     // ==========================================
@@ -5506,7 +5651,47 @@ try {
         }
     }
 
+    /**
+     * Un bloc « conteneur » (au démarrage, répéter indéfiniment, tous les
+     * "lorsque ..." y compris radio_quand_recu) est légitimement seul en
+     * haut de l'espace de travail : son utilité vient de son contenu (DO),
+     * pas d'être accroché à un autre bloc. La plupart n'ont structurellement
+     * ni previousConnection ni outputConnection (ils ne PEUVENT pas être
+     * accrochés) — seul `boucle_infinie` fait exception (il a les deux,
+     * pour pouvoir en théorie être chaîné) et doit donc être ajouté à la
+     * main plutôt que déduit par la structure.
+     */
+    function estContainerLegitime(bloc) {
+        return (!bloc.previousConnection && !bloc.outputConnection) || bloc.type === 'boucle_infinie';
+    }
+
+    /**
+     * Un bloc posé sur l'espace de travail mais pas accroché à un conteneur
+     * légitime (déposé seul, ou détaché d'une pile existante) ne fait rien :
+     * il n'apparaissait avant nulle part dans `Blockly.Python.workspaceToCode`
+     * qu'en tête de programme (un bloc `boucle_infinie`/`lorsque_...` orphelin
+     * n'a pas de code propre hors de son DO, donc rien ne s'exécutait), ce qui
+     * pouvait laisser croire à tort qu'il était actif. Demandé par
+     * l'utilisateur : l'afficher visuellement désactivé (grisé/hachuré,
+     * rendu Blockly standard) via `setEnabled()`, qui a aussi pour effet
+     * d'exclure le bloc — et tout ce qu'il contient — de la génération de
+     * code (`Generator.blockToCode` saute les blocs désactivés). Un seul
+     * passage sur tous les blocs (pas seulement les blocs de haut niveau) :
+     * `getRootBlock()` remonte jusqu'à l'ancêtre commun quel que soit le
+     * type d'emboîtement (pile "suivant", entrée d'instruction, entrée de
+     * valeur), donc un bloc qui devient correctement accroché est
+     * automatiquement réactivé au prochain passage, sans cas particulier.
+     */
+    function mettreAJourBlocsOrphelins() {
+        for (const bloc of window.workspace.getAllBlocks(false)) {
+            const actif = estContainerLegitime(bloc.getRootBlock());
+            if (bloc.isEnabled() !== actif) bloc.setEnabled(actif);
+        }
+    }
+    window.blocsOrphelinsTest = { estContainerLegitime, mettreAJourBlocsOrphelins };
+
     function updatePythonCode() {
+        mettreAJourBlocsOrphelins();
         const codePython = genererCodeDepuisBlocs();
         // Pendant l'edition manuelle, les blocs restent geles (voile-blocs-figes)
         // donc ce listener ne devrait pas se declencher — filet de securite au
@@ -5579,6 +5764,59 @@ try {
         estActif: () => editionManuelleActive,
         saisir: texte => { zoneCodeTexte.value = texte; definirCodeActuel(texte); }
     };
+
+    // ------------------------------------------
+    // IMPORT D'UN FICHIER .py OU .hex — menu "Fichier"
+    // ------------------------------------------
+    // Blockly ne sait pas transformer du Python en blocs (voir plus haut) :
+    // un fichier importé bascule donc directement en édition manuelle,
+    // exactement comme si l'utilisateur avait tapé ce code lui-même. Pour un
+    // .hex, le texte n'est pas directement le programme — c'est un binaire
+    // encodé Intel hex qui embarque tout le firmware ; `extraireCodeDepuisHex`
+    // (deux.js) relit sa zone système de fichiers avec la même bibliothèque
+    // microbit-fs que la génération, pour en ressortir `main.py`.
+    function importerCodeTexte(texte, origine) {
+        if (!editionManuelleActive) entrerEditionManuelle();
+        zoneCodeTexte.value = texte;
+        definirCodeActuel(texte);
+        afficherTranscription(texte);
+        afficherEtat(origine + ' importé — édition manuelle activée.', false);
+    }
+
+    const importHexBtn = document.getElementById('import-hex-btn');
+    const importHexInput = document.getElementById('import-hex-input');
+    if (importHexBtn && importHexInput) {
+        importHexBtn.addEventListener('click', () => importHexInput.click());
+        importHexInput.addEventListener('change', async () => {
+            const fichier = importHexInput.files[0];
+            importHexInput.value = ''; // permet de réimporter le même fichier ensuite
+            if (!fichier) return;
+            try {
+                const texteHex = await fichier.text();
+                const codePython = await extraireCodeDepuisHex(texteHex);
+                importerCodeTexte(codePython, 'Fichier .hex');
+            } catch (erreur) {
+                afficherEtat('Import .hex échoué : ' + erreur.message, true);
+            }
+        });
+    }
+
+    const importPyBtn = document.getElementById('import-py-btn');
+    const importPyInput = document.getElementById('import-py-input');
+    if (importPyBtn && importPyInput) {
+        importPyBtn.addEventListener('click', () => importPyInput.click());
+        importPyInput.addEventListener('change', async () => {
+            const fichier = importPyInput.files[0];
+            importPyInput.value = '';
+            if (!fichier) return;
+            try {
+                const texte = await fichier.text();
+                importerCodeTexte(texte, 'Script .py');
+            } catch (erreur) {
+                afficherEtat('Import .py échoué : ' + erreur.message, true);
+            }
+        });
+    }
 
     // ==========================================
     // 5. FONCTIONS GRAPHIQUES POUR LE SIMULATEUR (AVEC ANIMATION TEXTE)

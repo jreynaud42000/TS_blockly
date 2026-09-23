@@ -34,15 +34,25 @@ function classeSystemeDeFichiers() {
  * Refuse tout de suite un firmware incomplet.
  *
  * Une copie interrompue laisse un fichier sans enregistrement de fin, dont
- * l'analyse échoue bien plus loin avec un message incompréhensible.
+ * l'analyse échoue bien plus loin avec un message incompréhensible. Réutilisée
+ * à la fois pour notre propre `firmware.hex` (sur le disque, à côté du
+ * serveur) et pour un .hex importé par l'utilisateur (dans son navigateur) —
+ * `nomFichier` et le conseil qui suit adaptent le message au bon cas, sinon
+ * un fichier importé invalide affiche un message parlant de "firmware.hex"
+ * et du cache du serveur, sans rapport avec ce que l'utilisateur vient de
+ * choisir.
  */
-function verifierFirmwareComplet(hex) {
+function verifierFirmwareComplet(hex, nomFichier = 'firmware.hex') {
   if (!/^:00000001FF\s*$/m.test(hex)) {
+    const estNotreFirmware = nomFichier === 'firmware.hex';
     throw new Error(
-      "firmware.hex est incomplet : l'enregistrement de fin (:00000001FF) manque " +
-      `(${hex.length} octets reçus). Deux causes possibles : le fichier a été copié ` +
-      'à moitié, ou le navigateur ressert une ancienne version en cache — ' +
-      'vérifier la taille du fichier sur le disque, puis recharger par Ctrl+Maj+R.'
+      `${nomFichier} est incomplet : l'enregistrement de fin (:00000001FF) manque ` +
+      `(${hex.length} octets reçus). ` +
+      (estNotreFirmware
+        ? 'Deux causes possibles : le fichier a été copié à moitié, ou le navigateur ' +
+          'ressert une ancienne version en cache — vérifier la taille du fichier sur ' +
+          'le disque, puis recharger par Ctrl+Maj+R.'
+        : "Ce n'est probablement pas un fichier .hex micro:bit valide (ou la copie a été interrompue).")
     );
   }
 }
@@ -168,4 +178,50 @@ export async function genererFichierHexFinal(codePython) {
 
   // 4. Fusion finale au format universel.
   return fusionnerHex(firmwareDeBase, systemeDeFichiersHex);
+}
+
+/**
+ * Extrait le programme MicroPython (`main.py`) d'un fichier .hex existant.
+ *
+ * Symétrique de `genererFichierHexFinal` : reconstruit la même base propre
+ * (notre firmware.hex, universel ou non, nettoyé au besoin) puis y importe
+ * le contenu du fichier fourni par l'utilisateur — `importFilesFromHex` lit
+ * la zone système de fichiers directement dans CE hex-là, indépendamment du
+ * firmware sur lequel l'instance a été construite. Vérifié par un aller-retour
+ * complet (génération puis extraction) : le texte relu est identique à
+ * l'original.
+ *
+ * @param {string} hexUtilisateur  contenu texte d'un .hex micro:bit
+ * @returns {Promise<string>}  le code source de main.py
+ */
+export async function extraireCodeDepuisHex(hexUtilisateur) {
+  verifierFirmwareComplet(hexUtilisateur, 'Le fichier importé');
+
+  const reponse = await fetch('./firmware.hex', { cache: 'no-store' });
+  if (!reponse.ok) {
+    throw new Error(
+      `Impossible de lire firmware.hex (HTTP ${reponse.status}). ` +
+      'Placer le firmware MicroPython officiel à côté de index.html.'
+    );
+  }
+  const firmwareDeBase = await reponse.text();
+  verifierFirmwareComplet(firmwareDeBase);
+
+  const entree = isUniversalHex(firmwareDeBase)
+    ? separateUniversalHex(firmwareDeBase).map(({ hex, boardId }) => ({ hex, boardId }))
+    : firmwareDeBase;
+
+  const systemeDeFichiers = construireSystemeDeFichiers(entree);
+  try {
+    systemeDeFichiers.importFilesFromHex(hexUtilisateur);
+  } catch (erreur) {
+    throw new Error(`Ce fichier n'est pas un .hex micro:bit valide. Détail : ${erreur.message}`);
+  }
+  if (!systemeDeFichiers.exists('main.py')) {
+    throw new Error(
+      "Ce fichier .hex ne contient aucun programme (pas de main.py) — " +
+      'probablement un firmware vierge, jamais envoyé sur une carte depuis un éditeur.'
+    );
+  }
+  return systemeDeFichiers.read('main.py');
 }

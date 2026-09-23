@@ -64,6 +64,20 @@ navigateur, c'est que le serveur a ete lance depuis un autre dossier.
   long, et peut ne laisser presque aucune place pour deposer les blocs. Replier
   un panneau rend cette largeur au canevas ; le zoom, lui, n'agit que sur les
   blocs deja poses, pas sur le tiroir.
+
+  Bouton lune/soleil (a cote de "Simulateur") : bascule entre theme sombre
+  (par defaut) et theme clair - barre d'outils, panneaux lateraux, panneau de
+  code et panneau administrateur. Choix mémorisé d'une session a l'autre. Les
+  couleurs "d'appareil" (sprites de robots, carte micro:bit, DEL) ne changent
+  pas avec le theme : elles representent quelque chose de reel, comme les
+  couleurs des boutons d'action.
+
+  Bouton contraste (◐, juste a cote) : contraste normal ou eleve, independant
+  du theme clair/sombre - les deux se combinent (sombre eleve = fond noir pur
+  et texte blanc, clair eleve = fond blanc pur et texte noir, bordures plus
+  epaisses). En contraste eleve, les blocs eux-memes passent aussi en noir a
+  simple contour blanc, plutot que remplis de la couleur de leur categorie.
+  Egalement memorise d'une session a l'autre.
 - Panneau du milieu : le code MicroPython correspondant, mis a jour en direct.
 
   Les pilotes des modules Grove et des servomoteurs y sont REPLIES derriere une
@@ -154,9 +168,13 @@ de main.py.
 
 Ce qui fonctionne :
 - Sur la carte : glisser le .hex sur le lecteur MICROBIT. C'est l'essentiel.
-- Pour rouvrir un programme : https://python.microbit.org importe le .hex et en
-  ressort le main.py. Cet editeur utilise la meme bibliotheque microbit-fs que
-  deux.js emploie pour l'ecrire.
+- Pour rouvrir un programme : menu "Fichier" > "Importer un fichier .hex" (ou
+  ".py"). Meme bibliotheque microbit-fs que pour l'ecriture, utilisee cette
+  fois pour relire la zone systeme de fichiers du .hex et en ressortir
+  main.py. Comme Blockly ne sait pas transformer du Python en blocs, un
+  fichier importe bascule directement en edition manuelle (voir plus haut) -
+  jamais de reconstruction en blocs. https://python.microbit.org fait la
+  meme chose (et fonctionne donc aussi), mais n'est plus necessaire.
 - Le bouton "Telecharger le script .py" donne le fichier directement ouvrable
   dans l'editeur Python officiel ou dans Mu.
 
@@ -417,22 +435,36 @@ inseree ; sinon une boucle dediee est ajoutee a la fin du programme.
 Consequence pratique : un bloc "lorsque ..." pose seul suffit, le programme
 tournera. Inutile de l'entourer d'une boucle.
 
-Au demarrage de l'application, l'espace de travail contient deja deux blocs :
-"Au demarrage" et "Repeter indefiniment", comme dans MakeCode.
+Au demarrage de l'application, l'espace de travail contient deja deux blocs
+emboites l'un dans l'autre : "Au demarrage" au-dessus de "Repeter
+indefiniment", comme dans MakeCode.
 
-"Au demarrage" s'execute une seule fois, avant tout le reste. Il n'a ni encoche
-du dessus ni du dessous : il vit seul, et un seul exemplaire est autorise — deux
-rendraient l'ordre d'execution ambigu. Son contenu est genere a plat, en tete du
-programme.
+"Au demarrage" s'execute une seule fois, avant tout le reste. Il n'a pas
+d'encoche du dessus (rien ne s'accroche AU-DESSUS : il reste toujours le bloc
+le plus haut, et un seul exemplaire est autorise — deux rendraient l'ordre
+d'execution ambigu), mais a une encoche du bas pour s'emboiter avec le bloc
+suivant, comme "Repeter indefiniment" par defaut. Son contenu est genere a
+plat, en tete du programme.
 
 L'ordre des blocs de premier niveau suit leur position verticale dans l'espace
-de travail : garder "Au demarrage" au-dessus des boucles.
+de travail : garder "Au demarrage" au-dessus des boucles. L'emboitement les
+lie physiquement pour garantir cet ordre, mais reste facultatif : les
+detacher et les laisser juste l'un au-dessus de l'autre produit le meme code.
 
 Les fonctions produites par les blocs "lorsque ..." font exception : elles sont
 placees d'office en tete du programme, avant tout code executable. Sans cela, un
 bloc "lorsque ..." pose a droite ou en dessous d'une boucle aurait ete defini
 apres l'appel qui l'utilise, et le programme se serait arrete sur un NameError.
 On peut donc les disposer librement dans l'espace de travail.
+
+Un bloc pose sur l'espace de travail mais pas accroche a "Au demarrage", a
+"Repeter indefiniment", a un bloc "lorsque ..." (ou a l'interieur de l'un
+d'eux) s'affiche automatiquement griffe/grise (rendu Blockly standard) : il
+n'est pas actif, et n'apparait pas dans le code genere. Le reconnecter le
+reactive aussitot. Avant cette regle, un tel bloc isole n'etait pas grise
+alors qu'il ne faisait deja rien la plupart du temps - pire, un bloc
+d'instruction pose seul (pas un conteneur) etait bien execute une fois, tout
+en haut du programme, ce qui pouvait surprendre.
 
 ---------------------------------------------------------
 11. LE FICHIER FIRMWARE.HEX

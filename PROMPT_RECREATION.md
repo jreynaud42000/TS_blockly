@@ -256,6 +256,34 @@ bibliothèque `microbit-fs`). Prévoir en plus un bouton « Télécharger le scr
 .py » pour l'éditeur officiel et Mu. Ne pas chercher à produire un `.hex`
 MakeCode : cela suppose la chaîne de compilation PXT.
 
+### Import — le chemin inverse, avec la même bibliothèque
+
+Demande de l'utilisateur : réimporter un `.py` ou un `.hex` déjà produit.
+Comme Blockly ne sait pas transformer du Python en blocs (§13), un fichier
+importé bascule directement en édition manuelle du code — jamais de
+reconstruction en blocs, quelle que soit la source.
+
+Le `.py` est trivial (texte lu tel quel avec `File.text()`). Le `.hex` est le
+chemin inverse exact de la génération : reconstruire la même base propre
+(notre `firmware.hex`, nettoyée si besoin — même fonction que pour écrire),
+puis `MicropythonFsHex.importFilesFromHex(hexImporte)` pour charger la zone
+système de fichiers **du fichier importé, pas de la base** — c'est bien ce
+hex-là qui est lu, l'instance sert seulement de contexte —, et enfin
+`.read('main.py')`. Vérifié par un aller-retour complet : générer un `.hex`,
+l'importer aussitôt, comparer le texte relu à l'original (identique).
+
+**PIÈGE nº 44 — un message d'erreur écrit pour un seul appelant devient faux
+quand on réutilise la fonction pour un second cas d'usage.** La vérification
+« fichier `.hex` complet » (`verifierFirmwareComplet`, regarde
+`:00000001FF` en fin de fichier) existait déjà pour notre propre
+`firmware.hex` sur disque, avec un message qui suppose ce contexte-là
+(« le fichier a été copié à moitié... recharger par Ctrl+Maj+R »). Réutilisée
+telle quelle pour valider un `.hex` importé par l'utilisateur, elle produit
+un message qui parle à tort du cache du serveur et d'un fichier que
+l'utilisateur n'a jamais touché. Paramétrer le nom du fichier ET le conseil
+qui suit (deux branches de texte, pas seulement une interpolation de nom) dès
+qu'une fonction de validation sert à plus d'un appelant.
+
 ### Envoi direct sur la carte
 
 Bouton « Envoyer sur la carte » qui écrit le `.hex` sur le lecteur `MICROBIT`
@@ -469,6 +497,38 @@ function declarerGestionnaire(nom, corps) {
 
 Les définitions sont placées avant tout code exécutable, quelle que soit la
 disposition des blocs.
+
+**PIÈGE nº 43 — `workspaceToCode()` génère aussi le code des blocs de
+premier niveau qui ne sont accrochés à RIEN.** `Blockly.Python.workspaceToCode()`
+appelle `blockToCode` sur chaque bloc de haut niveau (`getTopBlocks()`), pas
+seulement sur `au_demarrage`/`boucle_infinie`/les blocs « lorsque … » — un
+bloc d'instruction posé seul sur l'espace de travail (jamais accroché, ou
+détaché d'une pile) est TOUT AUSSI « de haut niveau » à ses yeux, donc son
+code est généré et exécuté une fois, en dehors de toute structure visible à
+l'écran. Un piège pour l'élève (il croit qu'un bloc posé sans le connecter
+ne fait rien) découvert seulement après une demande explicite de
+l'utilisateur (afficher ces blocs comme désactivés). Détection d'un
+« conteneur légitime » par la **structure**, pas par une liste de noms de
+blocs à maintenir : `!bloc.previousConnection && !bloc.outputConnection`
+(un bloc qui ne PEUT structurellement pas être accroché à autre chose —
+vrai pour tous les blocs « lorsque … » et `au_demarrage`). Piège dans le
+piège : `boucle_infinie` a les deux connecteurs (`setPreviousStatement` ET
+`setNextStatement`, pour pouvoir en théorie être chaîné) alors qu'il doit
+rester fonctionnel tout seul comme les autres conteneurs — la seule
+exception non déductible de la structure, à exclure à la main
+(`bloc.type === 'boucle_infinie'`). `bloc.getRootBlock()` remonte à
+l'ancêtre commun quel que soit le type d'emboîtement (pile « suivant »,
+entrée d'instruction, entrée de valeur), donc un seul passage sur
+`getAllBlocks()` — comparé à `estContainerLegitime(bloc.getRootBlock())` —
+suffit à la fois pour désactiver un orphelin et pour réactiver
+automatiquement un bloc qui vient d'être correctement accroché, sans cas
+particulier à écrire pour ce second sens. `Block.setEnabled()` (API Blockly
+standard, pas une classe CSS maison) fait les deux choses d'un coup : rendu
+visuel grisé/hachuré ET exclusion de `blockToCode` (qui saute un bloc
+désactivé — et, point d'attention, saute SEULEMENT ce bloc-là, pas sa pile
+« suivant » en dessous : désactiver uniquement la racine d'un orphelin ne
+suffit pas si d'autres blocs sont accrochés dessous, d'où le passage sur
+TOUS les blocs, pas seulement les racines).
 
 ## 7. Le simulateur (Brython)
 
@@ -969,6 +1029,119 @@ sur une échelle qui ne correspond pas à la mesure.
 
 La gouttière est réservée en permanence : la largeur ne dépend plus du contenu,
 la boucle est rompue.
+
+### Thème clair / sombre
+
+Demande de l'utilisateur. Deux moitiés bien séparées, pas une seule technique :
+
+1. **Les grandes surfaces de la page** (barre d'outils, panneaux latéraux,
+   panneau de code, menu « Fichier », panneau administrateur) passent par des
+   variables CSS (`--fond-chrome`, `--fond-saisie`, `--texte-chrome`,
+   `--bordure-chrome`, `--fond-code`, `--texte-code`), deux jeux de valeurs —
+   `:root` (sombre, l'état d'origine du projet) et `:root[data-theme="light"]`
+   (le nouveau). Un attribut sur `<html>`, pas une classe sur `<body>` : ça
+   n'a pas d'importance technique ici, mais évite d'avoir à choisir entre
+   `document.body` (pas encore parsé si le script tourne dans `<head>`) et
+   `document.documentElement` (toujours disponible).
+
+   **Toutes les couleurs ne suivent pas le thème.** Les couleurs
+   « d'appareil » (sprites de robots, carte micro:bit, DEL, bézel du
+   joystick Grove, étiquette des fanions départ/arrivée) représentent
+   quelque chose de réel — elles restent fixes, exactement comme les
+   couleurs d'accent des boutons d'action (vert = lancer, orange = secouer)
+   ne changent pas non plus. Seule la « chrome » de l'application (ce qui
+   n'existe que dans l'interface) suit le thème.
+
+2. **L'espace de travail Blockly** ne suit **pas** les variables CSS : son
+   fond est peint par un `<rect>` SVG avec un `fill` en `url(#pattern...)`
+   (le motif de grille), pas par un simple `background-color` — une variable
+   CSS n'y changerait rien. Blockly ne livre par ailleurs aucun thème sombre
+   (seuls `Classic` et `Zelos` existent, vérifié avec
+   `Object.keys(Blockly.Themes)` avant de chercher plus loin). Un thème sur
+   mesure, avec `Blockly.Theme.defineTheme(nom, { base: Blockly.Themes.Classic,
+   componentStyles: {...} })`, couvre correctement l'espace de travail, la
+   boîte à outils et le tiroir :
+
+   ```js
+   const themeSombre = Blockly.Theme.defineTheme('sombreMicrobitV2', {
+     base: Blockly.Themes.Classic,
+     componentStyles: {
+       workspaceBackgroundColour: '#1e1e2e',
+       toolboxBackgroundColour: '#2c3e50',
+       toolboxForegroundColour: '#ecf0f1',
+       flyoutBackgroundColour: '#26333f',
+       flyoutForegroundColour: '#ecf0f1',
+       flyoutOpacity: 1,
+       scrollbarColour: '#4a5a6a',
+       insertionMarkerColour: '#ffffff',
+       insertionMarkerOpacity: 0.3,
+       cursorColour: '#ffffff'
+     }
+   });
+   workspace.setTheme(sombre ? themeSombre : Blockly.Themes.Classic);
+   ```
+
+Choix persisté en `localStorage`, appliqué par un petit `<script>` synchrone
+placé **avant** le `<style>` principal dans `<head>` — sinon la page peint
+une première fois avec le thème par défaut avant que le script (chargé en
+même temps que le reste, donc pas nécessairement plus tôt) ne bascule vers
+le thème mémorisé, un flash visible à chaque rechargement.
+
+### Contraste normal / élevé — un second réglage, orthogonal au premier
+
+Demande séparée de l'utilisateur, arrivée après le thème clair/sombre : ne
+pas le fondre dans le même bouton/attribut, mais ajouter un second attribut
+(`data-contrast="high"`) qui se combine librement avec `data-theme` — quatre
+états au total, sélecteurs CSS composés (`:root[data-contrast="high"]`,
+`:root[data-theme="light"][data-contrast="high"]`). Même idée pour Blockly :
+pas 2 mais **3** thèmes personnalisés en plus du `Classic` fourni (un par
+combinaison sombre/clair × élevé — « clair normal » reste `Classic` tel
+quel), choisis en croisant les deux réglages plutôt qu'en gardant un seul
+« thème actif » à quatre valeurs :
+
+```js
+function themeBlocklyActif() {
+  const clair = document.documentElement.dataset.theme === 'light';
+  const eleve = document.documentElement.dataset.contrast === 'high';
+  if (clair) return eleve ? themeClairEleve : Blockly.Themes.Classic;
+  return eleve ? themeSombreEleve : themeSombreNormal;
+}
+```
+
+Le contraste élevé pousse les mêmes variables vers le noir/blanc pur (pas de
+teintes intermédiaires) et épaissit les bordures des grandes surfaces (2px) :
+sans ça, une bordure à peine plus claire que le fond redevient invisible une
+fois les nuances aplaties, l'inverse de ce qu'un contraste élevé doit faire.
+Persistance et application avant le premier rendu identiques au thème
+clair/sombre, sous une clé `localStorage` séparée — les deux réglages
+doivent pouvoir changer indépendamment sans se marcher dessus.
+
+**PIÈGE nº 45 — le thème Blockly (`componentStyles`) ne repeint QUE le fond
+de l'espace de travail/de la boîte à outils, jamais le remplissage des
+blocs.** Demande explicite de l'utilisateur avec une image de référence
+(fond noir, blocs eux-mêmes en noir à simple contour blanc, pas remplis de
+la couleur de leur catégorie) : la tentation est de chercher encore un
+réglage dans `Blockly.Theme.defineTheme`, alors que chaque bloc pose sa
+couleur via `setColour()` à l'initialisation, complètement indépendamment
+du thème du workspace — un thème ne peut pas la changer après coup. Il faut
+cibler directement les éléments SVG que Blockly dessine pour un bloc
+(`.blocklyPath` le remplissage principal, `.blocklyPathDark`/`.blocklyPathLight`
+les couches de relief ombre/reflet qui donnent l'effet 3D habituel — à
+éteindre justement pour un contour plat —, `.blocklyText` le texte) :
+
+```css
+[data-contrast="high"] .blocklyPath { fill: #000 !important; stroke: #fff !important; stroke-width: 1.5px !important; }
+[data-contrast="high"] .blocklyPathDark { fill: #000 !important; }
+[data-contrast="high"] .blocklyPathLight { stroke: #fff !important; fill: none !important; }
+[data-contrast="high"] .blocklyText { fill: #fff !important; }
+```
+
+Une règle de feuille de style l'emporte sans peine sur ces couleurs même si
+Blockly les pose en `fill="..."`/`stroke="..."` directement sur l'élément :
+un attribut de présentation SVG est la source de plus **basse** priorité de
+la cascade CSS, en dessous de n'importe quelle règle d'auteur — `!important`
+n'est même pas strictement nécessaire ici, juste une garantie bon marché.
+Aucune modification du JS qui construit les blocs.
 
 ## 12. Panneau administrateur
 
