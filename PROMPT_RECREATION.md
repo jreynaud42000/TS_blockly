@@ -1380,6 +1380,128 @@ au rechargement (F5) et à la navigation qui quitte la page — aucune barre
 d'outils/action interne à l'appli (téléchargement, envoi sur la carte) ne
 déclenche cet événement, ce n'est jamais qu'une navigation qui le fait.
 
+**PIÈGE nº 52 — reconstruction de blocs depuis du Python : possible
+UNIQUEMENT parce que nos propres générateurs sont déterministes, jamais
+pour du Python quelconque.** Demande de l'utilisateur : « je veux pouvoir
+reconstruire les fichiers générés par l'appli ». Ce chantier tient sur un
+fait précis, vérifié avant d'écrire la moindre ligne : chaque bloc du
+projet produit toujours EXACTEMENT le même motif Python (`_mq_moteur("gauche",
+150)`, jamais une autre formulation équivalente) — l'inverse d'un compilateur
+classique où plusieurs sources produisent le même binaire, ici une seule
+« sortie » possible par bloc rend la correspondance inverse table-driven
+plutôt qu'un vrai problème de décompilation. Architecture : `ast.parse()`
+côté Brython (le module `ast` standard, pas une regex — un commentaire ou
+un changement d'indentation ne doit jamais faire échouer l'analyse) renvoie
+l'arbre en JSON à un moteur JS qui tente, pour chaque noeud, une liste de
+« reconnaisseurs » (un par bloc couvert) puis retombe sur un bloc générique
+`code_brut`/`expression_brute` gardant le texte Python d'origine tel quel —
+jamais d'échec silencieux, une couverture partielle qui grandit avec le
+temps plutôt qu'un tout-ou-rien à réécrire pour chaque nouveau bloc couvert.
+
+Sous-pièges rencontrés, aucun deviné à l'avance — tous trouvés en générant
+du VRAI code depuis de vrais blocs puis en comparant, jamais en lisant le
+générateur seul :
+
+- **Un champ dropdown n'est pas forcément une chaîne.** `servo_angle`,
+  `kitrobot_definir_ultrason`... ont un champ "broche" dont les valeurs
+  d'option (`"pin0"`, `"pin1"`...) sont séparées SANS guillemets dans le
+  générateur (`'_servo_angle(' + block.getFieldValue('BROCHE') + ...`) —
+  une fois importé, `pin0` est donc un identifiant Python nu (noeud `Name`),
+  pas une chaîne littérale (`Constant`). Un premier jet, écrit en lisant
+  seulement le générateur, extrayait `valeurConstante()` et échouait
+  silencieusement (`undefined`) à chaque appel réel — repéré en générant le
+  code pour de vrai plutôt qu'en supposant depuis la lecture du générateur.
+- **Toutes les valeurs de champ ne suivent pas la même convention, même
+  dans le même bloc.** `grove_ruban_couleur` a son COULEUR en CHAMP (menu
+  hexadécimal `"0xFF0000"`), pas en entrée de valeur comme la plupart des
+  autres blocs Grove — un litéral hexadécimal Python se parse en `Constant`
+  avec la valeur DÉCIMALE (`ast` ne garde pas la notation d'origine), d'où
+  une table de correspondance vers l'option d'origine plutôt qu'une
+  reconversion en base 16 à la main (qui ne retrouverait pas forcément la
+  même casse/notation que l'option Blockly attendue).
+- **`col_offset`/`lineno` de Brython mentent parfois.** Utilisés pour
+  extraire le texte Python EXACT d'un fragment non reconnu (`ast.
+  get_source_segment`, sa propre implémentation Brython tronquant déjà au
+  premier mot pour `Import`/`ImportFrom` — bug de cette fonction précise,
+  contourné par un découpage manuel). Plus grave : pour un noeud composite
+  (`BinOp`, `Assign`...), Brython pose parfois la position sur son seul
+  TOKEN OPÉRATEUR plutôt que tout l'empan — `1 + 2` donnait un `BinOp` dont
+  la position ne couvrait que le `+` (confirmé en comparant aux positions,
+  correctes elles, de ses propres enfants `Constant`). Corrigé en calculant
+  l'empan par le BAS : union de la position propre du noeud avec celles de
+  TOUS ses descendants, remontée à chaque niveau de la récursion — une
+  position propre trop étroite se retrouve noyée dans celle, correcte, des
+  enfants, sans distinguer les noeuds fiables des autres au cas par cas. Un
+  noeud `Import` simple n'a par contre AUCUN descendant positionné pour
+  s'appuyer dessus (l'`alias` interne n'a pas de position du tout) : repli
+  par reconstruction sémantique (`'import ' + noms.join(', ')`) plutôt que
+  par le texte, pour ce cas précis.
+- **Un litéral `b""` n'est pas sérialisable en JSON.** Trouvé dans le code
+  d'un pilote auto-injecté (valeur par défaut d'un paramètre), a fait
+  planter `json.dumps` côté Brython avant même d'atteindre le JS — corrigé
+  en convertissant `bytes` en simple liste d'entiers (aucun bloc ne
+  reconstruit une valeur bytes de toute façon, seule l'absence de plantage
+  compte ici) et en élargissant la capture d'exception de
+  `analyser_code_python()` à TOUTE exception, pas seulement `SyntaxError` —
+  un noeud AST inattendu doit toujours échouer proprement (repli édition
+  manuelle), jamais planter.
+- **Le code auto-injecté doit être retiré AVANT l'analyse, pas ignoré après.**
+  Les pilotes (`# >>> pilote X ... # <<< pilote X`, un motif déjà utilisé
+  ailleurs dans ce fichier pour les replier à l'affichage — voir
+  `afficherTranscription()`) contiennent des dizaines à des centaines de
+  lignes de définitions internes, jamais posées par l'utilisateur comme des
+  blocs. Un premier jet les laissait passer telles quelles à `ast.parse()` :
+  chaque ligne de définition, non reconnue par aucun matcher, devenait son
+  propre bloc `code_brut` — jusqu'à 80 sur un programme de test pourtant
+  simple (deux blocs, une poignée d'instructions), noyant le résultat utile
+  sous du bruit. Corrigé en réutilisant le même motif `# >>> pilote X ...
+  # <<< pilote X` pour les retirer du texte avant analyse, pas après.
+- **Un bloc chaîné après « Au démarrage » et le même bloc niché DEDANS
+  produisent un texte Python rigoureusement identique.** `au_demarrage`
+  aplatit son contenu au premier niveau sans aucune marque ; un bloc
+  simplement accroché en dessous (chaîné via `next`, pas niché dans son
+  DO) génère donc exactement la même suite d'instructions, sans ligne vide
+  ni commentaire pour les distinguer — vérifié en générant les deux
+  variantes séparément et en comparant le texte produit, strictement égal.
+  Limite structurelle non corrigible : la reconstruction ne peut reproduire
+  qu'un agencement fonctionnellement équivalent (même ordre d'exécution),
+  jamais deviner le regroupement visuel d'origine quand celui-ci n'affecte
+  pas le code généré.
+- **Le passe-partout mérite d'être omis, pas affiché.** Les imports
+  (`from microbit import *`, `import neopixel`...) sont réinjectés tout
+  seuls par les générateurs dès qu'un bloc en a besoin (`importerMicrobit()`,
+  `importerModule()`...) — jamais quelque chose que l'utilisateur pose
+  lui-même. Un premier jet les affichait comme des blocs "code" en tête de
+  programme reconstruit (signalé par l'utilisateur, capture d'écran à
+  l'appui) ; corrigé en les faisant sauter silencieusement plutôt que de
+  leur donner un bloc (`bloc: null` dans le résultat d'un matcher, géré par
+  l'appelant qui omet simplement de le pousser dans la chaîne).
+
+**PIÈGE nº 53 — un accesseur « consommateur » du matériel réel peut devenir
+inutilisable dans un simulateur qui n'exécute jamais le programme en
+continu.** Bug signalé par l'utilisateur : « nombre de clics du bouton B =
+10 » ne se déclenchait jamais. Cause immédiate : `ButtonMock.get_presses()`
+renvoyait `0` sans condition (jamais implémenté). Cause plus profonde,
+découverte en corrigeant : sur la vraie carte, `get_presses()` renvoie le
+total de clics depuis la dernière lecture PUIS se remet à zéro — sémantique
+raisonnable quand le programme tourne en continu, mais ce simulateur
+n'exécute jamais le programme comme ça : il enchaîne des passages de 5
+tours à chaque déclenchement (voir PIÈGE nº 49) et repart de zéro entre
+deux dès que le précédent est terminé, ce qui arrive presque toujours entre
+deux clics espacés de plus de quelques dizaines de ms. Une implémentation
+fidèle au matériel remettait donc le compteur à zéro AU SEIN du même
+passage qui venait de le faire avancer — avant qu'un programme ait la
+moindre chance de le lire à une valeur utile. Confirmé en reproduisant le
+scénario exact (10 clics espacés de 150 ms, compteur bloqué à 0). Corrigé
+en s'écartant délibérément du matériel réel : un simple total, remis à zéro
+uniquement par « Réinitialiser la simulation », jamais par la lecture
+elle-même. Retenir : quand un modèle d'exécution s'écarte du matériel réel
+(ici, par passages plutôt qu'en continu), copier fidèlement une sémantique
+du matériel peut produire un comportement inutilisable plutôt qu'un
+comportement juste légèrement différent — vérifier contre un scénario
+d'usage réel avant de supposer que « fidèle au matériel » est toujours le
+bon choix.
+
 ## 12. Panneau administrateur
 
 Extension du principe du §5 (`updateToolbox` à chaud) en un vrai panneau à

@@ -8778,6 +8778,30 @@ try {
     window.simu_pin1_pressed = false;
     window.simu_pin2_pressed = false;
 
+    // Compteurs pour button_x.get_presses() (bloc "nombre de clics du bouton").
+    // Sur la vraie carte, get_presses() est une lecture CONSOMMATRICE (elle
+    // renvoie le total depuis la derniere lecture puis le remet a zero) —
+    // mais ce simulateur ne fait jamais tourner le programme en continu : il
+    // enchaine des passages de 5 tours (voir simu_lancerTours) a chaque
+    // declenchement, et repart de zero entre deux si le precedent est deja
+    // termine (cas courant : plusieurs clics espaces de quelques centaines de
+    // ms). Une version consommatrice remet donc le compteur a zero au sein
+    // du MEME passage qui vient de le faire avancer, avant qu'un programme
+    // du style « si nombre de clics == 10 » ait la moindre chance de le
+    // constater — verifie en reproduisant exactement ce scenario (10 clics
+    // espaces de 150 ms : le compteur restait desesperement a 0). Choix
+    // delibere de s'ecarter du materiel reel ici : un simple total qui ne se
+    // remet a zero qu'a la reinitialisation manuelle, seule variante qui se
+    // comporte comme l'utilisateur l'attend dans ce modele d'execution par
+    // passages plutot que d'imiter une semantique qui ne peut pas marcher ici.
+    window.simu_btnA_clics = 0;
+    window.simu_btnB_clics = 0;
+    window.simu_lireClicsBouton = function(bouton) {
+        if (bouton === 'a') return window.simu_btnA_clics;
+        if (bouton === 'b') return window.simu_btnB_clics;
+        return 0;
+    };
+
     // Vrai pendant les 5 tours d'un passage (voir simu_lancerTours plus bas) :
     // permet aux boutons/broches virtuels de ne PAS relancer toute la
     // simulation quand elle tourne déjà (voir lierCapteurTactile) — sinon un
@@ -8864,6 +8888,8 @@ try {
         window.simu_pin0_pressed = false;
         window.simu_pin1_pressed = false;
         window.simu_pin2_pressed = false;
+        window.simu_btnA_clics = 0;
+        window.simu_btnB_clics = 0;
         window.simu_geste = null;
         window.simuEnCours = false;
         window._simuApresVidageFile = null;
@@ -8925,6 +8951,11 @@ try {
             element.addEventListener('mousedown', () => {
                 window[nomVariableGlobale] = true;
                 element.classList.add('mb-edge-zone-active');
+                // Compte aussi comme un "clic" pour get_presses() (voir plus
+                // haut) — uniquement les boutons A/B, seuls concernés par ce
+                // bloc (pas les broches ni le logo).
+                if (idHTML === 'btn-a') window.simu_btnA_clics++;
+                if (idHTML === 'btn-b') window.simu_btnB_clics++;
                 // Un passage (5 tours, voir simu_lancerTours) est déjà en
                 // cours : le drapeau qu'on vient de poser sera vu par ses
                 // prochains tours tout seul. Relancer ici redémarrerait tout

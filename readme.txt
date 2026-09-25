@@ -187,12 +187,14 @@ Ce qui fonctionne :
   de basculer directement en edition manuelle. Tout ce que l'appli sait
   reconnaitre redevient un vrai bloc ; ce qu'elle ne reconnait pas encore
   redevient un bloc gris "code" qui garde le texte Python d'origine tel
-  quel (rien n'est jamais perdu, juste pas encore transforme en bloc). Un
-  fichier qui ne vient pas de cette appli (telecharge ailleurs, ou tape a la
-  main) n'a pas cette signature et bascule en edition manuelle comme avant -
-  Blockly ne sait pas transformer du Python quelconque en blocs, seul du
-  Python que cette appli a elle-meme produit peut etre reconstruit avec
-  confiance.
+  quel (rien n'est jamais perdu, juste pas encore transforme en bloc) - sauf
+  le pur passe-partout (les lignes "import ..." en tete de fichier), reinjecte
+  tout seul par l'appli des qu'un bloc en a besoin et donc simplement omis,
+  pas affiche comme un bloc "code" de plus. Un fichier qui ne vient pas de
+  cette appli (telecharge ailleurs, ou tape a la main) n'a pas cette
+  signature et bascule en edition manuelle comme avant - Blockly ne sait pas
+  transformer du Python quelconque en blocs, seul du Python que cette appli
+  a elle-meme produit peut etre reconstruit avec confiance.
 - Le bouton "Telecharger le script .py" donne le fichier directement ouvrable
   dans l'editeur Python officiel ou dans Mu.
 - Bouton "Capture d'ecran des blocs (.png)", dans la barre d'outils entre
@@ -503,6 +505,15 @@ reactive aussitot. Avant cette regle, un tel bloc isole n'etait pas grise
 alors qu'il ne faisait deja rien la plupart du temps - pire, un bloc
 d'instruction pose seul (pas un conteneur) etait bien execute une fois, tout
 en haut du programme, ce qui pouvait surprendre.
+
+"nombre de clics du bouton" (categorie Entrees/Sorties) : dans le simulateur,
+c'est un simple compteur qui augmente a chaque appui sur le bouton virtuel
+correspondant, et ne revient a 0 qu'en cliquant "Reinitialiser la simulation".
+Une vraie carte micro:bit remet ce compteur a 0 des qu'on le LIT (pas
+seulement sur reinitialisation) ; le simulateur s'en ecarte deliberement,
+sans quoi un programme classique du type "si nombre de clics = 10 alors ..."
+ne se declencherait jamais (le simulateur ne fait pas tourner le programme en
+continu comme la vraie carte, voir plus haut).
 
 ---------------------------------------------------------
 11. LE FICHIER FIRMWARE.HEX

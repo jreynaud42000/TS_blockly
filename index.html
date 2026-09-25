@@ -1536,7 +1536,7 @@
             if self.id_btn == 'a': return window.simu_btnA_pressed
             if self.id_btn == 'b': return window.simu_btnB_pressed
             return False
-        def get_presses(self): return 0
+        def get_presses(self): return window.simu_lireClicsBouton(self.id_btn)
 
     class AccelerometerMock:
         # was_gesture() consomme le geste : sur la carte, il ne repond vrai
