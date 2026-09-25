@@ -179,10 +179,20 @@ Ce qui fonctionne :
 - Pour rouvrir un programme : menu "Fichier" > "Importer un fichier .hex" (ou
   ".py"). Meme bibliotheque microbit-fs que pour l'ecriture, utilisee cette
   fois pour relire la zone systeme de fichiers du .hex et en ressortir
-  main.py. Comme Blockly ne sait pas transformer du Python en blocs, un
-  fichier importe bascule directement en edition manuelle (voir plus haut) -
-  jamais de reconstruction en blocs. https://python.microbit.org fait la
-  meme chose (et fonctionne donc aussi), mais n'est plus necessaire.
+  main.py. https://python.microbit.org fait la meme chose (et fonctionne
+  donc aussi), mais n'est plus necessaire.
+
+  Depuis peu, un fichier .hex ou .py EXPORTE PAR CETTE APPLI (il porte une
+  signature invisible en premiere ligne) est reconstruit en blocs plutot que
+  de basculer directement en edition manuelle. Tout ce que l'appli sait
+  reconnaitre redevient un vrai bloc ; ce qu'elle ne reconnait pas encore
+  redevient un bloc gris "code" qui garde le texte Python d'origine tel
+  quel (rien n'est jamais perdu, juste pas encore transforme en bloc). Un
+  fichier qui ne vient pas de cette appli (telecharge ailleurs, ou tape a la
+  main) n'a pas cette signature et bascule en edition manuelle comme avant -
+  Blockly ne sait pas transformer du Python quelconque en blocs, seul du
+  Python que cette appli a elle-meme produit peut etre reconstruit avec
+  confiance.
 - Le bouton "Telecharger le script .py" donne le fichier directement ouvrable
   dans l'editeur Python officiel ou dans Mu.
 - Bouton "Capture d'ecran des blocs (.png)", dans la barre d'outils entre

@@ -5441,7 +5441,10 @@ try {
         afficherEtat('Génération…', false);
 
         try {
-            const finalHex = await genererFichierHexFinal(codePython);
+            // La signature n'est ajoutee qu'au fichier ECRIT, jamais a
+            // window.currentPythonCode (transcription affichee, simulateur) :
+            // voir la section "RECONSTRUCTION DE BLOCS..." plus bas.
+            const finalHex = await genererFichierHexFinal(SIGNATURE_EXPORT + codePython);
             const blob = new Blob([finalHex], { type: 'application/octet-stream' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -5509,7 +5512,7 @@ try {
             // Générer d'abord : inutile de faire choisir un lecteur si le
             // programme ne peut de toute façon pas être produit.
             afficherEtat('Génération du programme…', false);
-            const contenuHex = await genererFichierHexFinal(codePython);
+            const contenuHex = await genererFichierHexFinal(SIGNATURE_EXPORT + codePython);
 
             etape = 'lecteur';
             if (!dossierCarte) {
@@ -5564,6 +5567,8 @@ try {
         let codePython = window.currentPythonCode;
         if (!codePython || codePython.trim() === "") {
             codePython = "# Aucun bloc n'a été ajouté.\nfrom microbit import *\n";
+        } else {
+            codePython = SIGNATURE_EXPORT + codePython;
         }
         const blob = new Blob([codePython], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
@@ -5821,6 +5826,11 @@ try {
         }
     }
     window.blocsOrphelinsTest = { estContainerLegitime, mettreAJourBlocsOrphelins };
+    // Expose aussi pour les verifications de la reconstruction (voir plus
+    // bas) : les connexions de blocs posees par programme (tests) ne
+    // declenchent pas toujours le change listener qui met a jour
+    // window.currentPythonCode, contrairement a un vrai glisser-deposer.
+    window.genererCodeTest = genererCodeDepuisBlocs;
 
     function updatePythonCode() {
         mettreAJourBlocsOrphelins();
@@ -5970,17 +5980,687 @@ try {
         evenement.returnValue = '';
     });
 
+    // ==========================================
+    // RECONSTRUCTION DE BLOCS DEPUIS UN FICHIER GÉNÉRÉ PAR CETTE APPLI
+    // ==========================================
+    // Demande de l'utilisateur : « je veux pouvoir reconstruire les fichiers
+    // générés par l'appli » — portée volontairement limitée à CES fichiers-là
+    // (pas du Python arbitraire, voir la discussion qui a précédé cette
+    // fonctionnalité) : chaque export porte désormais une signature en
+    // première ligne, qui déclenche une tentative de reconstruction à
+    // l'import. Sans elle (fichier étranger, ou trop ancien), comportement
+    // inchangé : édition manuelle directe.
+    //
+    // Principe : `window.analyserCodePython()` (Brython, index.html) rend le
+    // texte importé sous forme d'arbre syntaxique (module `ast` standard,
+    // jamais de regex sur le texte — un commentaire ou une indentation
+    // différente ne doit pas faire échouer l'analyse). Ce module JS parcourt
+    // ensuite cet arbre et tente de faire correspondre chaque instruction/
+    // expression à l'un des blocs de ce projet, en s'appuyant sur le fait que
+    // CHAQUE générateur (voir plus haut, `P.forBlock[...]`) produit un motif
+    // Python fixe et déterministe — jamais deux formulations différentes pour
+    // le même bloc. C'est ce qui rend la reconstruction possible : impossible
+    // pour du Python quelconque (plusieurs écritures valides n'ont pas de
+    // bloc unique correspondant), réaliste seulement parce qu'on sait à
+    // l'avance exactement ce que nos propres générateurs produisent.
+    //
+    // Couverture volontairement partielle : reconnaître les 165 blocs de ce
+    // projet un par un est un chantier qui dépasse largement une seule passe
+    // (voir l'ampleur déjà mesurée dans le fichier de suivi Excel). Tout ce
+    // qui n'est pas encore reconnu retombe sur un bloc générique "code
+    // personnalisé" qui garde le fragment Python d'origine tel quel — jamais
+    // d'échec silencieux, jamais de code perdu, juste un bloc de moins que
+    // l'idéal. La liste de ce qui EST couvert aujourd'hui est documentée
+    // dans ETAT_DU_PROJET.md et PROMPT_RECREATION.md.
+
+    const SIGNATURE_MARQUEUR = '# --BLOCKLY-MICROBIT-V2--';
+    const SIGNATURE_EXPORT = SIGNATURE_MARQUEUR +
+        ' genere par cette appli : reconstruction automatique possible a l\'import\n';
+
+    // ------------------------------------------
+    // Bloc de repli : "code personnalisé" (instruction) et son équivalent
+    // pour une expression, utilisés partout où l'arbre importé ne correspond
+    // à aucun motif reconnu. Une simple boîte de texte, générée telle quelle.
+    // ------------------------------------------
+    Blockly.Blocks['code_brut'] = { init: function() {
+        this.appendDummyInput().appendField("code")
+            .appendField(new Blockly.FieldTextInput(''), 'CODE');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour('#5b5b5b');
+        this.setTooltip("Fragment de code importé que cette appli ne sait pas encore " +
+            "reconvertir en blocs. Le texte Python est conservé tel quel : rien n'est perdu, " +
+            "ce fragment se comportera exactement comme dans le fichier importé.");
+    }};
+    P.forBlock['code_brut'] = function(block) {
+        return block.getFieldValue('CODE') + '\n';
+    };
+
+    Blockly.Blocks['expression_brute'] = { init: function() {
+        this.appendDummyInput().appendField("(")
+            .appendField(new Blockly.FieldTextInput(''), 'CODE')
+            .appendField(")");
+        this.setOutput(true, null);
+        this.setColour('#5b5b5b');
+        this.setTooltip("Expression importée que cette appli ne sait pas encore reconvertir " +
+            "en blocs — le texte Python d'origine est conservé tel quel.");
+    }};
+    P.forBlock['expression_brute'] = function(block) {
+        return [block.getFieldValue('CODE') || '0', P.ORDER_ATOMIC];
+    };
+
+    // ------------------------------------------
+    // Aides bas niveau sur l'arbre JSON produit par ast_vers_json (Brython)
+    // ------------------------------------------
+    function estAppel(noeud, nomAttendu) {
+        // Appel du style `nom(...)` — func est un Name direct.
+        return noeud && noeud._type === 'Call' && noeud.func && noeud.func._type === 'Name' &&
+               (!nomAttendu || noeud.func.id === nomAttendu);
+    }
+    function estAppelAttribut(noeud, objetAttendu, methodeAttendue) {
+        // Appel du style `objet.methode(...)`.
+        return noeud && noeud._type === 'Call' && noeud.func && noeud.func._type === 'Attribute' &&
+               noeud.func.value && noeud.func.value._type === 'Name' &&
+               (!objetAttendu || noeud.func.value.id === objetAttendu) &&
+               (!methodeAttendue || noeud.func.attr === methodeAttendue);
+    }
+    /** Retire un habillage `str(...)` s'il est present, sinon renvoie le noeud tel quel. */
+    function sansStr(noeud) {
+        if (estAppel(noeud, 'str') && noeud.args.length === 1) return noeud.args[0];
+        return noeud;
+    }
+    function valeurConstante(noeud) {
+        return noeud && noeud._type === 'Constant' ? noeud.value : undefined;
+    }
+    /**
+     * Certains champs "broche" (servo_angle, kitrobot_definir_ultrason...)
+     * ont des valeurs d'option ("pin0", "pin1"...) séparées sans guillemets
+     * dans le générateur — ce sont donc des identifiants Python nus (noeud
+     * `Name`) une fois importés, pas des chaînes littérales (`Constant`).
+     * Vérifié en comparant le code réellement généré par ces blocs, pas
+     * deviné depuis la lecture du générateur seule (une première version
+     * de ce fichier s'était trompée sur ce point précis).
+     */
+    function identifiantNom(noeud) {
+        return noeud && noeud._type === 'Name' ? noeud.id : undefined;
+    }
+
+    /** L'inverse exact de conditionBouton() (voir plus haut) : trois motifs fixes. */
+    function inverserConditionBouton(noeud) {
+        const estPressA = n => n && n._type === 'Call' && n.func && n.func._type === 'Attribute' &&
+            n.func.value && n.func.value._type === 'Name' && n.func.value.id === 'button_a' && n.func.attr === 'is_pressed';
+        const estPressB = n => n && n._type === 'Call' && n.func && n.func._type === 'Attribute' &&
+            n.func.value && n.func.value._type === 'Name' && n.func.value.id === 'button_b' && n.func.attr === 'is_pressed';
+        if (estPressA(noeud)) return 'a';
+        if (estPressB(noeud)) return 'b';
+        if (noeud && noeud._type === 'BoolOp' && noeud.op && noeud.op._type === 'And' &&
+            noeud.values && noeud.values.length === 2 &&
+            estPressA(noeud.values[0]) && estPressB(noeud.values[1])) return 'ab';
+        return null;
+    }
+
+    // ------------------------------------------
+    // Reconstruction des EXPRESSIONS (valeurs) — table + cas particuliers
+    // ------------------------------------------
+    /** Blocs "litteraux" natifs de Blockly, pour un Constant Python. */
+    function reconstruireLitteral(noeud) {
+        const v = valeurConstante(noeud);
+        if (typeof v === 'number') return { type: 'math_number', fields: { NUM: String(v) } };
+        if (typeof v === 'string') return { type: 'text', fields: { TEXT: v } };
+        if (typeof v === 'boolean') return { type: 'logic_boolean', fields: { BOOL: v ? 'TRUE' : 'FALSE' } };
+        return null;
+    }
+
+    const OP_ARITH = { Add: 'ADD', Sub: 'MINUS', Mult: 'MULTIPLY', Div: 'DIVIDE' };
+    const OP_COMPARE = { Eq: 'EQ', NotEq: 'NEQ', Lt: 'LT', LtE: 'LTE', Gt: 'GT', GtE: 'GTE' };
+    const OP_BOOL = { And: 'AND', Or: 'OR' };
+
+    /** Appels Python `nom(...)` -> bloc de valeur, pour les blocs les plus simples. */
+    const APPELS_VALEUR_SIMPLES = {
+        // fonction Python : [type de bloc, [ordre des ENTREES de valeur (une seule ici, ou aucune)]]
+        'abs': ['math_absolue', ['NUM']],
+        '_mq_distance': ['maqueen_distance', []],
+        '_ml_distance': ['maqueenlite_distance', []],
+        '_grove_distance_cm': ['grove_ultrason_cm', []],
+        '_grove_distance_pouces': ['grove_ultrason_pouces', []],
+    };
+    /** Idem, mais le premier argument est un CHAMP texte (menu deroulant), pas une valeur. */
+    const APPELS_VALEUR_AVEC_CHAMP = {
+        '_mq_ligne_etat': ['maqueen_ligne_etat', 'CAPTEUR'],
+        '_mq_ligne_valeur': ['maqueen_ligne_valeur', 'CAPTEUR'],
+        '_ml_ligne': ['maqueenlite_ligne', 'COTE'],
+    };
+
+    function reconstruireExpression(noeud) {
+        if (!noeud) return { type: 'logic_null' };
+
+        const litteral = reconstruireLitteral(noeud);
+        if (litteral) return litteral;
+
+        if (noeud._type === 'Name') {
+            // Variable Blockly : le nom sert aussi d'identifiant Blockly, une
+            // variable de meme nom deja existante est reutilisee sinon creee.
+            try {
+                window.workspace.createVariable(noeud.id);
+            } catch (erreur) { /* deja existante : tant mieux */ }
+            return { type: 'variables_get', fields: { VAR: { name: noeud.id } } };
+        }
+
+        if (noeud._type === 'BinOp' && OP_ARITH[noeud.op._type]) {
+            return { type: 'math_arithmetic', fields: { OP: OP_ARITH[noeud.op._type] },
+                inputs: { A: { block: reconstruireExpression(noeud.left) },
+                          B: { block: reconstruireExpression(noeud.right) } } };
+        }
+        if (noeud._type === 'Compare' && noeud.ops.length === 1 && OP_COMPARE[noeud.ops[0]._type]) {
+            return { type: 'logic_compare', fields: { OP: OP_COMPARE[noeud.ops[0]._type] },
+                inputs: { A: { block: reconstruireExpression(noeud.left) },
+                          B: { block: reconstruireExpression(noeud.comparators[0]) } } };
+        }
+        if (noeud._type === 'BoolOp' && OP_BOOL[noeud.op._type] && noeud.values.length === 2) {
+            return { type: 'logic_operation', fields: { OP: OP_BOOL[noeud.op._type] },
+                inputs: { A: { block: reconstruireExpression(noeud.values[0]) },
+                          B: { block: reconstruireExpression(noeud.values[1]) } } };
+        }
+        if (noeud._type === 'UnaryOp' && noeud.op._type === 'Not') {
+            return { type: 'logic_negate', inputs: { BOOL: { block: reconstruireExpression(noeud.operand) } } };
+        }
+        // Un nombre negatif ("-100") n'est PAS un Constant negatif en Python :
+        // c'est un UnaryOp(USub) enveloppant un Constant positif. Sans ce cas,
+        // -100 tombait dans le repli generique (verifie sur un round-trip reel).
+        if (noeud._type === 'UnaryOp' && noeud.op._type === 'USub' &&
+            typeof valeurConstante(noeud.operand) === 'number') {
+            return { type: 'math_number', fields: { NUM: String(-valeurConstante(noeud.operand)) } };
+        }
+
+        const boutonExpr = inverserConditionBouton(noeud);
+        if (boutonExpr) return { type: 'bouton_est_appuye', fields: { BOUTON: boutonExpr } };
+
+        if (estAppelAttribut(noeud, 'accelerometer', 'get_strength') && noeud.args.length === 0) {
+            return { type: 'capteur_acceleration', fields: { AXIS: 'strength' } };
+        }
+        if (noeud._type === 'Call' && noeud.func._type === 'Attribute' &&
+            noeud.func.value && noeud.func.value._type === 'Name' && noeud.func.value.id === 'accelerometer' &&
+            /^get_[xyz]$/.test(noeud.func.attr) && noeud.args.length === 0) {
+            return { type: 'capteur_acceleration', fields: { AXIS: noeud.func.attr.slice(4) } };
+        }
+        if (estAppelAttribut(noeud, 'display', 'read_light_level') && noeud.args.length === 0) {
+            return { type: 'capteur_luminosite' };
+        }
+
+        if (noeud._type === 'Call' && noeud.func._type === 'Name') {
+            const nomFonction = noeud.func.id;
+            if (APPELS_VALEUR_SIMPLES[nomFonction]) {
+                const [typeBloc, entrees] = APPELS_VALEUR_SIMPLES[nomFonction];
+                const inputs = {};
+                entrees.forEach((nomEntree, i) => {
+                    inputs[nomEntree] = { block: reconstruireExpression(noeud.args[i]) };
+                });
+                return { type: typeBloc, inputs };
+            }
+            if (APPELS_VALEUR_AVEC_CHAMP[nomFonction] && noeud.args.length === 1) {
+                const [typeBloc, nomChamp] = APPELS_VALEUR_AVEC_CHAMP[nomFonction];
+                const v = valeurConstante(noeud.args[0]);
+                if (typeof v === 'string') return { type: typeBloc, fields: { [nomChamp]: v } };
+            }
+        }
+
+        // Repli : rien reconnu. `_source` (voir _ast_vers_json, index.html)
+        // porte le texte Python EXACT de ce noeud, jamais un texte reconstruit.
+        return { type: 'expression_brute', fields: { CODE: noeud._source || '0' } };
+    }
+
+    // ------------------------------------------
+    // Reconstruction des INSTRUCTIONS — table + cas particuliers
+    // ------------------------------------------
+    /** `nom(champ_texte, valeur)` -> bloc, le plus frequent des motifs. */
+    const APPELS_INSTRUCTION_CHAMP_VALEUR = {
+        '_mq_moteur': ['maqueen_moteur', 'COTE', 'VITESSE'],
+        '_ml_moteur': ['maqueenlite_moteur', 'COTE', 'VITESSE'],
+    };
+    /** `nom(valeur)` -> bloc, une seule entree de valeur. */
+    const APPELS_INSTRUCTION_VALEUR = {
+        '_lidar_distance_evitement': ['lidar_distance_evitement', 'DISTANCE'],
+    };
+    /** `nom()` -> bloc, aucun argument. */
+    const APPELS_INSTRUCTION_SIMPLES = {
+        '_lidar_acquerir': 'lidar_acquerir',
+    };
+    /** `nom(champ1, champ2)` -> bloc, deux champs litteraux (pas des valeurs). */
+
+    /**
+     * Tente de faire correspondre l'instruction en tete de `liste[i]` (et
+     * eventuellement les suivantes) a un bloc connu. Renvoie soit
+     * {bloc, consommees} (bloc JSON Blockly + nombre d'instructions
+     * absorbees, au moins 1), soit null si rien ne correspond ici — auquel
+     * cas l'appelant retombe sur le bloc "code personnalisé" générique.
+     */
+    function reconstruireInstructionUnique(liste, i) {
+        const n = liste[i];
+
+        // ---- import X / from Y import * : pur passe-partout, jamais posé
+        // par l'utilisateur lui-même — chaque bloc qui en a besoin
+        // réinjecte lui-même son import (importerMicrobit(), importerModule(),
+        // piloteXxx()...) dès qu'on le repose. L'afficher comme un bloc
+        // "code personnalisé" ne ferait qu'encombrer le haut du programme
+        // reconstruit sans rien apporter — `bloc: null` fait sauter
+        // l'instruction plutôt que de générer un bloc pour elle (voir
+        // reconstruireListeInstructions). ----
+        if (n._type === 'Import' || n._type === 'ImportFrom') {
+            return { bloc: null, consommees: 1 };
+        }
+
+        // ---- Assign : reset_chrono, kitrobot_definir_ultrason ----
+        if (n._type === 'Assign' && n.targets.length === 1) {
+            const cible = n.targets[0];
+            if (cible._type === 'Name' && cible.id === '_timer_start' &&
+                estAppel(n.value, 'running_time')) {
+                return { bloc: { type: 'reset_chrono' }, consommees: 1 };
+            }
+            if (cible._type === 'Subscript' && cible.value._type === 'Name' &&
+                cible.value.id === '_KB_BROCHES' && valeurConstante(cible.slice) === 'ultrason') {
+                const broche = identifiantNom(n.value);
+                if (broche !== undefined) {
+                    return { bloc: { type: 'kitrobot_definir_ultrason', fields: { BROCHE: broche } }, consommees: 1 };
+                }
+            }
+            return null;
+        }
+
+        if (n._type !== 'Expr') return null;
+        const appel = n.value;
+
+        // ---- attendre_temps : sleep(x) ou sleep(x * 1000) ----
+        if (estAppel(appel, 'sleep') && appel.args.length === 1) {
+            const arg = appel.args[0];
+            if (arg._type === 'BinOp' && arg.op._type === 'Mult' && valeurConstante(arg.right) === 1000) {
+                return { bloc: { type: 'attendre_temps', fields: { UNITE: 's' },
+                    inputs: { TEMPS: { block: reconstruireExpression(arg.left) } } }, consommees: 1 };
+            }
+            return { bloc: { type: 'attendre_temps', fields: { UNITE: 'ms' },
+                inputs: { TEMPS: { block: reconstruireExpression(arg) } } }, consommees: 1 };
+        }
+
+        // ---- display.show/scroll/clear ----
+        if (estAppelAttribut(appel, 'display', 'show') && appel.args.length === 1) {
+            return { bloc: { type: 'afficher_valeur', inputs: { VALEUR: { block: reconstruireExpression(sansStr(appel.args[0])) } } }, consommees: 1 };
+        }
+        if (estAppelAttribut(appel, 'display', 'scroll') && appel.args.length === 1) {
+            return { bloc: { type: 'faire_defiler', inputs: { VALEUR: { block: reconstruireExpression(sansStr(appel.args[0])) } } }, consommees: 1 };
+        }
+        if (estAppelAttribut(appel, 'display', 'clear') && appel.args.length === 0) {
+            return { bloc: { type: 'effacer_ecran' }, consommees: 1 };
+        }
+
+        // ---- audio / radio (methodes d'objet) ----
+        if (estAppelAttribut(appel, 'audio', 'play') && appel.args.length === 1 &&
+            appel.args[0]._type === 'Attribute' && appel.args[0].value._type === 'Name' && appel.args[0].value.id === 'Sound') {
+            return { bloc: { type: 'audio_jouer', fields: { SON: appel.args[0].attr } }, consommees: 1 };
+        }
+        if (estAppelAttribut(appel, 'audio', 'stop') && appel.args.length === 0) {
+            return { bloc: { type: 'audio_arreter' }, consommees: 1 };
+        }
+        if (estAppelAttribut(appel, 'radio', 'on') && appel.args.length === 0) {
+            return { bloc: { type: 'radio_activer' }, consommees: 1 };
+        }
+        if (estAppelAttribut(appel, 'radio', 'send') && appel.args.length === 1) {
+            return { bloc: { type: 'radio_envoyer_texte', inputs: { MESSAGE: { block: reconstruireExpression(sansStr(appel.args[0])) } } }, consommees: 1 };
+        }
+        if (estAppelAttribut(appel, 'radio', 'config') && appel.keywords && appel.keywords.length === 1 &&
+            appel.keywords[0].arg === 'group') {
+            return { bloc: { type: 'radio_groupe', inputs: { GROUPE: { block: reconstruireExpression(appel.keywords[0].value) } } }, consommees: 1 };
+        }
+
+        // ---- servo ----
+        if (estAppel(appel, '_servo_angle') && appel.args.length === 3) {
+            const broche = identifiantNom(appel.args[0]);
+            if (broche !== undefined) {
+                return { bloc: { type: 'servo_angle', fields: { BROCHE: broche },
+                    inputs: { ANGLE: { block: reconstruireExpression(appel.args[2]) } } }, consommees: 1 };
+            }
+        }
+        if (estAppel(appel, '_servo_arreter') && appel.args.length === 2) {
+            const broche = identifiantNom(appel.args[0]);
+            if (broche !== undefined) return { bloc: { type: 'servo_arreter', fields: { BROCHE: broche } }, consommees: 1 };
+        }
+
+        // ---- grove_ruban_couleur : DEUX instructions consommees d'un coup ----
+        // COULEUR est un CHAMP (menu deroulant, valeurs hexadecimales fixes
+        // "0xRRGGBB"), pas une entree de valeur — a la difference de la
+        // plupart des autres blocs Grove. Verifie en generant reellement le
+        // bloc plutot que suppose : `ast` transforme un litteral hexadecimal
+        // Python en un entier decimal (Constant.value), d'ou la table de
+        // correspondance plutot qu'une reconversion en base 16 a la main
+        // (qui ne retrouverait pas forcement la meme casse/notation).
+        if (appel._type === 'Call' && appel.func._type === 'Attribute' && appel.func.attr === 'fill' &&
+            estAppel(appel.func.value, '_grove_ruban') && appel.args.length === 1 &&
+            estAppel(appel.args[0], '_grove_teinte') && appel.args[0].args.length === 1) {
+            const suivante = liste[i + 1];
+            // `_grove_ruban().show()` : l'objet ("func.value") est lui-meme
+            // un appel a _grove_ruban(), pas un simple nom — estAppelAttribut
+            // ne couvre que le cas "nom.methode()", d'ou la verification directe.
+            const suiteValide = suivante && suivante._type === 'Expr' && suivante.value._type === 'Call' &&
+                suivante.value.func._type === 'Attribute' && suivante.value.func.attr === 'show' &&
+                suivante.value.args.length === 0 && estAppel(suivante.value.func.value, '_grove_ruban');
+            const valeurCouleur = valeurConstante(appel.args[0].args[0]);
+            const optionCouleur = COULEURS_GROVE.find(([, hex]) => Number(hex) === valeurCouleur);
+            if (suiteValide && optionCouleur) {
+                return { bloc: { type: 'grove_ruban_couleur', fields: { COULEUR: optionCouleur[1] } }, consommees: 2 };
+            }
+        }
+        if (appel._type === 'Call' && appel.func._type === 'Attribute' && appel.func.attr === 'clear' &&
+            estAppel(appel.func.value, '_grove_ruban') && appel.args.length === 0) {
+            return { bloc: { type: 'grove_ruban_effacer' }, consommees: 1 };
+        }
+
+        // ---- appels simples par table ----
+        if (appel._type === 'Call' && appel.func._type === 'Name') {
+            const nomFonction = appel.func.id;
+            if (APPELS_INSTRUCTION_SIMPLES[nomFonction] && appel.args.length === 0) {
+                return { bloc: { type: APPELS_INSTRUCTION_SIMPLES[nomFonction] }, consommees: 1 };
+            }
+            if (APPELS_INSTRUCTION_VALEUR[nomFonction] && appel.args.length === 1) {
+                const [typeBloc, nomEntree] = APPELS_INSTRUCTION_VALEUR[nomFonction];
+                return { bloc: { type: typeBloc, inputs: { [nomEntree]: { block: reconstruireExpression(appel.args[0]) } } }, consommees: 1 };
+            }
+            if (APPELS_INSTRUCTION_CHAMP_VALEUR[nomFonction] && appel.args.length === 2) {
+                const [typeBloc, nomChamp, nomEntree] = APPELS_INSTRUCTION_CHAMP_VALEUR[nomFonction];
+                const champ = valeurConstante(appel.args[0]);
+                if (typeof champ === 'string') {
+                    return { bloc: { type: typeBloc, fields: { [nomChamp]: champ },
+                        inputs: { [nomEntree]: { block: reconstruireExpression(appel.args[1]) } } }, consommees: 1 };
+                }
+            }
+        }
+
+        // ---- lidar_initialiser : ADRESSE est un nombre, MODE un identifiant
+        // nu ("TRUE"/"FALSE", tel quel dans le générateur — pas de quotes) ----
+        if (estAppel(appel, '_lidar_initialiser') && appel.args.length === 2) {
+            const adresse = valeurConstante(appel.args[0]);
+            const mode = identifiantNom(appel.args[1]);
+            if (adresse !== undefined && mode !== undefined) {
+                return { bloc: { type: 'lidar_initialiser', fields: { ADRESSE: String(adresse), MODE: mode } }, consommees: 1 };
+            }
+        }
+
+        return null;
+    }
+
+    /** If dont le test correspond a un des blocs "si ... alors" a une seule branche. */
+    function reconstruireSiSpecial(noeud) {
+        if (noeud.orelse && noeud.orelse.length) return null; // ces blocs n'ont pas de "sinon"
+        const boutonIf = inverserConditionBouton(noeud.test);
+        if (boutonIf) return { type: 'si_bouton_appuye', fields: { BOUTON: boutonIf },
+            inputs: { DO: { block: reconstruireListeInstructions(noeud.body) } } };
+        if (estAppelAttribut(noeud.test, 'pin_logo', 'is_touched') && noeud.test.args.length === 0) {
+            return { type: 'si_logo_touche', inputs: { DO: { block: reconstruireListeInstructions(noeud.body) } } };
+        }
+        if (estAppelAttribut(noeud.test, 'accelerometer', 'was_gesture') && noeud.test.args.length === 1 &&
+            valeurConstante(noeud.test.args[0]) === 'shake') {
+            return { type: 'si_secoue_alors', inputs: { DO: { block: reconstruireListeInstructions(noeud.body) } } };
+        }
+        return null;
+    }
+
+    /** `while not (<cond>): sleep(10)` -> attendre_jusqua. */
+    function reconstruireAttendreJusqua(noeud) {
+        if (noeud._type !== 'While') return null;
+        if (!(noeud.test._type === 'UnaryOp' && noeud.test.op._type === 'Not')) return null;
+        if (!(noeud.body.length === 1 && noeud.body[0]._type === 'Expr' &&
+              estAppel(noeud.body[0].value, 'sleep') && noeud.body[0].value.args.length === 1 &&
+              valeurConstante(noeud.body[0].value.args[0]) === 10)) return null;
+        return { type: 'attendre_jusqua', inputs: { CONDITION: { block: reconstruireExpression(noeud.test.operand) } } };
+    }
+
+    /** controls_if standard (Blockly natif), y compris elif/else en cascade. */
+    function reconstruireControlsIf(noeud) {
+        if (noeud._type !== 'If') return null;
+        const mutation = { elseIfCount: 0, hasElse: false };
+        const conditions = [noeud.test];
+        const branches = [noeud.body];
+        let reste = noeud.orelse;
+        while (reste && reste.length === 1 && reste[0]._type === 'If') {
+            mutation.elseIfCount++;
+            conditions.push(reste[0].test);
+            branches.push(reste[0].body);
+            reste = reste[0].orelse;
+        }
+        const inputs = {};
+        conditions.forEach((cond, idx) => { inputs['IF' + idx] = { block: reconstruireExpression(cond) }; });
+        branches.forEach((corps, idx) => { inputs['DO' + idx] = { block: reconstruireListeInstructions(corps) }; });
+        if (reste && reste.length) {
+            mutation.hasElse = true;
+            inputs['ELSE'] = { block: reconstruireListeInstructions(reste) };
+        }
+        return { type: 'controls_if', extraState: mutation, inputs };
+    }
+
+    /** controls_whileUntil natif : while <t> / while not <t>. */
+    function reconstruireControlsWhile(noeud) {
+        if (noeud._type !== 'While' || (noeud.orelse && noeud.orelse.length)) return null;
+        if (noeud.test._type === 'UnaryOp' && noeud.test.op._type === 'Not') {
+            return { type: 'controls_whileUntil', fields: { MODE: 'UNTIL' },
+                inputs: { BOOL: { block: reconstruireExpression(noeud.test.operand) },
+                          DO: { block: reconstruireListeInstructions(noeud.body) } } };
+        }
+        return { type: 'controls_whileUntil', fields: { MODE: 'WHILE' },
+            inputs: { BOOL: { block: reconstruireExpression(noeud.test) },
+                      DO: { block: reconstruireListeInstructions(noeud.body) } } };
+    }
+
+    /** controls_repeat_ext natif : `for count in range(<n>): ...` (nom de variable fixe cote Blockly). */
+    function reconstruireControlsRepeat(noeud) {
+        if (noeud._type !== 'For') return null;
+        if (!(noeud.target._type === 'Name' && /^count\d*$/.test(noeud.target.id))) return null;
+        if (!estAppel(noeud.iter, 'range') || noeud.iter.args.length !== 1) return null;
+        return { type: 'controls_repeat_ext',
+            inputs: { TIMES: { block: reconstruireExpression(noeud.iter.args[0]) },
+                      DO: { block: reconstruireListeInstructions(noeud.body) } } };
+    }
+
+    /** FunctionDef `on_xxx_yyy` -> bloc "lorsque ..." correspondant (voir GESTIONNAIRES). */
+    function reconstruireGestionnaire(noeud) {
+        if (noeud._type !== 'FunctionDef') return null;
+        const nom = noeud.name;
+        let m;
+        if ((m = /^on_button_pressed_(a|b|ab)$/.exec(nom))) {
+            return { type: 'lorsque_bouton', fields: { BOUTON: m[1] }, corps: noeud.body };
+        }
+        if ((m = /^on_gesture_(shake|up|down)$/.exec(nom))) {
+            return { type: 'lorsque_geste', fields: { GESTE: m[1] }, corps: noeud.body };
+        }
+        if ((m = /^on_pin_(pin[012])_(touched|released)$/.exec(nom))) {
+            return { type: 'lorsque_broche', fields: { BROCHE: m[1], ETAT: m[2] }, corps: noeud.body };
+        }
+        if ((m = /^on_sound_(LOUD|QUIET)$/.exec(nom))) {
+            return { type: 'lorsque_son_detecte', fields: { SON: m[1] }, corps: noeud.body };
+        }
+        if ((m = /^on_logo_(touched|released)$/.exec(nom))) {
+            return { type: 'lorsque_logo', fields: { ACTION: m[1] }, corps: noeud.body };
+        }
+        if ((m = /^on_radio_(nombre|valeur|texte)$/.exec(nom))) {
+            return { type: 'radio_quand_recu', fields: { TYPE: m[1] }, corps: noeud.body };
+        }
+        return null;
+    }
+
+    /**
+     * Convertit une liste de noeuds AST (corps d'un bloc, d'une fonction...)
+     * en une chaine de blocs Blockly (chainage `next`). Essaie chaque
+     * matcher d'instruction dans l'ordre ; celui qui reconnait le motif
+     * indique combien d'instructions il a absorbees (1 la plupart du temps,
+     * 2 pour grove_ruban_couleur). Repli sur "code personnalisé" sinon.
+     */
+    function reconstruireListeInstructions(liste) {
+        if (!liste || !liste.length) return null;
+        const blocs = [];
+        let i = 0;
+        while (i < liste.length) {
+            let resultat = null;
+            for (const matcher of [reconstruireSiSpecial, reconstruireAttendreJusqua,
+                                    reconstruireControlsIf, reconstruireControlsWhile, reconstruireControlsRepeat]) {
+                const r = matcher(liste[i]);
+                if (r) { resultat = { bloc: r, consommees: 1 }; break; }
+            }
+            if (!resultat) resultat = reconstruireInstructionUnique(liste, i);
+            if (!resultat) {
+                // `_source` (voir _ast_vers_json, index.html) porte le texte
+                // Python EXACT de cette instruction, jamais un texte reconstruit :
+                // rien de perdu, ce fragment se comportera comme dans le fichier importé.
+                resultat = { bloc: { type: 'code_brut', fields: { CODE: liste[i]._source || '# (instruction non reconnue)' } }, consommees: 1 };
+            }
+            // `bloc: null` (import reconnu, voir reconstruireInstructionUnique) :
+            // omis plutôt qu'affiché en "code personnalisé" — c'est du
+            // passe-partout que les générateurs réinjectent tout seuls dès
+            // qu'un bloc en a besoin (importerMicrobit(), importerModule()...),
+            // jamais quelque chose que l'utilisateur pose lui-même.
+            if (resultat.bloc) blocs.push(resultat.bloc);
+            i += resultat.consommees;
+        }
+        // Chainage next.
+        for (let k = blocs.length - 2; k >= 0; k--) blocs[k].next = { block: blocs[k + 1] };
+        return blocs[0];
+    }
+
+    /**
+     * Point d'entree : transforme le texte Python importe en arbre JSON pret
+     * pour `Blockly.serialization.workspaces.load()`, ou renvoie null si
+     * l'analyse syntaxique elle-meme a echoue (fichier corrompu, tronque...)
+     * — dans ce cas l'appelant retombe sur l'edition manuelle, comme avant
+     * cette fonctionnalite.
+     */
+    /**
+     * Retire les sections "pilote" auto-injectées (bibliothèques Maqueen,
+     * Kitrobot, LiDAR, servos, modules Grove...) avant l'analyse syntaxique :
+     * ce sont des dizaines voire des centaines de lignes de définitions de
+     * fonctions internes, jamais posées par l'utilisateur comme des blocs —
+     * les laisser passer produisait un "code personnalisé" par instruction
+     * (jusqu'à 80 sur un programme de test pourtant simple), noyant le
+     * résultat utile sous du bruit. Même motif que `afficherTranscription()`
+     * plus haut (qui les replie à l'affichage) : les délimiteurs `# >>> pilote
+     * NOM`/`# <<< pilote NOM` sont écrits par ce fichier lui-même (voir
+     * `piloteServo()`, `piloteMaqueen()`...), donc fiables sur un fichier
+     * réellement généré par cette appli.
+     */
+    function retirerPilotes(code) {
+        return code.replace(/# >>> pilote \S+\r?\n[\s\S]*?\r?\n# <<< pilote \S+\r?\n?/g, '');
+    }
+
+    function reconstruireDepuisCode(code) {
+        const resultatJson = window.analyserCodePython(retirerPilotes(code));
+        const resultat = JSON.parse(resultatJson);
+        if (!resultat.ok) return null;
+
+        const corpsModule = resultat.arbre.body;
+
+        // Definitions de fonctions "on_xxx" (gestionnaires "lorsque ...") a
+        // part, le reste (au demarrage / boucle infinie) va dans l'ordre.
+        const gestionnaires = [];
+        const instructionsPrincipales = [];
+        for (const n of corpsModule) {
+            const g = n._type === 'FunctionDef' ? reconstruireGestionnaire(n) : null;
+            if (g) gestionnaires.push(g); else instructionsPrincipales.push(n);
+        }
+
+        // Scission Au demarrage / Repeter indefiniment : tout ce qui precede
+        // le premier `while True:` de premier niveau est le demarrage, ce
+        // while lui-meme est la boucle infinie (scrutation auto-injectee
+        // retiree au passage), le reste (rare) suit la boucle.
+        let indexBoucle = instructionsPrincipales.findIndex(n =>
+            n._type === 'While' && valeurConstante(n.test) === true);
+
+        const blocsPrincipaux = [];
+        if (indexBoucle === -1) {
+            const demarrage = { type: 'au_demarrage', x: 40, y: 40 };
+            const corpsDemarrage = reconstruireListeInstructions(instructionsPrincipales);
+            if (corpsDemarrage) demarrage.inputs = { DO: { block: corpsDemarrage } };
+            blocsPrincipaux.push(demarrage);
+        } else {
+            const avant = instructionsPrincipales.slice(0, indexBoucle);
+            const boucleNoeud = instructionsPrincipales[indexBoucle];
+            const apres = instructionsPrincipales.slice(indexBoucle + 1);
+
+            const demarrage = { type: 'au_demarrage', x: 40, y: 40 };
+            const corpsDemarrage = reconstruireListeInstructions(avant);
+            if (corpsDemarrage) demarrage.inputs = { DO: { block: corpsDemarrage } };
+
+            // Retirer les lignes de scrutation auto-injectees (voir GESTIONNAIRES
+            // plus bas dans ce fichier) : elles ne correspondent a aucun bloc,
+            // ce sont nos propres blocs "lorsque ..." qui les remplacent.
+            const nomsGestionnaires = new Set(gestionnaires.map(g => {
+                if (g.type === 'lorsque_bouton') return 'on_button_pressed_' + g.fields.BOUTON;
+                if (g.type === 'lorsque_geste') return 'on_gesture_' + g.fields.GESTE;
+                if (g.type === 'lorsque_broche') return 'on_pin_' + g.fields.BROCHE + '_' + g.fields.ETAT;
+                if (g.type === 'lorsque_son_detecte') return 'on_sound_' + g.fields.SON;
+                if (g.type === 'lorsque_logo') return 'on_logo_' + g.fields.ACTION;
+                if (g.type === 'radio_quand_recu') return 'on_radio_' + g.fields.TYPE;
+                return '';
+            }));
+            const corpsBoucleFiltre = boucleNoeud.body.filter(n => !(
+                n._type === 'If' && n.test._type === 'Call' &&
+                n.body.length === 1 && n.body[0]._type === 'Expr' &&
+                n.body[0].value._type === 'Call' && n.body[0].value.func._type === 'Name' &&
+                nomsGestionnaires.has(n.body[0].value.func.id)
+            ));
+
+            const boucle = { type: 'boucle_infinie' };
+            const corpsBoucle = reconstruireListeInstructions(corpsBoucleFiltre);
+            if (corpsBoucle) boucle.inputs = { DO: { block: corpsBoucle } };
+            demarrage.next = { block: boucle };
+
+            if (apres.length) {
+                const suite = reconstruireListeInstructions(apres);
+                if (suite) boucle.next = { block: suite };
+            }
+            blocsPrincipaux.push(demarrage);
+        }
+
+        // Blocs "lorsque ..." positionnes a cote, decales verticalement pour
+        // ne pas se superposer.
+        gestionnaires.forEach((g, idx) => {
+            const bloc = { type: g.type, fields: g.fields, x: 400, y: 40 + idx * 150 };
+            const corps = reconstruireListeInstructions(g.corps);
+            if (corps) bloc.inputs = { DO: { block: corps } };
+            blocsPrincipaux.push(bloc);
+        });
+
+        return { blocks: { languageVersion: 0, blocks: blocsPrincipaux } };
+    }
+
+    // Expose pour les verifications : reconstruire un texte sans passer par
+    // un vrai import de fichier (input file non simulable depuis la console).
+    window.reconstructionTest = { reconstruireDepuisCode, SIGNATURE_EXPORT, SIGNATURE_MARQUEUR };
+
     // ------------------------------------------
     // IMPORT D'UN FICHIER .py OU .hex — menu "Fichier"
     // ------------------------------------------
-    // Blockly ne sait pas transformer du Python en blocs (voir plus haut) :
-    // un fichier importé bascule donc directement en édition manuelle,
-    // exactement comme si l'utilisateur avait tapé ce code lui-même. Pour un
-    // .hex, le texte n'est pas directement le programme — c'est un binaire
-    // encodé Intel hex qui embarque tout le firmware ; `extraireCodeDepuisHex`
-    // (deux.js) relit sa zone système de fichiers avec la même bibliothèque
-    // microbit-fs que la génération, pour en ressortir `main.py`.
+    // Blockly ne sait pas transformer du Python en blocs de façon générale
+    // (voir plus haut) : un fichier importé bascule donc en édition manuelle,
+    // SAUF s'il porte la signature de cette appli (SIGNATURE_MARQUEUR), auquel
+    // cas une reconstruction en blocs est tentée d'abord (voir ci-dessus).
+    // Pour un .hex, le texte n'est pas directement le programme — c'est un
+    // binaire encodé Intel hex qui embarque tout le firmware ;
+    // `extraireCodeDepuisHex` (deux.js) relit sa zone système de fichiers
+    // avec la même bibliothèque microbit-fs que la génération, pour en
+    // ressortir `main.py`.
     function importerCodeTexte(texte, origine) {
+        if (texte.trimStart().startsWith(SIGNATURE_MARQUEUR)) {
+            try {
+                const workspaceJson = reconstruireDepuisCode(texte);
+                if (workspaceJson) {
+                    if (editionManuelleActive) sortirEditionManuelle();
+                    window.workspace.clear();
+                    window.workspace.clearUndo();
+                    Blockly.serialization.workspaces.load(workspaceJson, window.workspace);
+                    Blockly.svgResize(window.workspace);
+                    const nbBrut = window.workspace.getAllBlocks(false).filter(b => b.type === 'code_brut' || b.type === 'expression_brute').length;
+                    afficherEtat(origine + ' reconstruit en blocs' +
+                        (nbBrut ? ` (${nbBrut} fragment${nbBrut > 1 ? 's' : ''} non reconnu${nbBrut > 1 ? 's' : ''}, en gris).` : '.'), false);
+                    return;
+                }
+            } catch (erreur) {
+                console.error('Reconstruction en blocs échouée, repli sur édition manuelle :', erreur);
+            }
+        }
         if (!editionManuelleActive) entrerEditionManuelle();
         zoneCodeTexte.value = texte;
         definirCodeActuel(texte);

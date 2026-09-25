@@ -1379,6 +1379,121 @@
     import math
     import re
     import textwrap
+    import ast
+    import json
+
+    # ------------------------------------------
+    # RECONSTRUCTION DE BLOCS DEPUIS UN FICHIER IMPORTÉ — passerelle AST
+    # ------------------------------------------
+    # Le reste de la reconstruction (mise en correspondance bloc par bloc)
+    # vit côté JS (un.js) : c'est là que sont déjà décrits tous les blocs et
+    # leur générateur, plus simple d'y ajouter aussi leur inverse plutôt que
+    # de dupliquer cette connaissance ici. Ce module Brython n'a qu'un rôle
+    # de passerelle : transformer le texte Python importé en un arbre exploi-
+    # table par JS, via le module `ast` standard (déjà utilisé en interne par
+    # Brython pour se compiler lui-même, donc fiable) — jamais de regex sur
+    # le texte, qui casserait au moindre commentaire ou changement d'indentation.
+    def _fusionner_etendues(a, b):
+        if a is None: return b
+        if b is None: return a
+        debut = a[:2] if a[:2] <= b[:2] else b[:2]
+        fin = a[2:] if a[2:] >= b[2:] else b[2:]
+        return debut + fin
+
+    def _etendue_propre(noeud):
+        l, f = getattr(noeud, 'lineno', None), getattr(noeud, 'end_lineno', None)
+        c, fc = getattr(noeud, 'col_offset', None), getattr(noeud, 'end_col_offset', None)
+        if l is None or f is None or c is None or fc is None:
+            return None
+        return (l, c, f, fc)
+
+    def _segment_source(lignes, etendue):
+        if etendue is None:
+            return None
+        debut, colDebut, fin, colFin = etendue
+        if debut == fin:
+            return lignes[debut - 1][colDebut:colFin]
+        morceaux = [lignes[debut - 1][colDebut:]]
+        morceaux.extend(lignes[debut:fin - 1])
+        morceaux.append(lignes[fin - 1][:colFin])
+        return '\n'.join(morceaux)
+
+    def _ast_vers_json(noeud, lignes_source):
+        """Renvoie (json, etendue) — etendue = (ligne1, col1, ligne2, col2).
+
+        Brython (contrairement à CPython) pose parfois lineno/col_offset
+        d'un noeud composite sur son seul TOKEN OPÉRATEUR plutôt que sur
+        tout son empan : `1 + 2` donne un `BinOp` dont la position ne
+        couvre que le "+" (constaté en comparant aux positions, correctes
+        elles, de ses propres enfants `Constant`). D'où ce calcul par le
+        BAS : l'empan retenu pour un noeud est l'union de sa position
+        propre ET de celles de tous ses descendants — une position
+        propre trop étroite se retrouve alors noyée dans celle, correcte,
+        de ses enfants, sans qu'il faille distinguer les noeuds fiables
+        des autres au cas par cas.
+        """
+        if isinstance(noeud, ast.AST):
+            resultat = {"_type": type(noeud).__name__}
+            etendue = _etendue_propre(noeud)
+            for champ in noeud._fields:
+                valeur_json, etendue_enfant = _ast_vers_json(getattr(noeud, champ, None), lignes_source)
+                resultat[champ] = valeur_json
+                etendue = _fusionner_etendues(etendue, etendue_enfant)
+            # Texte Python d'origine EXACT de ce noeud (pas une reserialisation
+            # via un hypothetique ast.unparse, qui changerait la mise en forme) :
+            # sert de filet pour le bloc de repli "code personnalisé" côté JS,
+            # qui doit garder le fragment tel quel plutôt qu'un texte reconstruit
+            # ou un simple "non reconnu" qui perdrait l'information.
+            try:
+                segment = _segment_source(lignes_source, etendue)
+                if segment is not None:
+                    resultat["_source"] = segment
+            except Exception:
+                pass
+            return resultat, etendue
+        if isinstance(noeud, list):
+            etendue = None
+            elements = []
+            for x in noeud:
+                valeur_json, etendue_enfant = _ast_vers_json(x, lignes_source)
+                elements.append(valeur_json)
+                etendue = _fusionner_etendues(etendue, etendue_enfant)
+            return elements, etendue
+        if isinstance(noeud, bytes):
+            # Un litteral b"..." (ex. valeur par defaut d'un parametre dans
+            # le code des pilotes auto-injectes) n'est pas serialisable en
+            # JSON tel quel. Aucun bloc ne reconstruit une valeur bytes
+            # aujourd'hui : une liste d'entiers suffit a ne pas faire
+            # planter l'analyse du reste de l'arbre.
+            return list(noeud), None
+        # Primitif (str, int, float, bool, None) : deja serialisable tel quel,
+        # et ne porte par definition aucune position propre.
+        return noeud, None
+
+    def analyser_code_python(code):
+        """Renvoie un JSON {ok: True, arbre: ...} ou {ok: False, erreur: "..."}.
+
+        Chaîne JSON plutôt qu'un objet Python direct : la conversion Brython
+        d'un dict Python imbriqué vers un objet JS n'est pas toujours fidèle
+        pour des structures profondes, alors que `json.dumps` + `JSON.parse`
+        côté JS est un aller-retour standard, déjà éprouvé ailleurs dans ce
+        fichier (voir extraireCodeDepuisHex côté JS pour un choix similaire
+        de passer par un format texte plutôt qu'un objet partagé).
+        """
+        try:
+            arbre = ast.parse(code)
+            arbre_json, _ = _ast_vers_json(arbre, code.splitlines())
+            return json.dumps({"ok": True, "arbre": arbre_json})
+        except SyntaxError as e:
+            return json.dumps({"ok": False, "erreur": str(e)})
+        except Exception as e:
+            # Filet de securite : un noeud AST inattendu (ex. une valeur non
+            # serialisable en JSON) ne doit jamais faire planter l'import,
+            # seulement echouer proprement — l'appelant JS retombe alors sur
+            # l'edition manuelle, comme pour un fichier etranger.
+            return json.dumps({"ok": False, "erreur": type(e).__name__ + ': ' + str(e)})
+
+    window.analyserCodePython = analyser_code_python
 
     def sleep(ms): window.simu_sleep(ms)
     def temperature(): return 21
