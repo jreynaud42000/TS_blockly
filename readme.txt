@@ -506,14 +506,24 @@ alors qu'il ne faisait deja rien la plupart du temps - pire, un bloc
 d'instruction pose seul (pas un conteneur) etait bien execute une fois, tout
 en haut du programme, ce qui pouvait surprendre.
 
-"nombre de clics du bouton" (categorie Entrees/Sorties) : dans le simulateur,
-c'est un simple compteur qui augmente a chaque appui sur le bouton virtuel
-correspondant, et ne revient a 0 qu'en cliquant "Reinitialiser la simulation".
-Une vraie carte micro:bit remet ce compteur a 0 des qu'on le LIT (pas
-seulement sur reinitialisation) ; le simulateur s'en ecarte deliberement,
-sans quoi un programme classique du type "si nombre de clics = 10 alors ..."
-ne se declencherait jamais (le simulateur ne fait pas tourner le programme en
-continu comme la vraie carte, voir plus haut).
+"nombre de clics du bouton" (categorie Entrees/Sorties) : sur la vraie carte,
+l'API MicroPython sous-jacente (get_presses()) remet son compteur a 0 des
+qu'on la LIT - un simple "si nombre de clics = 10 alors ..." ne se
+declencherait donc quasiment jamais tel quel. Le bloc genere pour cette
+raison son propre compteur cumulatif a cote (une petite fonction Python,
+invisible dans les blocs), qui lui ne se remet jamais a 0 tout seul :
+correct aussi bien sur la vraie carte que dans le simulateur, puisque c'est
+le meme code qui tourne dans les deux cas.
+
+Le simulateur garde desormais cette session (variables Python globales,
+objets Grove deja crees, etat des servos...) d'un declenchement a l'autre
+tant que le code n'a pas change : un bouton virtuel presse pendant que rien
+n'est en cours poursuit l'environnement existant au lieu de tout relancer
+depuis "Au demarrage". Des clics espaces de plusieurs secondes s'additionnent
+donc correctement dans "nombre de clics du bouton", comme sur la vraie
+carte. Seul le bouton "Lancer la simulation" continue a tout redemarrer a
+zero (son role naturel), et "Reinitialiser la simulation" efface cette
+session au passage.
 
 ---------------------------------------------------------
 11. LE FICHIER FIRMWARE.HEX

@@ -1477,30 +1477,89 @@ générateur seul :
   leur donner un bloc (`bloc: null` dans le résultat d'un matcher, géré par
   l'appelant qui omet simplement de le pousser dans la chaîne).
 
-**PIÈGE nº 53 — un accesseur « consommateur » du matériel réel peut devenir
-inutilisable dans un simulateur qui n'exécute jamais le programme en
-continu.** Bug signalé par l'utilisateur : « nombre de clics du bouton B =
-10 » ne se déclenchait jamais. Cause immédiate : `ButtonMock.get_presses()`
-renvoyait `0` sans condition (jamais implémenté). Cause plus profonde,
-découverte en corrigeant : sur la vraie carte, `get_presses()` renvoie le
-total de clics depuis la dernière lecture PUIS se remet à zéro — sémantique
-raisonnable quand le programme tourne en continu, mais ce simulateur
-n'exécute jamais le programme comme ça : il enchaîne des passages de 5
-tours à chaque déclenchement (voir PIÈGE nº 49) et repart de zéro entre
-deux dès que le précédent est terminé, ce qui arrive presque toujours entre
-deux clics espacés de plus de quelques dizaines de ms. Une implémentation
-fidèle au matériel remettait donc le compteur à zéro AU SEIN du même
-passage qui venait de le faire avancer — avant qu'un programme ait la
-moindre chance de le lire à une valeur utile. Confirmé en reproduisant le
-scénario exact (10 clics espacés de 150 ms, compteur bloqué à 0). Corrigé
-en s'écartant délibérément du matériel réel : un simple total, remis à zéro
-uniquement par « Réinitialiser la simulation », jamais par la lecture
-elle-même. Retenir : quand un modèle d'exécution s'écarte du matériel réel
-(ici, par passages plutôt qu'en continu), copier fidèlement une sémantique
-du matériel peut produire un comportement inutilisable plutôt qu'un
-comportement juste légèrement différent — vérifier contre un scénario
-d'usage réel avant de supposer que « fidèle au matériel » est toujours le
-bon choix.
+**PIÈGE nº 53 — corriger le simulateur pour un bloc qui génère du code faux
+ne corrige que le simulateur ; il faut corriger le générateur.** Bug
+signalé par l'utilisateur : « nombre de clics du bouton B = 10 » ne se
+déclenchait jamais. Cause immédiate : `ButtonMock.get_presses()` renvoyait
+`0` sans condition (jamais implémenté).
+
+Premier correctif (INSUFFISANT, gardé ici pour la leçon) : sur la vraie
+carte, `button_x.get_presses()` est une lecture CONSOMMATRICE (renvoie le
+total depuis la dernière lecture PUIS se remet à zéro) — mais le bloc
+générait `button_b.get_presses()` TEL QUEL dans le code exporté. Comme ce
+simulateur n'exécute jamais le programme en continu (il enchaîne des
+passages de 5 tours à chaque déclenchement, voir PIÈGE nº 49, et repart de
+zéro entre deux si le précédent est déjà terminé), une version
+consommatrice dans `ButtonMock` remettait le compteur à zéro AU SEIN du
+même passage qui venait de le faire avancer — jamais assez pour atteindre
+10. Un premier correctif a donc rendu `ButtonMock.get_presses()` NON
+consommateur côté simulateur (un simple total, remis à zéro seulement par
+« Réinitialiser la simulation »). Ça faisait marcher le SIMULATEUR — mais le
+code EXPORTÉ vers la vraie carte appelait toujours `get_presses()`
+directement, sans accumulation : sur la vraie carte (exécution continue,
+`get_presses()` réellement consommateur), `== 10` ne se déclenchait quasiment
+jamais. Signalé par l'utilisateur dans la foulée : « le mode simulation
+fonctionne bien, par contre ça ne fonctionne pas en réel » — la faute
+exacte que corriger UNIQUEMENT le simulateur risque de produire : un
+comportement qui a l'air bon dans l'appli mais ment sur ce qui tourne
+réellement sur la carte.
+
+Correctif définitif : déplacer la solution dans le GÉNÉRATEUR du bloc
+(`P.forBlock['nombre_clics_bouton']`), qui pose un compteur Python global
+cumulatif plutôt que d'appeler `get_presses()` nu :
+
+```js
+P.definitions_['clics_' + bouton] =
+    '_clics_' + bouton + ' = 0\n' +
+    'def _lire_clics_' + bouton + '():\n' +
+    P.INDENT + 'global _clics_' + bouton + '\n' +
+    P.INDENT + '_clics_' + bouton + ' += button_' + bouton + '.get_presses()\n' +
+    P.INDENT + 'return _clics_' + bouton;
+```
+
+Cette fois le MÊME code Python tourne sur la vraie carte et dans le
+simulateur : `ButtonMock.get_presses()` peut redevenir fidèle au matériel
+réel (consommateur), l'accumulation ne dépend plus de lui. Vérifié : code
+généré correct pour une exécution continue (`_clics_b = 0` au niveau module,
+incrémenté à chaque appel).
+
+Limite restante, découverte en re-testant DANS LE NAVIGATEUR après ce
+correctif (pas devinée) : le simulateur ré-`exec()` le programme ENTIER à
+chaque passage déclenché par un clic sur bouton inactif — y compris les
+définitions de niveau module, donc `_clics_b = 0` se réinitialise à CHAQUE
+passage séparé. Des clics espacés de plus de quelques dizaines de ms (le
+temps qu'un passage sans `sleep()` se termine) ne s'accumulaient donc plus
+dans le simulateur, même si le même programme fonctionnait correctement sur
+la vraie carte (exécution continue, jamais de ré-exec).
+
+Corrigé dans une passe suivante, après confirmation explicite de
+l'utilisateur ("oui") : séparation de l'exécution du code de premier niveau
+(une seule fois) et de la répétition des tours, dans `index.html`.
+`lancer_simulation(code)` est devenu un mince wrapper qui appelle
+`_demarrer_session(code)` — la logique d'origine (nettoyage, construction de
+`env`, découpe `avant`/`corps`/`après`, `exec(avant, env)`) — SANS rien
+changer d'autre, garantissant qu'appuyer sur le bouton « Lancer » redémarre
+TOUJOURS tout à zéro, comme son nom l'indique. Deux nouvelles fonctions
+utilisent cette même session : `continuer_ou_lancer_simulation()`, appelée
+par les capteurs virtuels (boutons, broches, logo, secousse, radio, geste
+Grove — `un.js`, en remplacement de leurs `btnLancer.click()`) à la place de
+`lancer_simulation()`, qui reprend la session existante (mêmes `env`, mêmes
+variables globales Python) si le code n'a pas changé depuis, au lieu de tout
+réexécuter depuis « Au démarrage » ; et `invalider_session_simulation()`,
+appelée par `simu_reinitialiser()` (`un.js`), pour qu'un « Réinitialiser »
+ne laisse pas une session périmée derrière lui. Vérifié dans le navigateur
+avec le scénario exact signalé par l'utilisateur (10 clics espacés de 150 ms
+sur le bouton B virtuel, en deux salves de 5 avec un vrai délai entre les
+deux) : le cœur s'affiche désormais correctement, alors qu'un « Lancer la
+simulation » explicite entre-temps repart bien de zéro.
+
+Retenir : pour un projet qui produit du code exécuté sur DEUX cibles
+(simulateur ET vraie carte) à partir du MÊME générateur, un bug de
+comportement doit d'abord se demander « le code généré est-il correct pour
+une exécution continue sur la vraie carte ? » avant de corriger le
+simulateur — sinon le correctif peut faire disparaître le symptôme dans
+l'appli tout en laissant, voire en aggravant, le vrai problème sur le
+matériel que le projet est censé cibler.
 
 ## 12. Panneau administrateur
 

@@ -2039,25 +2039,42 @@
         apres = "\n".join(lignes[fin:])
         return avant, corps, apres
 
-    def lancer_simulation(ev):
-        code = getattr(window, 'currentPythonCode', '')
-        if not code or "Glissez des blocs" in code:
-            return alert("Aucun code à simuler !")
+    # Session persistante entre deux declenchements successifs (voir
+    # continuer_ou_lancer_simulation, plus bas) : tant que le code n'a pas
+    # change, l'environnement Python (variables globales du programme,
+    # objets Grove deja crees, etat des servos...) survit d'un appui de
+    # capteur virtuel au suivant, au lieu d'etre entierement reconstruit a
+    # chaque fois. `_session_env` n'est jamais lu directement ici ; il
+    # n'existe que pour que les fermetures _tour_suivant/_fin_des_tours
+    # (qui, elles, le capturent) restent valides tant que la session l'est.
+    _session_active = False
+    _session_code = None
 
+    def _demarrer_session(code):
+        '''Reconstruit tout l'environnement Python depuis zero et l'execute
+        une fois ("Au demarrage"). Renvoie 'tours' si une boucle infinie de
+        premier niveau a ete isolee (l'appelant doit alors enchainer avec
+        simu_lancerTours), 'fait' si le programme (sans boucle de premier
+        niveau) a deja tourne d'un bloc, ou 'erreur' si l'execution a
+        echoue (deja signale a l'utilisateur dans les deux cas).'''
+        global _session_active, _session_code
         window.simu_clearQueue()
-        # Chaque execution repart de peripheriques neufs.
+        # Chaque NOUVELLE session repart de peripheriques neufs — mais une
+        # session simplement POURSUIVIE (voir continuer_ou_lancer_simulation)
+        # ne doit surtout pas passer par ici : c'est justement ce qui doit
+        # persister d'un declenchement au suivant.
         _grove_objets.clear()
         _SERVO_ETAT_SIMU.clear()
         # Les pilotes Grove pilotent de vraies broches : on les retire et ce sont
         # les classes ci-dessus, injectees dans env, qui prennent le relais.
-        code = re.sub(r"# >>> pilote \S+.*?# <<< pilote \S+", "", code, flags=re.S)
+        code_nettoye = re.sub(r"# >>> pilote \S+.*?# <<< pilote \S+", "", code, flags=re.S)
         # replace() sans compte remplace TOUTES les occurrences en Python : un
         # programme a deux boucles infinies ne fige donc plus l'onglet.
         for ligne in ["from microbit import *", "import audio", "import music",
                       "import speech", "import radio", "import time", "import math",
                       "import random", "import neopixel", "import machine",
                       "import utime", "import ustruct"]:
-            code = code.replace(ligne, "")
+            code_nettoye = code_nettoye.replace(ligne, "")
 
         env = {
             'display': Display(), 'Image': ImageMock(), 'sleep': sleep,
@@ -2171,7 +2188,7 @@
             print("Erreur d'exécution :", e)
             window.simu_erreur(str(e))
 
-        decoupe = _diviser_boucle_principale(code)
+        decoupe = _diviser_boucle_principale(code_nettoye)
 
         if decoupe is None:
             # Pas de boucle infinie unique de premier niveau (aucune boucle
@@ -2179,22 +2196,28 @@
             # comportement d'origine, le programme entier d'un coup. Un
             # capteur Maqueen n'y verrait qu'une position figee, mais ce cas
             # est rare et le filet existant (5 tours d'un coup) reste correct
-            # pour tout le reste (affichage, son, capteurs a curseur).
-            code_repli = code.replace("while True:", "for _ in range(5):")
+            # pour tout le reste (affichage, son, capteurs a curseur). Pas de
+            # session a proprement parler ici (rien a poursuivre plus tard).
+            code_repli = code_nettoye.replace("while True:", "for _ in range(5):")
+            _session_active = False
+            _session_code = None
             try:
                 exec(code_repli, env)
                 window.simu_ok()
                 window.simu_playQueue()
+                return 'fait'
             except Exception as e:
                 _rapporter_erreur(e)
-            return
+                return 'erreur'
 
         avant, corps, apres = decoupe
         try:
             exec(avant, env)
         except Exception as e:
             _rapporter_erreur(e)
-            return
+            _session_active = False
+            _session_code = None
+            return 'erreur'
 
         def _tour_suivant():
             try:
@@ -2217,8 +2240,59 @@
         # enchainer) est pilotee cote JS : voir simu_lancerTours dans un.js.
         window.simu_tourSuivant = _tour_suivant
         window.simu_finDesTours = _fin_des_tours
-        window.simu_lancerTours(5)
+        _session_active = True
+        _session_code = code
+        return 'tours'
 
+    def lancer_simulation(ev):
+        '''Bouton "Lancer la simulation" : redemarre TOUJOURS a zero, y
+        compris si une session etait deja en cours — c'est le sens naturel
+        d'un bouton "Lancer". Voir continuer_ou_lancer_simulation ci-dessous
+        pour la version qui poursuit une session existante, utilisee par les
+        capteurs virtuels.'''
+        code = getattr(window, 'currentPythonCode', '')
+        if not code or "Glissez des blocs" in code:
+            return alert("Aucun code à simuler !")
+        if _demarrer_session(code) == 'tours':
+            window.simu_lancerTours(5)
+
+    def continuer_ou_lancer_simulation():
+        '''Utilisee par les capteurs virtuels (boutons, broches, logo,
+        secousse, radio...) a la place de lancer_simulation() : si une
+        session est deja active pour EXACTEMENT le meme code, la poursuit
+        (l'environnement Python — variables globales du programme, objets
+        Grove deja crees, etat des servos...) au lieu de tout redemarrer
+        depuis "Au demarrage". Signale par l'utilisateur : « nombre de
+        clics du bouton B = 10 » ne pouvait jamais s'accumuler d'un clic a
+        l'autre, chaque clic isole relancant tout le programme et remettant
+        les variables globales a zero — le compteur cumulatif genere cote
+        bloc (voir P.forBlock['nombre_clics_bouton'], un.js) a besoin de
+        cette fonction pour que l'accumulation survive effectivement d'un
+        declenchement au suivant, la ou lancer_simulation() la remettrait a
+        zero a chaque fois.'''
+        code = getattr(window, 'currentPythonCode', '')
+        if not code or "Glissez des blocs" in code:
+            return
+        global _session_active, _session_code
+        if _session_active and _session_code == code:
+            window.simu_clearQueue()
+            window.simu_lancerTours(5)
+            return
+        if _demarrer_session(code) == 'tours':
+            window.simu_lancerTours(5)
+
+    def invalider_session_simulation():
+        '''Efface la session persistante : le prochain declenchement
+        (bouton "Lancer" ou capteur virtuel) repart de zero. Appelee depuis
+        simu_reinitialiser() (un.js, bouton "Reinitialiser la simulation") —
+        sans quoi "Reinitialiser" laisserait une session perimee en place,
+        qu'un appui sur un capteur virtuel aurait alors poursuivie au lieu
+        de repartir a zero comme demande.'''
+        global _session_active
+        _session_active = False
+
+    window.simu_continuerOuLancer = continuer_ou_lancer_simulation
+    window.simu_invaliderSession = invalider_session_simulation
     document["run-sim"].bind("click", lancer_simulation)
   </script>
   <div id="toast-admin"></div>

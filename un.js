@@ -386,7 +386,26 @@ try {
     }};
     P.forBlock['nombre_clics_bouton'] = function(block) {
         importerMicrobit();
-        return ['button_' + block.getFieldValue('BOUTON') + '.get_presses()', P.ORDER_ATOMIC];
+        const bouton = block.getFieldValue('BOUTON');
+        // button_x.get_presses() est une lecture CONSOMMATRICE sur la vraie
+        // carte : elle renvoie le nombre de clics depuis le DERNIER appel puis
+        // se remet a zero. Utilisee telle quelle, « si nombre de clics == 10 »
+        // ne peut quasiment jamais se declencher — a chaque tour de boucle,
+        // l'appel remet le compteur a zero avant d'avoir pu en accumuler 10.
+        // Signale par l'utilisateur : marchait dans le simulateur (corrige a
+        // part, voir plus bas) mais jamais sur la vraie carte, ou le
+        // programme tourne en continu et appelle donc get_presses() bien
+        // plus souvent qu'un simple clic. Un compteur global qui CUMULE
+        // (+=) au lieu de remplacer redonne le total cumule attendu par
+        // l'utilisateur, identique en simulation et sur la vraie carte
+        // puisque c'est le MEME code Python qui tourne dans les deux cas.
+        P.definitions_['clics_' + bouton] =
+            '_clics_' + bouton + ' = 0\n' +
+            'def _lire_clics_' + bouton + '():\n' +
+            P.INDENT + 'global _clics_' + bouton + '\n' +
+            P.INDENT + '_clics_' + bouton + ' += button_' + bouton + '.get_presses()\n' +
+            P.INDENT + 'return _clics_' + bouton;
+        return ['_lire_clics_' + bouton + '()', P.ORDER_FUNCTION_CALL];
     };
 
     Blockly.Blocks['reinitialiser_microbit'] = { init: function() {
@@ -8779,26 +8798,30 @@ try {
     window.simu_pin2_pressed = false;
 
     // Compteurs pour button_x.get_presses() (bloc "nombre de clics du bouton").
-    // Sur la vraie carte, get_presses() est une lecture CONSOMMATRICE (elle
-    // renvoie le total depuis la derniere lecture puis le remet a zero) —
-    // mais ce simulateur ne fait jamais tourner le programme en continu : il
-    // enchaine des passages de 5 tours (voir simu_lancerTours) a chaque
-    // declenchement, et repart de zero entre deux si le precedent est deja
-    // termine (cas courant : plusieurs clics espaces de quelques centaines de
-    // ms). Une version consommatrice remet donc le compteur a zero au sein
-    // du MEME passage qui vient de le faire avancer, avant qu'un programme
-    // du style « si nombre de clics == 10 » ait la moindre chance de le
-    // constater — verifie en reproduisant exactement ce scenario (10 clics
-    // espaces de 150 ms : le compteur restait desesperement a 0). Choix
-    // delibere de s'ecarter du materiel reel ici : un simple total qui ne se
-    // remet a zero qu'a la reinitialisation manuelle, seule variante qui se
-    // comporte comme l'utilisateur l'attend dans ce modele d'execution par
-    // passages plutot que d'imiter une semantique qui ne peut pas marcher ici.
+    // CONSOMMATEURS, comme sur la vraie carte (renvoient le total de clics
+    // depuis le DERNIER appel, puis se remettent a zero) : la version
+    // precedente de ce commentaire expliquait pourquoi un premier jet les
+    // avait rendus non consommateurs (un simple total, remis a zero
+    // seulement a la reinitialisation) pour contourner le fait que ce
+    // simulateur n'execute jamais le programme en continu — mais ca
+    // decalait le simulateur du comportement REEL de get_presses(), qui EST
+    // consommateur. Resultat signale par l'utilisateur : « le mode
+    // simulation fonctionne bien, par contre ça ne fonctionne pas en réel » —
+    // le correctif non-consommateur ne faisait que masquer, dans le
+    // simulateur seulement, un vrai piège du bloc "nombre de clics du
+    // bouton" (voir P.forBlock['nombre_clics_bouton'] plus haut) : appele
+    // directement dans "si nombre de clics == 10", get_presses() consomme
+    // le compteur avant d'avoir pu accumuler quoi que ce soit d'utile, aussi
+    // bien sur la vraie carte qu'en simulation. Corrige a la source (le
+    // bloc genere maintenant son propre compteur cumulatif cote Python) :
+    // ces deux compteurs-ci peuvent donc redevenir fidèles au materiel reel,
+    // le meme code Python se comportant alors correctement dans les deux
+    // environnements plutot que de compter sur une difference de simulateur.
     window.simu_btnA_clics = 0;
     window.simu_btnB_clics = 0;
     window.simu_lireClicsBouton = function(bouton) {
-        if (bouton === 'a') return window.simu_btnA_clics;
-        if (bouton === 'b') return window.simu_btnB_clics;
+        if (bouton === 'a') { const n = window.simu_btnA_clics; window.simu_btnA_clics = 0; return n; }
+        if (bouton === 'b') { const n = window.simu_btnB_clics; window.simu_btnB_clics = 0; return n; }
         return 0;
     };
 
@@ -8871,6 +8894,9 @@ try {
         window.simuQueue = [];
         jetonSimulation++;
         arreterSon();
+        // Sans quoi un appui sur un capteur virtuel juste apres "Reinitialiser"
+        // poursuivrait la session perimee au lieu de repartir de "Au demarrage".
+        if (window.simu_invaliderSession) window.simu_invaliderSession();
 
         leds.forEach(led => led.classList.remove('on'));
         const conteneurTexte = document.getElementById('led-text-container');
@@ -8905,7 +8931,7 @@ try {
     if (boutonGesteGrove) {
         boutonGesteGrove.addEventListener('click', () => {
             gesteGroveEnAttente = menuGesteGrove.value;
-            btnLancer.click();
+            window.simu_continuerOuLancer();
             gesteGroveEnAttente = '';
         });
     }
@@ -8963,7 +8989,7 @@ try {
                 // musique de lancement, etc. — pour un simple appui de
                 // bouton pendant que ça tourne déjà.
                 const codeUtiliseCeCapteur = motifIdentifiant.test(window.currentPythonCode || '');
-                if (codeUtiliseCeCapteur && !window.simuEnCours) btnLancer.click();
+                if (codeUtiliseCeCapteur && !window.simuEnCours) window.simu_continuerOuLancer();
             });
             element.addEventListener('mouseup', () => {
                 window[nomVariableGlobale] = false;
@@ -8992,7 +9018,7 @@ try {
         btnRadio.addEventListener('click', () => {
             const champ = document.getElementById('grove-radio-msg');
             messageRadioEnAttente = champ ? champ.value : '';
-            btnLancer.click();
+            window.simu_continuerOuLancer();
             messageRadioEnAttente = '';
         });
     }
@@ -9006,7 +9032,7 @@ try {
                 carte.classList.add('secoue');
             }
             window.simu_geste = 'shake';
-            btnLancer.click();
+            window.simu_continuerOuLancer();
             window.simu_geste = null;
         });
     }
@@ -9098,7 +9124,7 @@ try {
         btnAB.addEventListener('mousedown', () => {
             window.simu_btnA_pressed = true;
             window.simu_btnB_pressed = true;
-            btnLancer.click();
+            window.simu_continuerOuLancer();
         });
         btnAB.addEventListener('mouseup', () => {
             window.simu_btnA_pressed = false;
