@@ -1641,8 +1641,16 @@
         NO_PULL = 0
         PULL_UP = 1
         PULL_DOWN = 2
+        RESISTIVE = 0
+        CAPACITIVE = 1
 
         def __init__(self, id_pin): self.id_pin = id_pin
+        # Le simulateur ne modelise pas de circuit GND (voir is_touched) :
+        # un clic "touche" toujours la broche, quel que soit le mode reel/
+        # capacitif choisi. Existe seulement pour que le code genere par
+        # lorsque_broche/broche_est_pressee (voir un.js,
+        # activerToucheCapacitive) ne plante pas a l'exec ici.
+        def set_touch_mode(self, mode): pass
         def is_touched(self):
             if self.id_pin == 'logo': return window.simu_logo_pressed
             if self.id_pin == '0': return window.simu_pin0_pressed
@@ -2099,6 +2107,13 @@
         echoue (deja signale a l'utilisateur dans les deux cas).'''
         global _session_active, _session_code, _sleep_compteur
         window.simu_clearQueue()
+        # Remis a False ici, et pas seulement a la fin d'un passage de tours
+        # (simu_lancerTours, un.js) : depuis que les passages s'enchainent
+        # sans jamais s'arreter tout seuls (voir simu_lancerTours), un
+        # nouveau "Lancer" qui echoue ICI (avant meme le premier tour) doit
+        # quand meme liberer les capteurs virtuels, sinon simuEnCours reste
+        # bloque a True indefiniment (plus rien ne le repasserait a False).
+        window.simuEnCours = False
         # Chaque NOUVELLE session repart de peripheriques neufs — mais une
         # session simplement POURSUIVIE (voir continuer_ou_lancer_simulation)
         # ne doit surtout pas passer par ici : c'est justement ce qui doit

@@ -254,6 +254,7 @@ try {
     }};
     P.forBlock['lorsque_broche'] = function(block) {
         importerMicrobit();
+        activerToucheCapacitive(block.getFieldValue('BROCHE'));
         return declarerGestionnaire('on_pin_' + block.getFieldValue('BROCHE') + '_' + block.getFieldValue('ETAT'), P.statementToCode(block, 'DO'));
     };
 
@@ -287,6 +288,24 @@ try {
         if (bouton === 'a') return 'button_a.is_pressed()';
         if (bouton === 'b') return 'button_b.is_pressed()';
         return '(button_a.is_pressed() and button_b.is_pressed())';
+    }
+
+    /**
+     * P0/P1/P2 (PAS le logo, qui a son propre capteur capacitif dedie) : par
+     * defaut, is_touched() utilise une detection RESISTIVE sur la vraie
+     * carte - il faut toucher la broche ET une broche GND en meme temps,
+     * sinon rien ne se declenche. Le simulateur, lui, considere un simple
+     * clic sur la broche comme "touchee", sans notion de circuit GND - d'ou
+     * un ecart signale par l'utilisateur ("simulation fonctionne mais pas
+     * le reel"). set_touch_mode(CAPACITIVE), disponible sur la carte V2,
+     * fait qu'un seul doigt suffit sur la vraie carte aussi, comme dans le
+     * simulateur. Appelee une seule fois par broche (P.definitions_ dedup
+     * par cle), avant toute lecture de cette broche.
+     */
+    function activerToucheCapacitive(broche) {
+        importerMicrobit();
+        P.definitions_['touche_capacitive_' + broche] =
+            broche + '.set_touch_mode(' + broche + '.CAPACITIVE)';
     }
 
     Blockly.Blocks['si_bouton_appuye'] = { init: function() {
@@ -351,6 +370,7 @@ try {
     }};
     P.forBlock['broche_est_pressee'] = function(block) {
         importerMicrobit();
+        activerToucheCapacitive(block.getFieldValue('BROCHE'));
         return [block.getFieldValue('BROCHE') + '.is_touched()', P.ORDER_ATOMIC];
     };
 
@@ -6288,6 +6308,19 @@ try {
         if (n._type !== 'Expr') return null;
         const appel = n.value;
 
+        // ---- pinX.set_touch_mode(pinX.CAPACITIVE) : pur passe-partout
+        // injecte automatiquement par lorsque_broche/broche_est_pressee
+        // (voir activerToucheCapacitive plus haut), jamais pose par
+        // l'utilisateur lui-meme - meme traitement que les imports
+        // (bloc: null) : sauter l'instruction plutot que de generer un
+        // bloc "code personnalisé" pour elle. ----
+        if (estAppelAttribut(appel, null, 'set_touch_mode') && appel.args.length === 1 &&
+            ['pin0', 'pin1', 'pin2'].includes(appel.func.value.id) &&
+            appel.args[0]._type === 'Attribute' && appel.args[0].value._type === 'Name' &&
+            appel.args[0].value.id === appel.func.value.id && appel.args[0].attr === 'CAPACITIVE') {
+            return { bloc: null, consommees: 1 };
+        }
+
         // ---- attendre_temps : sleep(x) ou sleep(x * 1000) ----
         if (estAppel(appel, 'sleep') && appel.args.length === 1) {
             const arg = appel.args[0];
@@ -8794,8 +8827,22 @@ try {
     // délais avant d'enchaîner) est imposé.
     window.simu_lancerTours = function(nRestants) {
         if (nRestants <= 0) {
-            window.simuEnCours = false;
             if (typeof window.simu_finDesTours === 'function') window.simu_finDesTours();
+            // Sur la vraie carte, "Repeter indefiniment" ne s'arrete jamais :
+            // on enchaine donc un nouveau passage de 5 tours plutot que de
+            // stopper la simulation, tant que rien n'a repris la main entre
+            // temps (nouveau declenchement, reinitialisation - tous deux
+            // passent par simu_clearQueue(), qui incremente jetonSimulation).
+            // setTimeout(..., 0) casse la chaine d'appels synchrones a
+            // chaque passage : sans lui, un programme sans aucun delai
+            // (rien a rejouer dans la file) chainerait les passages en
+            // recursion synchrone pure et finirait par depasser la pile.
+            // Si le jeton a change, quelque chose de plus recent gere deja
+            // simuEnCours correctement tout seul - rien a faire ici.
+            const jeton = jetonSimulation;
+            setTimeout(() => {
+                if (jeton === jetonSimulation) window.simu_lancerTours(5);
+            }, 0);
             return;
         }
         window.simuEnCours = true;

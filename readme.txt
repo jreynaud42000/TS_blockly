@@ -93,7 +93,9 @@ navigateur, c'est que le serveur a ete lance depuis un autre dossier.
   qu'il est plus petit. Notre choix garde un main.py autonome, donc un .py
   telechargeable qui fonctionne seul.
 - Panneau de droite : le simulateur. Les boutons A, B, le logo et les broches
-  sont cliquables ; "Lancer la simulation" execute cinq tours de boucle.
+  sont cliquables ; "Lancer la simulation" enchaine des passages de 5 tours de
+  boucle en continu (comme la vraie carte, qui ne s'arrete jamais toute
+  seule), jusqu'a "Reinitialiser la simulation" ou un nouveau "Lancer".
   La carte s'adapte a la largeur de la colonne : elle retrecit quand la fenetre
   est etroite, grandit quand elle est large, et reste dessinee a 75 % de la
   place disponible pour laisser respirer les sections placees au-dessous.
@@ -537,6 +539,15 @@ message d'erreur pour ce cas normal, seulement pour une vraie erreur de
 programme. Pour tester ce genre d'attente dans le simulateur, on peut aussi
 remplacer "attendre jusqu'à" par un "si ... alors" verifie a chaque tour de
 "Repeter indefiniment".
+
+"lorsque la broche P0/P1/P2 est activée" et "broche ... est pressée"
+(categories Communication/Entrees-Sorties) : sur une vraie carte, detecter
+un "touche" sur ces broches necessite normalement de toucher la broche ET
+une broche GND en meme temps (detection resistive, mesuree entre les deux) -
+un simple doigt sur P0 seul ne suffirait pas. Le code genere active
+automatiquement le mode tactile capacitif de la carte V2
+(set_touch_mode(CAPACITIVE)) : un seul doigt sur la broche suffit donc,
+comme dans le simulateur (qui, lui, n'a jamais eu besoin de circuit GND).
 
 ---------------------------------------------------------
 11. LE FICHIER FIRMWARE.HEX

@@ -1695,6 +1695,123 @@ juste un bloc silencieusement inerte. Ce genre de bug n'est repérable qu'en
 utilisant RÉELLEMENT le bloc concerné (ici, en le regardant dans un
 programme qui tourne), pas en relisant le code du mock isolément.
 
+**PIÈGE nº 56 — un passage figé à 5 tours (§14) masque, plutôt que résout,
+un « Répéter indéfiniment » sans bloc « attendre ».** Question directe de
+l'utilisateur après avoir vu deux exemples (chronomètre sur l'écran micro:bit,
+puis sur un écran LCD Grove) sembler « ne pas fonctionner » : pourquoi
+seulement 5 tours ? Depuis la conception d'origine du simulateur (§7, §14),
+chaque déclenchement (« Lancer », ou un capteur virtuel via
+`continuer_ou_lancer_simulation`) exécute EXACTEMENT 5 tours de la première
+boucle infinie puis s'arrête — aucune justification documentée pour ce
+chiffre précis, seulement la contrainte technique de départ : `exec()`
+(Brython) est synchrone, un `while True` littéral gèlerait l'onglet pour
+toujours, donc il fallait UNE limite finie quelconque. Conséquence
+silencieuse pour un programme sans bloc « attendre » dans sa boucle : les 5
+tours s'enchaînent en quelques millisecondes (rien ne les espace), puis plus
+rien ne se passe tout seul — exactement les deux cas rapportés par
+l'utilisateur.
+
+Corrigé en remplaçant la limite fixe par un enchaînement sans fin : dans
+`simu_lancerTours` (`un.js`), au lieu de s'arrêter à `nRestants <= 0`, un
+nouveau passage de 5 tours est reprogrammé (`setTimeout(..., 0)`, pour
+casser la chaîne d'appels synchrones — sans lui, un programme sans aucun
+délai enchaînerait les passages en récursion synchrone pure et finirait par
+dépasser la pile d'appels), sauf si `jetonSimulation` a changé entretemps
+(nouveau déclenchement ou « Réinitialiser », qui l'incrémentent déjà tous les
+deux) — dans ce cas, quelque chose de plus récent gère déjà l'état, rien à
+faire. `window.simuEnCours` ne repasse donc plus à `false` à chaque frontière
+de 5 tours (seulement sur erreur ou réinitialisation explicite) : un
+programme tourne désormais VRAIMENT en continu, comme sur la vraie carte,
+jusqu'à interruption explicite.
+
+Bug annexe trouvé en réfléchissant à ce changement (pas en le testant après
+coup) : `_demarrer_session()` (`index.html`) ne remettait `simuEnCours` à
+`False` qu'à la fin d'un passage de tours reçus avec succès — si un NOUVEAU
+« Lancer » échouait dès la configuration (`exec(avant, env)`, avant même le
+premier tour) PENDANT qu'un ancien passage laissait `simuEnCours` à `True`,
+plus rien ne le repassait jamais à `False` : les capteurs virtuels restaient
+bloqués indéfiniment (leur garde vérifie `!window.simuEnCours`). Rare avant
+ce changement (un passage de 5 tours se terminait vite de toute façon, se
+remettant lui-même à `False` sous peu) mais réellement bloquant maintenant
+qu'un passage peut durer indéfiniment. Corrigé en remettant `simuEnCours` à
+`False` au tout début de `_demarrer_session()`, avant de savoir si la
+configuration va réussir — la valeur définitive est de toute façon décidée
+moments plus tard par le premier tour réel, le cas échéant.
+
+Vérifié dans le navigateur avec l'exemple LCD exact de l'utilisateur : passage
+observé en continu sur plus de 28 secondes réelles (`simuEnCours` toujours
+`True`, très au-delà des ~5 secondes de l'ancienne limite), valeur affichée
+cohérente avec le temps réellement écoulé (`24.261` après ~28 s) ; « Réinitialiser »
+arrête net la chaîne (`simuEnCours` reste `False` 3 s plus tard, rien ne la
+relance en douce) ; un second clic sur « Lancer » en PLEIN MILIEU d'un passage
+redémarre proprement de zéro, une seule chaîne active (pas de doublon, pas de
+valeurs mélangées).
+
+Retenir : une limite technique posée tôt pour une bonne raison (ici, éviter
+un gel) peut, une fois le vrai problème résolu par ailleurs (l'exécution tour
+par tour du §14, puis les gardes anti-gel du PIÈGE nº 54), devenir elle-même
+la source du symptôme suivant. Remettre en question une constante ancienne
+vaut mieux que d'empiler un énième correctif ad hoc autour d'elle.
+
+**PIÈGE nº 57 — « simulation fonctionne mais pas le réel » n'est pas
+toujours un bug de code : parfois c'est une vraie différence physique que le
+simulateur ne peut pas modéliser.** Signalé par l'utilisateur avec « lorsque
+la broche P0 est activée » : fonctionne au clic dans le simulateur, rien ne
+se passe sur la vraie carte. Code généré, a priori correct :
+```python
+def on_pin_pin0_touched():
+    display.show(Image.HAPPY)
+    ...
+while True:
+    if pin0.is_touched(): on_pin_pin0_touched()
+```
+Ni le générateur ni le simulateur n'étaient en cause cette fois — vérifié
+via une recherche documentaire (`WebFetch`/`WebSearch`, docs officielles
+micro:bit MicroPython) plutôt que suppose de memoire : par défaut,
+`pinX.is_touched()` (X = 0, 1, 2 — PAS le logo, qui a son propre capteur
+capacitif dédié) utilise une détection **RÉSISTIVE**, qui mesure une
+résistance entre la broche et GND. Sur la vraie carte, il faut donc
+**toucher la broche ET une broche GND simultanément** (une main sur GND, un
+doigt sur P0) pour que ça se déclenche — toucher P0 seul, comme le permet
+un simple clic dans le simulateur (qui ne modélise aucun circuit GND), ne
+suffit pas. La carte V2 propose un mode **capacitif** optionnel
+(`pinX.set_touch_mode(pinX.CAPACITIVE)`), qui ne nécessite qu'un seul
+doigt — mais rien ne l'activait, ni dans les blocs ni dans le simulateur.
+
+Corrigé en activant ce mode automatiquement, plutôt que d'exiger de
+l'utilisateur qu'il comprenne le circuit GND : `activerToucheCapacitive(broche)`
+(nouvelle fonction, `un.js`) injecte `pinX.set_touch_mode(pinX.CAPACITIVE)`
+dans `P.definitions_` (dédupliqué par broche, même motif que
+`P.INDENT`/`importerMicrobit()` ailleurs dans le fichier), appelée depuis
+les DEUX générateurs qui lisent une broche tactile (`lorsque_broche`,
+`broche_est_pressee`) — sans quoi seul l'un des deux blocs aurait le
+correctif. Trois points annexes, chacun oubliable :
+1. `PinMock` (`index.html`) n'avait pas de méthode `set_touch_mode` :
+   l'appeler aurait fait planter EXEC dans le simulateur (`AttributeError`),
+   cassant tout programme utilisant ces blocs — corrigé par un stub inerte
+   (`def set_touch_mode(self, mode): pass`), le simulateur ne modélisant de
+   toute façon aucun circuit GND, peu importe le mode choisi.
+2. Le moteur de reconstruction (§ reconstruction, plus haut) aurait affiché
+   cette ligne comme un bloc « code personnalisé » parasite au ré-import
+   d'un `.py` exporté — corrigé en l'ajoutant à `reconstruireInstructionUnique`
+   avec `bloc: null`, même traitement que les imports.
+3. Vérifié que l'appel est bien DÉDUPLIQUÉ (une seule ligne même si P0 est
+   utilisé par deux blocs « lorsque la broche… », un « touched » et un
+   « released ») plutôt que répété une fois par bloc.
+
+Vérifié dans le navigateur : code généré contient bien
+`pin0.set_touch_mode(pin0.CAPACITIVE)` une seule fois même avec deux blocs
+sur P0 (plus un troisième sur P1, avec sa propre ligne) ; simulation
+toujours fonctionnelle (aucune erreur, DEL HAPPY correctement affichées) ;
+ré-import du code généré ne produit aucun bloc parasite pour cette ligne.
+
+Retenir : avant de chercher un bug de CODE à un écart simulateur/carte
+réelle, vérifier s'il existe une différence PHYSIQUE documentée (circuit,
+mode de capteur...) que le simulateur ne peut structurellement pas
+reproduire — une recherche dans la documentation officielle du matériel
+vaut mieux qu'une supposition, surtout quand rien dans le code lui-même ne
+semble fautif à la lecture.
+
 ## 12. Panneau administrateur
 
 Extension du principe du §5 (`updateToolbox` à chaud) en un vrai panneau à
