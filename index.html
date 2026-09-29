@@ -1495,9 +1495,49 @@
 
     window.analyserCodePython = analyser_code_python
 
-    def sleep(ms): window.simu_sleep(ms)
+    # "attendre jusqu'à" (attendre_jusqua) genere "while not (condition):
+    # sleep(10)" - correct sur la vraie carte, ou sleep() met vraiment en
+    # pause et laisse le temps a la condition de changer (bouton, capteur...).
+    # Ici sleep() ne fait que mettre une action en file (voir simu_sleep,
+    # un.js) et rend la main IMMEDIATEMENT : exec() ne peut donc jamais
+    # laisser la condition varier pendant que cette boucle tourne, qui
+    # spinne alors indefiniment en JS synchrone et gele l'onglet - signale
+    # par l'utilisateur ("semble faire planter l'app"). _sleep_compteur
+    # transforme cette boucle infinie en erreur lisible plutot qu'un gel :
+    # remis a 0 avant chaque exec() de premier niveau (voir plus bas).
+    _sleep_compteur = 0
+
+    class _AttenteSimulateur(Exception):
+        '''Levee par sleep() quand _sleep_compteur depasse la limite (voir
+        plus bas) : PAS une erreur de programme. "attendre jusqu'à" pose
+        dans "Repeter indefiniment" est cense se redeclencher a chaque tour
+        de la boucle - sur la vraie carte, tant que le bouton n'est pas
+        appuye, on attend simplement le prochain tour, ce n'est pas un bug.
+        _tour_suivant() l'intercepte donc a part d'une vraie exception, sans
+        bandeau d'erreur : signale par l'utilisateur, un premier correctif
+        qui levait RuntimeError ici affichait un bandeau rouge PERSISTANT
+        des qu'un tour ulterieur retrouvait la condition fausse (bouton
+        relache entre deux tours), alors que le tour precedent avait deja
+        correctement affiche le bon resultat - un faux positif.'''
+        pass
+
+    def sleep(ms):
+        global _sleep_compteur
+        _sleep_compteur += 1
+        if _sleep_compteur > 3000:
+            raise _AttenteSimulateur(
+                "« attendre jusqu'à » n'aboutit pas dans ce tour de "
+                "simulation : la condition attendue ne peut pas changer "
+                "pendant que le simulateur l'attend. Ce bloc fonctionne sur "
+                "la vraie carte ; dans le simulateur, remplacez-le par un "
+                "« si ... alors » vérifié à chaque tour de la boucle."
+            )
+        window.simu_sleep(ms)
     def temperature(): return 21
-    def running_time(): return 0
+    # Vrai temps ecoule (voir simu_tempsEcoule, un.js), pas une valeur figee :
+    # necessaire pour que "valeur du chronometre" et "temps d'execution"
+    # avancent en simulation comme sur la vraie carte.
+    def running_time(): return window.simu_tempsEcoule()
     def set_volume(vol): pass
 
     class TimeMock:
@@ -2057,7 +2097,7 @@
         simu_lancerTours), 'fait' si le programme (sans boucle de premier
         niveau) a deja tourne d'un bloc, ou 'erreur' si l'execution a
         echoue (deja signale a l'utilisateur dans les deux cas).'''
-        global _session_active, _session_code
+        global _session_active, _session_code, _sleep_compteur
         window.simu_clearQueue()
         # Chaque NOUVELLE session repart de peripheriques neufs — mais une
         # session simplement POURSUIVIE (voir continuer_ou_lancer_simulation)
@@ -2201,6 +2241,7 @@
             code_repli = code_nettoye.replace("while True:", "for _ in range(5):")
             _session_active = False
             _session_code = None
+            _sleep_compteur = 0
             try:
                 exec(code_repli, env)
                 window.simu_ok()
@@ -2211,6 +2252,7 @@
                 return 'erreur'
 
         avant, corps, apres = decoupe
+        _sleep_compteur = 0
         try:
             exec(avant, env)
         except Exception as e:
@@ -2220,8 +2262,23 @@
             return 'erreur'
 
         def _tour_suivant():
+            global _sleep_compteur
+            _sleep_compteur = 0
+            longueur_avant = window.simu_longueurFile()
             try:
                 exec(corps, env)
+                return True
+            except _AttenteSimulateur:
+                # Rien a afficher ce tour-ci : conforme a la vraie carte, qui
+                # attendrait juste le prochain declenchement sans planter.
+                # Pas une erreur de programme, donc pas de bandeau rouge -
+                # et on laisse les tours suivants continuer (un declenchement
+                # ulterieur peut encore satisfaire la condition). sleep()
+                # a quand meme empile jusqu'a 3000 faux "sleep(10)" avant
+                # d'abandonner (voir sleep() plus haut) : les retirer avant
+                # qu'ils ne soient rejoues, sinon jusqu'a 30 secondes
+                # d'attente pour rien a chaque tour manque.
+                window.simu_tronquerFile(longueur_avant)
                 return True
             except Exception as e:
                 _rapporter_erreur(e)

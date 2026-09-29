@@ -1561,6 +1561,140 @@ simulateur — sinon le correctif peut faire disparaître le symptôme dans
 l'appli tout en laissant, voire en aggravant, le vrai problème sur le
 matériel que le projet est censé cibler.
 
+**PIÈGE nº 54 — un bloc dont le code généré est correct sur la vraie carte
+peut quand même geler le SIMULATEUR, à cause de `sleep()` non bloquant.**
+Bug signalé par l'utilisateur, juste après le correctif de session
+persistante ci-dessus (PIÈGE nº 53) : poser « attendre jusqu'à » (bloc
+`attendre_jusqua`) dans « Répéter indéfiniment » « semble faire planter
+l'app ». Code généré (correct sur la vraie carte) :
+
+```python
+while True:
+    while not (button_a.is_pressed()):
+        sleep(10)
+```
+
+Sur la vraie carte, `sleep(10)` met vraiment en pause 10 ms, le temps que
+l'état du bouton — lu en continu par le matériel — puisse changer. Dans ce
+simulateur, `sleep()` (fonction Python `sleep()`, `index.html`) ne fait que
+pousser une action dans une file JS (`window.simu_sleep`, `un.js`) et rend la
+main IMMÉDIATEMENT — `exec()` tournant de façon synchrone, rien ne peut faire
+varier `button_a.is_pressed()` pendant que cette boucle `while` tourne : elle
+boucle indéfiniment en JS synchrone, gèle l'onglet (page qui ne répond plus),
+jusqu'à devoir la fermer. Un problème de simulateur, pas du générateur (donc
+sans rapport avec le principe du PIÈGE nº 53 : ici c'est bien le simulateur
+qu'il fallait corriger, pas le bloc).
+
+Correctif : un compteur global `_sleep_compteur`, remis à 0 avant CHAQUE
+`exec()` de premier niveau (`exec(avant, env)`, chaque tour dans
+`_tour_suivant()`, et le repli `exec(code_repli, env)` — trois points
+d'entrée distincts, facile d'en oublier un), incrémenté à chaque appel à
+`sleep()` ; au-delà de 3000 appels dans le même `exec()`, `sleep()` lève une
+`RuntimeError` avec un message explicatif plutôt que de laisser la boucle
+segment tourner indéfiniment. Remonte à l'utilisateur via le mécanisme
+d'erreur existant (`_rapporter_erreur` → `window.simu_erreur` →
+`afficherEtat`), sans rien changer au code généré ni au comportement réel de
+la carte. Vérifié dans le navigateur : le programme exact de la capture
+d'écran de l'utilisateur affiche désormais un message d'erreur lisible
+(« Simulateur : « attendre jusqu'à » n'aboutit jamais dans ce tour de
+simulation... ») au lieu de geler l'onglet, l'appel JS revenant
+immédiatement au lieu de rester bloqué ; un « attendre jusqu'à » dont la
+condition est déjà vraie au moment du déclenchement, et un « attendre » (bloc
+`attendre_temps`) normal, continuent de fonctionner sans déclencher l'erreur.
+
+Retenir : un bug qui « plante l'app » dans un simulateur reconstruit avec des
+mocks n'est pas toujours dans le code généré — ici la divergence venait d'un
+mock (`sleep()` non bloquant) qui rend impossible, PAR CONSTRUCTION, un motif
+d'attente active pourtant légitime sur le matériel réel. Il faut alors
+protéger le simulateur lui-même (ici, une limite sur le nombre d'itérations)
+plutôt que de chercher un défaut dans le générateur du bloc.
+
+**Suite du PIÈGE nº 54 — le premier correctif (RuntimeError) déplaçait le
+bug plutôt que de le résoudre.** Découvert en re-testant DANS LE NAVIGATEUR
+avec le programme réel de l'utilisateur (pas devinée) : « attendre jusqu'à
+bouton B appuyé » → « afficher cœur » → « attendre 1 s » → « afficher
+heureux » → « attendre 1 s », dans « Répéter indéfiniment ». Ce motif est
+cense se redéclencher à CHAQUE tour de la boucle infinie — sur la vraie
+carte comme dans ce simulateur (un tour = un passage dans le corps de
+« Répéter indéfiniment »). Capture d'écran à l'appui : le premier tour
+réussissait (bouton tenu, cœur puis sourire bien affichés), mais un bandeau
+d'erreur ROUGE PERSISTANT restait affiché quand même — un faux positif :
+dès qu'un tour suivant retrouvait le bouton relâché (relâché entre deux
+tours, ce qui est le cas normal), `_tour_suivant()` levait la même
+`RuntimeError`, affichée comme une vraie erreur de programme alors que
+« continuer à attendre le prochain appui » est exactement le comportement
+correct — ni un bug, ni distinguable d'un cas réellement cassé avec une
+simple `RuntimeError` générique.
+
+Corrigé en deux temps :
+1. `RuntimeError` remplacée par une exception dédiée `_AttenteSimulateur`,
+   interceptée SÉPARÉMENT dans `_tour_suivant()` (pas dans `exec(avant,
+   env)` ni le repli, plus rares et plus ambigus, laissés en erreur
+   classique) : elle ne déclenche plus `_rapporter_erreur` — le tour
+   renvoie simplement `True` (« rien à afficher cette fois »), sans bandeau
+   rouge, et les tours suivants continuent (un déclenchement ultérieur peut
+   encore satisfaire la condition).
+2. Nouveau bug découvert en MESURANT le temps réel écoulé (pas supposé) :
+   avant d'abandonner, `sleep()` empile quand même jusqu'à 3000 fausses
+   actions `sleep(10)` dans la file JS (`window.simuQueue`) — les rejouer
+   coûtait jusqu'à 3000 × 10 ms ≈ 30 secondes de VRAIE attente par tour
+   manqué, jusqu'à 2 minutes sur les 5 tours d'un passage. Invisible à la
+   lecture du code, seule une mesure de durée (`performance.now()` avant/
+   après un passage complet) l'a révélé. Corrigé par
+   `window.simu_tronquerFile(longueur)` (`un.js`) : `_tour_suivant()`
+   note la longueur de la file avant `exec(corps, env)`, et la retronque à
+   cette longueur en cas de `_AttenteSimulateur`, avant que
+   `simu_playQueue()` (appelé par le code JS appelant) n'ait la moindre
+   chance de rejouer les actions abandonnées.
+
+Vérifié dans le navigateur avec le programme exact de l'utilisateur, en
+mesurant la durée réelle de bout en bout (pas seulement en lisant le
+bandeau d'état) : bouton jamais pressé pendant tout le passage (pire cas)
+→ ~120 ms, aucune erreur affichée, aucune LED allumée (fidèle à la vraie
+carte : rien ne s'affiche tant que le bouton n'est pas pressé) ; bouton
+tenu pendant tout le passage → ~10 s (5 tours × les 2 secondes réelles de
+« attendre 1 s » × 2 dans le programme lui-même, PAS de délai parasite),
+DEL finales correctes (motif HAPPY) ; bouton pressé puis relâché → aucun
+bandeau d'erreur persistant, contrairement au premier correctif.
+
+Retenir (complète le précédent) : corriger un plantage en interceptant
+l'exception ne suffit pas — il faut aussi se demander (1) si le cas
+intercepté est réellement une ERREUR de programme ou un état normal juste
+mal reconnu (ici : « en attente », pas « cassé »), et (2) MESURER le coût
+réel restant (ici : le temps d'horloge, pas juste l'absence de plantage)
+avant de considérer un correctif de simulateur comme terminé.
+
+**PIÈGE nº 55 — un mock renvoyant une constante « raisonnable » (0) peut
+rendre un bloc entier inutilisable en simulation, silencieusement.**
+Signalé par l'utilisateur en testant lui-même l'exemple du chronomètre
+proposé plus haut (§ blocs `reset_chrono`/`valeur_chrono`) : « l'affichage
+reste toujours à 0 ». Cause : `running_time()` (mock `index.html`) était
+un stub `def running_time(): return 0` — utilisé aussi bien par
+`reset_chrono`/`valeur_chrono` (§ ci-dessus) que par le bloc
+`temps_execution` (catégorie Capteurs). Comme les deux blocs chronomètre
+calculent une DIFFÉRENCE de deux appels à `running_time()`, et que les deux
+appels renvoyaient toujours 0, le résultat était TOUJOURS 0 — le bloc
+semblait fonctionner (aucune erreur, code correct) mais n'affichait jamais
+qu'une valeur figée, indétectable à la simple lecture du code généré.
+
+Corrigé en adossant `running_time()` au temps d'horloge réel plutôt qu'à
+une constante : `window.simu_tempsEcoule()` (`un.js`), basé sur
+`performance.now()` relatif à `window.simu_tempsDepart` (capturé au
+chargement, remis à zéro dans `simu_reinitialiser()` — comme un vrai reset
+matériel remettrait `running_time()` à 0). Cohérent avec le reste du
+simulateur, qui impose déjà de vrais délais d'horloge (`sleep`,
+`attendre`) : le chronomètre avance donc au même rythme que ces délais.
+Vérifié dans le navigateur, en mesurant des lectures successives sur
+plusieurs tours réels : la valeur progresse bien avec le temps
+(`0.002` puis `2.029` après ~2 s réelles), et repart de `0.0` après
+« Réinitialiser la simulation » même après plusieurs secondes écoulées.
+
+Retenir : dans un simulateur à base de mocks, une fonction qui renvoie une
+constante plausible (0, ici) ne provoque ni erreur ni plantage — elle rend
+juste un bloc silencieusement inerte. Ce genre de bug n'est repérable qu'en
+utilisant RÉELLEMENT le bloc concerné (ici, en le regardant dans un
+programme qui tourne), pas en relisant le code du mock isolément.
+
 ## 12. Panneau administrateur
 
 Extension du principe du §5 (`updateToolbox` à chaud) en un vrai panneau à

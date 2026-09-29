@@ -6865,11 +6865,32 @@ try {
     // se superposent.
     window.simu_clearQueue = function() { window.simuQueue = []; jetonSimulation++; arreterSon(); };
 
+    // Sert de base a running_time() (index.html), qui doit avancer avec le
+    // temps reellement ecoule pour que les blocs "chronometre" (reset_chrono/
+    // valeur_chrono) et "temps d'execution" restent utilisables en
+    // simulation - performance.now() est du vrai temps d'horloge, coherent
+    // avec les delais reels que ce simulateur impose deja (sleep, attendre).
+    // Remis a zero dans simu_reinitialiser() (bouton "Reinitialiser" ou bloc
+    // reset() du programme), comme un vrai redemarrage de carte remettrait
+    // running_time() a 0.
+    window.simu_tempsDepart = performance.now();
+    window.simu_tempsEcoule = function() { return Math.round(performance.now() - window.simu_tempsDepart); };
+
     /** Demande une remise à zéro de la carte depuis le programme (bloc reset()). */
     window.simu_resetCarte = function() { window.simuQueue.push({ type: 'reset' }); };
     window.simu_effacerEcran = function() { window.simuQueue.push({ type: 'clear' }); };
     window.simu_afficherIcone = function(icone) { window.simuQueue.push({ type: 'show', value: icone }); };
     window.simu_sleep = function(ms) { window.simuQueue.push({ type: 'sleep', value: ms }); };
+    // Utilise par sleep() (index.html) quand une boucle "attendre jusqu'à"
+    // depasse sa limite d'iterations dans un exec() : ce cas queue quand
+    // meme, avant d'abandonner, jusqu'a plusieurs milliers de faux
+    // "sleep(10)" (voir _sleep_compteur, index.html) - les rejouer coute de
+    // vraies secondes d'attente pour un resultat qui de toute facon
+    // n'affiche jamais rien. On les retire donc de la file avant qu'elle
+    // ne soit videe (simu_playQueue), plutot que de laisser l'utilisateur
+    // attendre pour rien.
+    window.simu_longueurFile = function() { return window.simuQueue.length; };
+    window.simu_tronquerFile = function(longueur) { window.simuQueue.length = longueur; };
     // Pas de vrai signal infrarouge dans un navigateur : le bouton "Simuler
     // l'appui" du panneau Maqueen dépose ici la touche choisie, et le mock
     // Brython de _ir_traiter() (voir index.html) la consomme au tour suivant
@@ -8897,6 +8918,7 @@ try {
         // Sans quoi un appui sur un capteur virtuel juste apres "Reinitialiser"
         // poursuivrait la session perimee au lieu de repartir de "Au demarrage".
         if (window.simu_invaliderSession) window.simu_invaliderSession();
+        window.simu_tempsDepart = performance.now();
 
         leds.forEach(led => led.classList.remove('on'));
         const conteneurTexte = document.getElementById('led-text-container');

@@ -525,6 +525,19 @@ carte. Seul le bouton "Lancer la simulation" continue a tout redemarrer a
 zero (son role naturel), et "Reinitialiser la simulation" efface cette
 session au passage.
 
+"attendre jusqu'à" (categorie Temps) : sur la vraie carte, "sleep()" met
+vraiment en pause, le temps que la condition attendue (bouton, capteur...)
+puisse changer. Dans le simulateur, "sleep()" ne met rien en pause pour de
+vrai - la boucle d'attente ne peut donc jamais voir la condition changer
+tant qu'elle tourne, et bouclerait indefiniment. Une limite interne coupe
+court a cette boucle sans figer l'onglet : si la condition n'est toujours
+pas vraie a la fin d'un tour, ce tour n'affiche simplement rien (comme la
+vraie carte, qui attendrait juste le prochain declenchement) - pas de
+message d'erreur pour ce cas normal, seulement pour une vraie erreur de
+programme. Pour tester ce genre d'attente dans le simulateur, on peut aussi
+remplacer "attendre jusqu'à" par un "si ... alors" verifie a chaque tour de
+"Repeter indefiniment".
+
 ---------------------------------------------------------
 11. LE FICHIER FIRMWARE.HEX
 ---------------------------------------------------------
