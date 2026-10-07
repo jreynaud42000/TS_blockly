@@ -64,6 +64,20 @@ navigateur, c'est que le serveur a ete lance depuis un autre dossier.
   long, et peut ne laisser presque aucune place pour deposer les blocs. Replier
   un panneau rend cette largeur au canevas ; le zoom, lui, n'agit que sur les
   blocs deja poses, pas sur le tiroir.
+
+  Bouton lune/soleil (a cote de "Simulateur") : bascule entre theme sombre
+  (par defaut) et theme clair - barre d'outils, panneaux lateraux, panneau de
+  code et panneau administrateur. Choix mémorisé d'une session a l'autre. Les
+  couleurs "d'appareil" (sprites de robots, carte micro:bit, DEL) ne changent
+  pas avec le theme : elles representent quelque chose de reel, comme les
+  couleurs des boutons d'action.
+
+  Bouton contraste (◐, juste a cote) : contraste normal ou eleve, independant
+  du theme clair/sombre - les deux se combinent (sombre eleve = fond noir pur
+  et texte blanc, clair eleve = fond blanc pur et texte noir, bordures plus
+  epaisses). En contraste eleve, les blocs eux-memes passent aussi en noir a
+  simple contour blanc, plutot que remplis de la couleur de leur categorie.
+  Egalement memorise d'une session a l'autre.
 - Panneau du milieu : le code MicroPython correspondant, mis a jour en direct.
 
   Les pilotes des modules Grove et des servomoteurs y sont REPLIES derriere une
@@ -79,7 +93,9 @@ navigateur, c'est que le serveur a ete lance depuis un autre dossier.
   qu'il est plus petit. Notre choix garde un main.py autonome, donc un .py
   telechargeable qui fonctionne seul.
 - Panneau de droite : le simulateur. Les boutons A, B, le logo et les broches
-  sont cliquables ; "Lancer la simulation" execute cinq tours de boucle.
+  sont cliquables ; "Lancer la simulation" enchaine des passages de 5 tours de
+  boucle en continu (comme la vraie carte, qui ne s'arrete jamais toute
+  seule), jusqu'a "Reinitialiser la simulation" ou un nouveau "Lancer".
   La carte s'adapte a la largeur de la colonne : elle retrecit quand la fenetre
   est etroite, grandit quand elle est large, et reste dessinee a 75 % de la
   place disponible pour laisser respirer les sections placees au-dessous.
@@ -153,12 +169,56 @@ MakeCode ne le reconnait pas. L'inverse est vrai aussi, un .hex MakeCode n'a pas
 de main.py.
 
 Ce qui fonctionne :
+- Menu "Fichier" > "Nouveau projet" : efface les blocs actuels et repart de
+  "Au demarrage" + "Repeter indefiniment", apres confirmation (rien n'est
+  jamais sauvegarde automatiquement, telechargez le programme actuel avant
+  si besoin).
+- Fermer l'onglet, recharger la page (F5) ou naviguer ailleurs declenche
+  la confirmation de fermeture du navigateur, pour la meme raison (rien
+  n'est sauvegarde automatiquement). Le texte exact de cette confirmation
+  est impose par le navigateur, pas par l'appli.
 - Sur la carte : glisser le .hex sur le lecteur MICROBIT. C'est l'essentiel.
-- Pour rouvrir un programme : https://python.microbit.org importe le .hex et en
-  ressort le main.py. Cet editeur utilise la meme bibliotheque microbit-fs que
-  deux.js emploie pour l'ecrire.
+- Pour rouvrir un programme : menu "Fichier" > "Importer un fichier .hex" (ou
+  ".py"). Meme bibliotheque microbit-fs que pour l'ecriture, utilisee cette
+  fois pour relire la zone systeme de fichiers du .hex et en ressortir
+  main.py. https://python.microbit.org fait la meme chose (et fonctionne
+  donc aussi), mais n'est plus necessaire.
+
+  Depuis peu, un fichier .hex ou .py EXPORTE PAR CETTE APPLI (il porte une
+  signature invisible en premiere ligne) est reconstruit en blocs plutot que
+  de basculer directement en edition manuelle. Tout ce que l'appli sait
+  reconnaitre redevient un vrai bloc ; ce qu'elle ne reconnait pas encore
+  redevient un bloc gris "code" qui garde le texte Python d'origine tel
+  quel (rien n'est jamais perdu, juste pas encore transforme en bloc) - sauf
+  le pur passe-partout (les lignes "import ..." en tete de fichier), reinjecte
+  tout seul par l'appli des qu'un bloc en a besoin et donc simplement omis,
+  pas affiche comme un bloc "code" de plus. Un fichier qui ne vient pas de
+  cette appli (telecharge ailleurs, ou tape a la main) n'a pas cette
+  signature et bascule en edition manuelle comme avant - Blockly ne sait pas
+  transformer du Python quelconque en blocs, seul du Python que cette appli
+  a elle-meme produit peut etre reconstruit avec confiance.
 - Le bouton "Telecharger le script .py" donne le fichier directement ouvrable
   dans l'editeur Python officiel ou dans Mu.
+- Bouton "Capture d'ecran des blocs (.png)", dans la barre d'outils entre
+  "Fichier" et "Envoyer sur la carte" : telecharge une image PNG de tous les
+  blocs poses, telle qu'affiches a l'ecran a l'instant du clic (couleurs et
+  texte fideles au theme clair/sombre et au contraste normal/eleve en cours -
+  voir section theme plus haut).
+- Boutons "Annuler"/"Refaire", a droite de "Envoyer sur la carte" : annulent
+  ou refont la derniere action sur les blocs (equivalent des raccourcis
+  Ctrl+Z / Ctrl+Maj+Z, deja actifs par defaut). Grises tant qu'il n'y a rien
+  a annuler ou a refaire.
+- Quand le bouton "Code" est desactive (transcription masquee), une poignee
+  apparait entre la zone de blocs et le simulateur : glisser vers la gauche
+  agrandit le simulateur, vers la droite le reduit. La carte micro:bit, les
+  boutons et les panneaux (Peripheriques, Piste, LiDAR) gardent toujours la
+  meme taille : agrandir le panneau les reorganise plutot que de les etirer
+  - la carte et les 3 boutons se placent cote a cote si la largeur le permet,
+  et les panneaux peuvent se ranger a deux par ligne.
+- La colonne de categories (Temps, Affichage, Capteurs...) se masque le temps
+  de glisser un bloc - qu'il vienne d'etre pris dans le tiroir ou qu'il soit
+  deja pose sur l'espace de travail - et reapparait des que le bloc est
+  lache, pour laisser toute la place a la zone de blocs pendant le geste.
 
 Attention : la "Python" de MakeCode n'est pas MicroPython mais une variante de
 TypeScript a syntaxe Python. Le .py n'y est pas exploitable non plus.
@@ -417,22 +477,151 @@ inseree ; sinon une boucle dediee est ajoutee a la fin du programme.
 Consequence pratique : un bloc "lorsque ..." pose seul suffit, le programme
 tournera. Inutile de l'entourer d'une boucle.
 
-Au demarrage de l'application, l'espace de travail contient deja deux blocs :
-"Au demarrage" et "Repeter indefiniment", comme dans MakeCode.
+Au demarrage de l'application, l'espace de travail contient deja deux blocs
+emboites l'un dans l'autre : "Au demarrage" au-dessus de "Repeter
+indefiniment", comme dans MakeCode.
 
-"Au demarrage" s'execute une seule fois, avant tout le reste. Il n'a ni encoche
-du dessus ni du dessous : il vit seul, et un seul exemplaire est autorise — deux
-rendraient l'ordre d'execution ambigu. Son contenu est genere a plat, en tete du
-programme.
+"Au demarrage" s'execute une seule fois, avant tout le reste. Il n'a pas
+d'encoche du dessus (rien ne s'accroche AU-DESSUS : il reste toujours le bloc
+le plus haut, et un seul exemplaire est autorise — deux rendraient l'ordre
+d'execution ambigu), mais a une encoche du bas pour s'emboiter avec le bloc
+suivant, comme "Repeter indefiniment" par defaut. Son contenu est genere a
+plat, en tete du programme.
 
 L'ordre des blocs de premier niveau suit leur position verticale dans l'espace
-de travail : garder "Au demarrage" au-dessus des boucles.
+de travail : garder "Au demarrage" au-dessus des boucles. L'emboitement les
+lie physiquement pour garantir cet ordre, mais reste facultatif : les
+detacher et les laisser juste l'un au-dessus de l'autre produit le meme code.
 
 Les fonctions produites par les blocs "lorsque ..." font exception : elles sont
 placees d'office en tete du programme, avant tout code executable. Sans cela, un
 bloc "lorsque ..." pose a droite ou en dessous d'une boucle aurait ete defini
 apres l'appel qui l'utilise, et le programme se serait arrete sur un NameError.
 On peut donc les disposer librement dans l'espace de travail.
+
+Un bloc pose sur l'espace de travail mais pas accroche a "Au demarrage", a
+"Repeter indefiniment", a un bloc "lorsque ..." (ou a l'interieur de l'un
+d'eux) s'affiche automatiquement griffe/grise (rendu Blockly standard) : il
+n'est pas actif, et n'apparait pas dans le code genere. Le reconnecter le
+reactive aussitot. Avant cette regle, un tel bloc isole n'etait pas grise
+alors qu'il ne faisait deja rien la plupart du temps - pire, un bloc
+d'instruction pose seul (pas un conteneur) etait bien execute une fois, tout
+en haut du programme, ce qui pouvait surprendre.
+
+"nombre de clics du bouton" (categorie Entrees/Sorties) : sur la vraie carte,
+l'API MicroPython sous-jacente (get_presses()) remet son compteur a 0 des
+qu'on la LIT - un simple "si nombre de clics = 10 alors ..." ne se
+declencherait donc quasiment jamais tel quel. Le bloc genere pour cette
+raison son propre compteur cumulatif a cote (une petite fonction Python,
+invisible dans les blocs), qui lui ne se remet jamais a 0 tout seul :
+correct aussi bien sur la vraie carte que dans le simulateur, puisque c'est
+le meme code qui tourne dans les deux cas.
+
+Le simulateur garde desormais cette session (variables Python globales,
+objets Grove deja crees, etat des servos...) d'un declenchement a l'autre
+tant que le code n'a pas change : un bouton virtuel presse pendant que rien
+n'est en cours poursuit l'environnement existant au lieu de tout relancer
+depuis "Au demarrage". Des clics espaces de plusieurs secondes s'additionnent
+donc correctement dans "nombre de clics du bouton", comme sur la vraie
+carte. Seul le bouton "Lancer la simulation" continue a tout redemarrer a
+zero (son role naturel), et "Reinitialiser la simulation" efface cette
+session au passage.
+
+"attendre jusqu'à" (categorie Temps) : sur la vraie carte, "sleep()" met
+vraiment en pause, le temps que la condition attendue (bouton, capteur...)
+puisse changer. Dans le simulateur, "sleep()" ne met rien en pause pour de
+vrai - la boucle d'attente ne peut donc jamais voir la condition changer
+tant qu'elle tourne, et bouclerait indefiniment. Une limite interne coupe
+court a cette boucle sans figer l'onglet : si la condition n'est toujours
+pas vraie a la fin d'un tour, ce tour n'affiche simplement rien (comme la
+vraie carte, qui attendrait juste le prochain declenchement) - pas de
+message d'erreur pour ce cas normal, seulement pour une vraie erreur de
+programme. Pour tester ce genre d'attente dans le simulateur, on peut aussi
+remplacer "attendre jusqu'à" par un "si ... alors" verifie a chaque tour de
+"Repeter indefiniment".
+
+"lorsque la broche P0/P1/P2 est activée" et "broche ... est pressée"
+(categories Communication/Entrees-Sorties) : sur une vraie carte, detecter
+un "touche" sur ces broches necessite normalement de toucher la broche ET
+une broche GND en meme temps (detection resistive, mesuree entre les deux) -
+un simple doigt sur P0 seul ne suffirait pas. Le code genere active
+automatiquement le mode tactile capacitif de la carte V2
+(set_touch_mode(CAPACITIVE)) : un seul doigt sur la broche suffit donc,
+comme dans le simulateur (qui, lui, n'a jamais eu besoin de circuit GND).
+
+"LCD : allumer / eteindre l'affichage" (Grove LCD 16x2 v1, JHD1802,
+monochrome) : le retro-eclairage de ce module est cable en permanence, il
+n'existe aucune commande I2C pour le couper. Le bloc agit seulement sur
+l'affichage des caracteres (bit "display on/off" du controleur HD44780) : le
+texte disparait puis revient a l'allumage, le fond bleu reste allume - sur la
+vraie carte comme dans le simulateur (aligne depuis : il grisait auparavant
+tout l'ecran, ce que la carte ne fait pas). Pour un "vrai" ecran eteint, il
+faudrait couper l'alimentation du module. Apres "eteindre", ne pas oublier
+"allumer" : "LCD : effacer" ne rallume pas l'affichage.
+
+Grove LCD RGB Backlight V4.0 (JHD1313M3) - blocs "LCD RGB : ..." (categorie
+Grove) : deux circuits I2C sur le meme module, texte a l'adresse 0x3E (memes
+commandes que le LCD v1) et retro-eclairage RGB a 0x62 (puce PCA9633).
+Initialisation du fond selon la fiche Seeed : MODE1=0, MODE2=0, LEDOUT=0xAA,
+puis PWM registre 4 = rouge, 3 = vert, 2 = bleu. Blocs : initialiser,
+afficher (x, y), effacer, allumer/eteindre l'affichage (caracteres seulement),
+retro-eclairage couleur (palette), retro-eclairage rouge/vert/bleu (0 a 255)
+et allumer/eteindre le retro-eclairage (eteindre le coupe, allumer remet la
+derniere couleur). Au demarrage le fond est blanc. Alimentation 5 V : la
+V4.0 n'accepte pas le 3,3 V. La V5.0 (adresse 0x30, puce SGM31323) n'est PAS
+geree. Le simulateur reutilise le meme panneau d'ecran que le LCD v1, avec la
+couleur du fond et des caracteres adaptes a sa luminosite. Les blocs LCD ne
+sont pas reconstruits en blocs a l'import d'un .py (comme les autres blocs
+Grove) : ils deviennent des blocs "code".
+
+Aide sur un bloc : clic droit sur un bloc de l'espace de travail >
+"Aide sur ce bloc" ouvre une fenetre (avec le logo de l'application, logo.png,
+dans son en-tete) avec le nom du bloc, son texte d'aide et
+le code MicroPython qu'il genere (le bloc seul, pas les suivants). Le texte
+vient, par priorite : de la table AIDE_BLOCS (un.js, une ligne par bloc, avec
+son identifiant technique), puis de l'infobulle du bloc (setTooltip, blocs
+natifs de Blockly compris), sinon un message "aucune aide detaillee". Tous
+les blocs personnalises ont aujourd'hui un texte (105 entrees dans AIDE_BLOCS
+en plus des infobulles existantes) ; un bloc cree plus tard n'en aura pas tant
+qu'on n'y ajoute pas sa ligne. Pour
+rediger l'aide d'un bloc, ajouter sa ligne dans AIDE_BLOCS. Fermeture : bouton
+Fermer, touche Echap ou clic hors de la fenetre.
+
+Programmes d'exemple : sous le texte d'aide, la fenetre propose un petit
+programme d'exemple (titre, explication, le programme EN BLOCS dans un petit
+espace Blockly en lecture seule, reduit si besoin pour tenir en entier ; le
+code MicroPython est replie sous "Voir le code MicroPython") et un bouton
+"Insérer cet exemple dans mon espace de travail". L'exemple est ajoute SOUS
+les blocs existants, sans rien effacer, en un seul pas d'annulation (un
+Ctrl+Z le retire entierement). Attention : si le programme contient deja un
+"Au demarrage" ou un "Repeter indefiniment", l'exemple en ajoute un second ;
+c'est a l'utilisateur de fusionner ou de supprimer. 131 exemples couvrent 174
+blocs (les familles partagent un exemple : LCD, LCD RGB, ruban, etc.). Ils
+sont declares dans EXEMPLES_BLOCS (un.js), avec la fonction exemple(ids,
+titre, texte, blocs) ; les blocs racines doivent etre des conteneurs
+(exStart, exLoop, exWhen), un bloc pose seul etant grise. Les LiDAR : les
+lectures (distance, direction, urgence) relisent la DERNIERE acquisition, donc
+leurs exemples appellent "acquerir" avant. Blocs sans exemple : les blocs
+natifs de Blockly, les deux blocs de secours (code_brut, expression_brute) et
+lidar_initialiser : son generateur ecrit
+`TRUE` / `FALSE` (sans majuscule unique) au lieu de `True` / `False`, ce qui
+donnerait un NameError sur la vraie carte - bug connu, a corriger avant d'en
+faire un exemple (le moteur de reconstruction attend aujourd'hui ces memes
+`TRUE`/`FALSE`, a adapter en meme temps).
+
+Les blocs de la boite a
+outils (volet de gauche) n'ont pas de menu contextuel : Blockly n'en propose
+que pour les blocs deja poses.
+
+"Envoyer sur la carte" : une fenetre modale s'affiche au premier plan
+pendant tout le transfert (generation, choix du lecteur, ecriture,
+finalisation) avec une barre de 0 a 100 %. Le pourcentage compte de vrais
+octets ecrits, par morceaux de 32 Ko ; il reste a 99 % ("Finalisation...")
+tant que le lecteur n'a pas valide la fin de l'ecriture. La reprogrammation
+de la carte elle-meme, ensuite, n'est pas mesurable depuis le navigateur. En
+cas d'erreur ou d'annulation la fenetre se ferme et le message reste dans la
+barre d'etat. Balisage : #voile-envoi (index.html) ; logique : fenetreEnvoi
+(un.js).
 
 ---------------------------------------------------------
 11. LE FICHIER FIRMWARE.HEX
@@ -527,8 +716,18 @@ garde.
 Nouvelle categorie de blocs pour le chassis robot DFRobot Maqueen Plus (I2C,
 adresse 0x10) : moteurs gauche/droit, cinq capteurs de ligne, phares,
 DEL RGB, capteur a ultrason. Des qu'un bloc de cette categorie est pose, un
-panneau "Maqueen Plus" apparait sous le simulateur habituel, avec une piste
-et le robot dessus.
+panneau "Piste" apparait sous le simulateur habituel, avec une piste et le
+robot dessus.
+
+IMPORTANT : ce panneau piste est PARTAGE entre les trois robots du projet
+(Maqueen Plus, Kitrobot v2, Maqueen Lite - voir §16 et §18). Un seul robot
+y est visible a la fois, celui dont un bloc est reellement pose sur l'espace
+de travail (le titre du panneau change en consequence). Les trois profitent
+donc des memes reglages : choix du tracé, largeur de la piste, echelle
+d'affichage, editeur de piste personnalisee. Kitrobot lit un pixel SOMBRE
+comme "sur la ligne" (l'inverse des deux autres) : la piste change donc de
+couleurs (blanc/noir au lieu de vert/blanc) des que Kitrobot est le robot
+actif, quel que soit le tracé choisi.
 
 Un menu deroulant au-dessus de la piste propose plusieurs tracés : boucle
 ovale, circuit aux coins presque vifs, circuit en huit (deux boucles qui se
@@ -573,7 +772,9 @@ des yeux.
 Le robot se glisse-depose n'importe ou sur la piste, a la souris ou au doigt :
 c'est la nouvelle position de depart, conservee par "Reinitialiser la
 simulation" (qui ne revient donc plus a un point fixe une fois le robot
-deplace).
+deplace). Cela fonctionne aussi pour Kitrobot v2 et Maqueen Lite (meme
+piste partagee, voir plus haut) : glisser le robot reellement affiche le
+deplace, quel que soit celui des trois.
 
 Contrairement aux autres modules, le robot BOUGE REELLEMENT sur la piste :
 sa position et son cap suivent la vitesse donnee a chaque moteur, et les
@@ -610,12 +811,14 @@ pas juste decoratives.
 ---------------------------------------------------------
 16. KITROBOT V2 (robot sur piste droite)
 ---------------------------------------------------------
-Deuxieme robot, distinct du Maqueen Plus ci-dessus : chassis a deux servos,
-piste droite avec un depart et une arrivee (pas une boucle fermee). Des
-qu'un bloc de la categorie "Kitrobot v2" est pose, un panneau "Kitrobot v2"
-apparait sous le simulateur, avec sa propre piste (fond blanc, ligne noire -
-inversee par rapport a Maqueen pour bien distinguer les deux d'un coup
-d'oeil).
+Deuxieme robot, distinct du Maqueen Plus ci-dessus : chassis a deux servos.
+Des qu'un bloc de la categorie "Kitrobot v2" est pose, le panneau "Piste"
+(voir §15) affiche ce robot a la place du Maqueen, sur la MEME piste que les
+deux autres robots - y compris le tracé "Ligne droite (départ/arrivée)"
+d'origine dediee a Kitrobot, desormais un choix de tracé comme un autre.
+La piste passe en fond blanc/ligne noire (inversee par rapport a Maqueen)
+tant que Kitrobot est le robot actif, pour bien distinguer les deux d'un
+coup d'oeil quel que soit le tracé choisi.
 
 Contrairement au Maqueen Plus, aucun cablage reel n'a pu etre verifie pour
 ce kit. Toutes les broches (servos, ultrason, buzzer, capteurs de ligne,
@@ -705,4 +908,41 @@ relisent la derniere acquisition, pas le capteur en direct. Independant
 d'un robot precis (utilisable seul ou avec un Maqueen) ; le panneau du
 simulateur propose trois curseurs (gauche/avant/droite, en mm) plutot
 qu'une vraie matrice de distances.
+
+---------------------------------------------------------
+18. MAQUEEN LITE
+---------------------------------------------------------
+Chassis DFRobot plus simple, distinct du Maqueen Plus (categorie separee,
+protocole different) : meme adresse I2C 0x10 pour les moteurs, mais
+seulement 2 capteurs de ligne (gauche/droit, lus directement sur des
+broches, pas de registre dedie), 2 DEL simples marche/arret (pas de RGB),
+et un capteur ultrason a broches fixes (pas de choix de broche).
+
+Blocs disponibles : moteur (vitesse -255 a 255, comme le Maqueen Plus),
+arreter le moteur, distance (cm), capteur de ligne (0 ou 1, sens non
+verifie sur une vraie carte), DEL allumee/eteinte, servo (S1/S2), et un
+bloc "lorsque le capteur de ligne ... passe a l'etat ..." pour reagir aux
+changements sans avoir a le lire soi-meme dans une boucle.
+
+Depuis que la piste est partagee entre les trois robots (voir §15), le
+Maqueen Lite a lui aussi un robot anime : des qu'un bloc de la categorie
+est pose, le panneau "Piste" l'affiche, sur la meme piste que les deux
+autres, memes couleurs que le Maqueen Plus (vert/blanc, pas d'inversion).
+Le chassis (au depart un simple rectangle CSS gris-violet) est desormais
+dessine en SVG d'apres deux photos officielles DFRobot du vrai robot
+(ROB0148-EN) : carte bleue en pointe vers l'avant, deux capteurs ultrasons
+chromes a la pointe, compartiment a piles noir a l'arriere, grandes roues
+blanches/argentees. Le bloc moteur deplace donc vraiment le robot, et le
+bloc/l'evenement capteur de ligne lisent vraiment la piste sous lui - les
+deux anciennes cases a cocher qui simulaient ces capteurs ont disparu, plus
+necessaires. L'etat des deux capteurs (gauche/droit) s'affiche a la fois
+sous la piste ("Ligne : G/D") et directement sur le robot (deux points sur
+le bord avant, comme le Maqueen Plus), vert quand le capteur est sur la
+ligne. Seul le bloc servo reste sans effet visuel (aucun panneau
+dedie pour ca, comme le Maqueen Plus).
+
+Aucun materiel Maqueen Lite n'a servi a verifier ceci : le protocole vient
+du depot officiel MakeCode de DFRobot (pxt-maqueen), pas invente, mais
+rien ne remplace un test sur la vraie carte - en particulier le sens des
+capteurs de ligne (0 ou 1 = sur la ligne ?), qui depend du cablage reel.
 
