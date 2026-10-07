@@ -2214,10 +2214,207 @@ try {
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(COULEUR_GROVE);
+        this.setTooltip("Masque ou affiche les caractères. Le rétroéclairage de cet écran " +
+                        "monochrome reste allumé en permanence : il ne se commande pas.");
     }};
     P.forBlock['grove_lcd_alimenter'] = function(block) {
         piloteLcd();
         return '_grove_lcd().' + block.getFieldValue('ETAT') + '()\n';
+    };
+
+    // --- Écran LCD 16x2 RGB Backlight V4.0 (JHD1313M3) ---
+    //
+    // Deux circuits I2C sur le meme module : le texte (0x3E, memes commandes
+    // que le LCD v1 ci-dessus) et le retro-eclairage RGB (0x62, puce PCA9633
+    // sur la V4.0 ; la V5.0 passe a 0x30 / SGM31323 et n'est PAS geree ici).
+    // Sequence d'initialisation du retro-eclairage donnee par la fiche Seeed :
+    // MODE1 = 0, MODE2 = 0, LEDOUT = 0xAA (PWM individuel sur les trois voies),
+    // puis PWM : registre 4 = rouge, 3 = vert, 2 = bleu. Alimentation 5 V
+    // (la V4.0 n'accepte pas le 3,3 V).
+
+    function piloteLcdRgb() {
+        importerMicrobit();
+        piloteRegistre();
+        pilote('lcdrgb', [
+            'class _EcranLCDRGB:',
+            '    ADR = 0x3E',
+            '    RGB = 0x62',
+            '',
+            '    def __init__(self):',
+            '        i2c.init()',
+            '        self.controle = 0x04',
+            '        self.couleur = (255, 255, 255)',
+            '        self.fond_actif = True',
+            '        sleep(50)',
+            '        self._commande(0x28)                       # 2 lignes, 5x8',
+            '        sleep(5)',
+            '        self._commande(0x28)',
+            '        sleep(1)',
+            '        self._commande(0x28)',
+            '        self._commande(0x08 | self.controle)       # affichage allume',
+            '        self.effacer()',
+            '        self._commande(0x06)                       # avance du curseur',
+            '        self._rgb(0x00, 0x00)                      # MODE1',
+            '        self._rgb(0x01, 0x00)                      # MODE2',
+            '        self._rgb(0x08, 0xAA)                      # LEDOUT : PWM sur R, V, B',
+            '        self.fond(255, 255, 255)',
+            '',
+            '    def _commande(self, valeur):',
+            '        i2c.write(self.ADR, bytes([0x80, valeur]))',
+            '',
+            '    def _donnee(self, valeur):',
+            '        i2c.write(self.ADR, bytes([0x40, valeur]))',
+            '',
+            '    def _rgb(self, registre, valeur):',
+            '        i2c.write(self.RGB, bytes([registre, valeur]))',
+            '',
+            '    def effacer(self):',
+            '        self._commande(0x01)',
+            '        sleep(2)',
+            '',
+            '    def allumer(self):',
+            '        self.controle = self.controle | 0x04',
+            '        self._commande(0x08 | self.controle)',
+            '',
+            '    def eteindre(self):',
+            '        self.controle = self.controle & 0xFB',
+            '        self._commande(0x08 | self.controle)',
+            '',
+            '    def texte(self, message, x, y):',
+            '        x = max(0, min(15, int(x)))',
+            '        y = max(0, min(1, int(y)))',
+            '        self._commande((x | 0x80) if y == 0 else (x | 0xC0))',
+            '        for c in str(message)[:16 - x]:',
+            '            self._donnee(ord(c))',
+            '',
+            '    def _ecrire_fond(self, r, v, b):',
+            '        self._rgb(0x04, r)',
+            '        self._rgb(0x03, v)',
+            '        self._rgb(0x02, b)',
+            '',
+            '    def fond(self, r, v, b):',
+            '        r = max(0, min(255, int(r)))',
+            '        v = max(0, min(255, int(v)))',
+            '        b = max(0, min(255, int(b)))',
+            '        self.couleur = (r, v, b)',
+            '        if self.fond_actif:',
+            '            self._ecrire_fond(r, v, b)',
+            '',
+            '    def retro(self, actif):',
+            '        self.fond_actif = actif',
+            '        if actif:',
+            '            self._ecrire_fond(self.couleur[0], self.couleur[1], self.couleur[2])',
+            '        else:',
+            '            self._ecrire_fond(0, 0, 0)',
+            '',
+            'def _grove_lcdrgb():',
+            '    return _grove_obj("lcdrgb", _EcranLCDRGB)',
+        ]);
+    }
+
+    Blockly.Blocks['grove_lcdrgb_init'] = { init: function() {
+        this.appendDummyInput().appendField("initialiser l'écran LCD RGB (V4.0)");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Grove LCD RGB Backlight V4.0 (JHD1313M3) : texte à l'adresse I²C 0x3E, " +
+                        "rétroéclairage à 0x62, alimentation 5 V. Facultatif : l'écran s'initialise " +
+                        "à la première utilisation (fond blanc).");
+    }};
+    P.forBlock['grove_lcdrgb_init'] = function(block) {
+        piloteLcdRgb();
+        return '_grove_objets["lcdrgb"] = _EcranLCDRGB()\n';
+    };
+
+    Blockly.Blocks['grove_lcdrgb_texte'] = { init: function() {
+        this.appendValueInput("TEXTE").appendField("LCD RGB : afficher");
+        this.appendValueInput("X").setCheck("Number").appendField("en x");
+        this.appendValueInput("Y").setCheck("Number").appendField("y");
+        this.setInputsInline(false);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("x de 0 à 15, y de 0 à 1.");
+    }};
+    P.forBlock['grove_lcdrgb_texte'] = function(block) {
+        piloteLcdRgb();
+        const x = P.valueToCode(block, 'X', P.ORDER_NONE) || '0';
+        const y = P.valueToCode(block, 'Y', P.ORDER_NONE) || '0';
+        return '_grove_lcdrgb().texte(' + versTexte(block, 'TEXTE') + ', ' + x + ', ' + y + ')\n';
+    };
+
+    Blockly.Blocks['grove_lcdrgb_effacer'] = { init: function() {
+        this.appendDummyInput().appendField("LCD RGB : effacer");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_lcdrgb_effacer'] = function(block) {
+        piloteLcdRgb();
+        return '_grove_lcdrgb().effacer()\n';
+    };
+
+    Blockly.Blocks['grove_lcdrgb_alimenter'] = { init: function() {
+        this.appendDummyInput().appendField("LCD RGB :")
+            .appendField(new Blockly.FieldDropdown([
+                ["allumer", "allumer"], ["éteindre", "eteindre"]
+            ]), "ETAT").appendField("l'affichage");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Masque ou affiche les caractères (ils sont conservés). " +
+                        "Le rétroéclairage se commande à part : voir « rétroéclairage ».");
+    }};
+    P.forBlock['grove_lcdrgb_alimenter'] = function(block) {
+        piloteLcdRgb();
+        return '_grove_lcdrgb().' + block.getFieldValue('ETAT') + '()\n';
+    };
+
+    Blockly.Blocks['grove_lcdrgb_fond_couleur'] = { init: function() {
+        this.appendDummyInput().appendField("LCD RGB : rétroéclairage")
+            .appendField(menuCouleur(), "COULEUR");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Choisit la couleur du fond. « noir » éteint le fond (aucune lumière).");
+    }};
+    P.forBlock['grove_lcdrgb_fond_couleur'] = function(block) {
+        piloteLcdRgb();
+        const c = Number(block.getFieldValue('COULEUR'));
+        return '_grove_lcdrgb().fond(' + ((c >> 16) & 255) + ', ' + ((c >> 8) & 255) + ', ' + (c & 255) + ')\n';
+    };
+
+    Blockly.Blocks['grove_lcdrgb_fond_rvb'] = { init: function() {
+        this.appendValueInput("R").setCheck("Number").appendField("LCD RGB : rétroéclairage rouge");
+        this.appendValueInput("V").setCheck("Number").appendField("vert");
+        this.appendValueInput("B").setCheck("Number").appendField("bleu");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Chaque intensité va de 0 à 255.");
+    }};
+    P.forBlock['grove_lcdrgb_fond_rvb'] = function(block) {
+        piloteLcdRgb();
+        const r = P.valueToCode(block, 'R', P.ORDER_NONE) || '0';
+        const v = P.valueToCode(block, 'V', P.ORDER_NONE) || '0';
+        const b = P.valueToCode(block, 'B', P.ORDER_NONE) || '0';
+        return '_grove_lcdrgb().fond(' + r + ', ' + v + ', ' + b + ')\n';
+    };
+
+    Blockly.Blocks['grove_lcdrgb_retro'] = { init: function() {
+        this.appendDummyInput().appendField("LCD RGB :")
+            .appendField(new Blockly.FieldDropdown([
+                ["allumer", "True"], ["éteindre", "False"]
+            ]), "ETAT").appendField("le rétroéclairage");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Éteindre coupe la lumière du fond ; allumer rétablit la dernière couleur choisie.");
+    }};
+    P.forBlock['grove_lcdrgb_retro'] = function(block) {
+        piloteLcdRgb();
+        return '_grove_lcdrgb().retro(' + block.getFieldValue('ETAT') + ')\n';
     };
 
     // --- Capteur de couleur VEML6040 ---
@@ -4352,6 +4549,13 @@ try {
               { "kind": "block", "type": "grove_lcd_texte", "inputs": { "TEXTE": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour" } } }, "X": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "Y": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
               { "kind": "block", "type": "grove_lcd_effacer" },
               { "kind": "block", "type": "grove_lcd_alimenter" },
+              { "kind": "block", "type": "grove_lcdrgb_init" },
+              { "kind": "block", "type": "grove_lcdrgb_texte", "inputs": { "TEXTE": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour" } } }, "X": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "Y": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_lcdrgb_effacer" },
+              { "kind": "block", "type": "grove_lcdrgb_alimenter" },
+              { "kind": "block", "type": "grove_lcdrgb_fond_couleur" },
+              { "kind": "block", "type": "grove_lcdrgb_fond_rvb", "inputs": { "R": { "shadow": { "type": "math_number", "fields": { "NUM": "255" } } }, "V": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "B": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_lcdrgb_retro" },
 
               ]
             },
@@ -5535,6 +5739,853 @@ try {
         return await dossier.requestPermission(options) === 'granted';
     }
 
+    // Fenetre modale de progression (markup : #voile-envoi, index.html). Au
+    // premier plan et bloquante : rien d'autre ne doit etre clique pendant
+    // que le lecteur de la carte est en cours d'ecriture.
+    const fenetreEnvoi = {
+        voile: document.getElementById('voile-envoi'),
+        phase: document.getElementById('envoi-phase'),
+        barre: document.getElementById('envoi-barre'),
+        remplissage: document.getElementById('envoi-remplissage'),
+        pourcent: document.getElementById('envoi-pourcent'),
+        ouvrir(texte) {
+            this.progression(0);
+            this.etape(texte);
+            if (this.voile) this.voile.classList.add('ouvert');
+        },
+        etape(texte) { if (this.phase) this.phase.textContent = texte; },
+        progression(pct) {
+            const p = Math.max(0, Math.min(100, Math.round(pct)));
+            if (this.remplissage) this.remplissage.style.width = p + '%';
+            if (this.pourcent) this.pourcent.textContent = p + ' %';
+            if (this.barre) this.barre.setAttribute('aria-valuenow', String(p));
+        },
+        fermer(delaiMs) {
+            const f = () => { if (this.voile) this.voile.classList.remove('ouvert'); };
+            if (delaiMs) setTimeout(f, delaiMs); else f();
+        }
+    };
+    window.fenetreEnvoiTest = fenetreEnvoi;
+
+    // ------------------------------------------
+    // AIDE SUR UN BLOC (clic droit)
+    // ------------------------------------------
+    // Entree "Aide sur ce bloc" dans le menu contextuel de chaque bloc posé
+    // dans l'espace de travail : ouvre une fenetre (#voile-aide, index.html)
+    // avec le texte d'aide du bloc et le code MicroPython qu'il genere.
+    //
+    // Le texte vient, par ordre de priorite : de AIDE_BLOCS (explication
+    // redigee, plus longue qu'une infobulle), puis de l'infobulle du bloc
+    // (setTooltip, y compris celles des blocs natifs de Blockly), sinon d'un
+    // message disant qu'aucune aide n'est redigee. Pour ajouter une aide :
+    // une ligne dans AIDE_BLOCS, avec l'identifiant technique du bloc.
+    const AIDE_BLOCS = {
+        reset_chrono: "Mémorise l'instant présent comme point de départ du chronomètre. " +
+            "Il n'existe qu'un seul chronomètre dans le programme : un nouveau « remettre le chronomètre à 0 » " +
+            "remplace le précédent.",
+        valeur_chrono: "Temps écoulé depuis le dernier « remettre le chronomètre à 0 », en secondes ou en " +
+            "millisecondes. Si ce bloc n'a jamais été posé, le temps est compté depuis le démarrage de la carte.",
+        attendre_jusqua: "Bloque le programme tant que la condition n'est pas vraie. Dans « Au démarrage », le " +
+            "programme attend vraiment, simulateur compris. Dans « Répéter indéfiniment », le simulateur laisse " +
+            "passer le tour tant que la condition est fausse et réessaie au tour suivant.",
+        nombre_clics_bouton: "Nombre total de clics sur le bouton depuis le démarrage. Le compteur est cumulatif : " +
+            "il ne se remet jamais à 0 tout seul, ce qui permet de tester « = 10 » même si les clics sont espacés.",
+        lorsque_broche: "Exécute les blocs quand la broche P0, P1 ou P2 est touchée (ou relâchée). Un seul doigt " +
+            "suffit : le mode tactile capacitif de la carte V2 est activé automatiquement.",
+        broche_est_pressee: "Vrai tant que la broche P0, P1 ou P2 est touchée. Un seul doigt suffit : le mode " +
+            "tactile capacitif de la carte V2 est activé automatiquement.",
+        grove_lcd_alimenter: "Masque ou affiche les caractères de l'écran LCD. Le rétroéclairage de cet écran " +
+            "monochrome est allumé en permanence et ne se commande pas.",
+
+        // ---- Temps ----
+        attendre_temps: "Met le programme en pause pendant la durée choisie, en secondes ou en millisecondes. " +
+            "Rien d'autre ne s'exécute pendant ce temps.",
+        repeter_toutes_les: "Répète sans fin les blocs placés à l'intérieur, en faisant une pause de la durée " +
+            "indiquée (heures, minutes, secondes, millisecondes) après chaque passage.",
+
+        // ---- Affichage ----
+        afficher_valeur: "Affiche une valeur (texte ou nombre) sur la matrice de LED 5×5. Un texte de plusieurs " +
+            "caractères est montré caractère par caractère ; pour le faire défiler, utiliser « faire défiler ».",
+        faire_defiler: "Fait défiler un texte ou un nombre de droite à gauche sur la matrice de LED 5×5.",
+        afficher_icone: "Affiche une icône prédéfinie (cœur, visage heureux, triste, fantôme) sur la matrice de LED.",
+        afficher_image_matrice: "Dessine une image : cochez les cases de la grille 5×5 pour choisir les LED à allumer.",
+        effacer_ecran: "Éteint toutes les LED de la matrice 5×5.",
+
+        // ---- Entrées / événements ----
+        lorsque_bouton: "Exécute les blocs à l'intérieur quand le bouton A, B ou A+B est pressé. Le bouton est " +
+            "surveillé à chaque tour de la boucle principale du programme (ajoutée automatiquement s'il n'y en a pas).",
+        lorsque_geste: "Exécute les blocs à l'intérieur quand la carte est secouée, ou quand son logo est tourné " +
+            "vers le haut ou vers le bas. Le geste n'est pris en compte qu'une fois par mouvement.",
+        lorsque_son_detecte: "Exécute les blocs à l'intérieur quand le micro détecte un son bruyant ou faible " +
+            "(le seuil se règle avec « définit le seuil du son »). Carte V2 uniquement.",
+        lorsque_logo: "Exécute les blocs à l'intérieur quand le logo tactile de la carte est touché ou relâché " +
+            "(carte V2 uniquement).",
+        si_bouton_appuye: "Exécute les blocs à l'intérieur si le bouton choisi est enfoncé au moment où le " +
+            "programme passe ici. À placer dans une boucle pour surveiller le bouton en continu.",
+        si_logo_touche: "Exécute les blocs à l'intérieur si le logo tactile est touché au moment où le programme " +
+            "passe ici (carte V2 uniquement).",
+        si_secoue_alors: "Exécute les blocs à l'intérieur si la carte vient d'être secouée. La secousse n'est " +
+            "comptée qu'une seule fois.",
+        bouton_est_appuye: "Vrai tant que le bouton choisi (A, B ou A+B) est enfoncé, faux sinon. À utiliser dans " +
+            "un bloc « si » ou « attendre jusqu'à ».",
+        geste_est_actif: "Vrai tant que le geste choisi (secouer, logo vers le haut, logo vers le bas) est en cours, " +
+            "faux sinon. Contrairement à « si secoué », il reste vrai pendant toute la durée du geste.",
+        logo_est_touche: "Vrai tant que le logo tactile est touché, faux sinon (carte V2 uniquement).",
+        reinitialiser_microbit: "Redémarre la carte : le programme recommence depuis le début, comme après un " +
+            "appui sur le bouton reset.",
+
+        // ---- Capteurs ----
+        capteur_acceleration: "Accélération mesurée selon l'axe x, y ou z, en milli-g (mg), ou force totale. " +
+            "Au repos, la pesanteur donne environ 1000 mg sur l'axe vertical.",
+        capteur_luminosite: "Niveau de lumière ambiante, de 0 (obscurité) à 255 (très lumineux). La mesure est " +
+            "faite par la matrice de LED.",
+        capteur_boussole_direction: "Direction de la boussole en degrés (0 = nord). La boussole doit avoir été " +
+            "calibrée : voir « calibrer la boussole ».",
+        capteur_boussole_force: "Champ magnétique mesuré selon l'axe x, y ou z, ou force totale.",
+        capteur_boussole_calibrer: "Lance la calibration de la boussole : la carte demande d'incliner dans tous " +
+            "les sens pour remplir un cercle de LED. À faire avant de lire la direction.",
+        capteur_temperature: "Température mesurée par la carte, en °C. C'est la température de la puce, un peu " +
+            "plus élevée que celle de l'air ambiant.",
+        capteur_rotation: "Inclinaison de la carte en degrés : « pitch » vers l'avant ou l'arrière, « roll » vers " +
+            "la gauche ou la droite.",
+        temps_execution: "Temps écoulé depuis le démarrage de la carte, en millisecondes ou en microsecondes.",
+        gamme_accelerometre: "Règle l'étendue de mesure de l'accéléromètre (1g, 2g, 4g ou 8g). Une gamme plus " +
+            "large mesure des chocs plus forts, mais avec moins de précision.",
+        micro_intensite_son: "Niveau sonore capté par le micro de la carte, de 0 (silence) à 255 (très fort). " +
+            "Carte V2 uniquement.",
+        micro_definir_seuil: "Règle le niveau à partir duquel un son est considéré comme « bruyant » ou « faible » " +
+            "pour le bloc « lorsque le son est détecté ». Carte V2 uniquement.",
+
+        // ---- Audio et radio ----
+        audio_jouer: "Joue un son intégré (rire, joyeux, bonjour, triste, scintillement) sur le haut-parleur " +
+            "de la carte V2.",
+        audio_arreter: "Arrête le son en cours de lecture.",
+        music_jouer_melodie: "Joue une mélodie prédéfinie sur le haut-parleur de la carte.",
+        speech_dire: "Prononce un texte avec la synthèse vocale de la carte, en anglais. La vitesse et la hauteur " +
+            "de la voix se règlent de 0 à 255.",
+        radio_activer: "Allume la radio de la carte, nécessaire avant d'envoyer ou de recevoir un message.",
+        radio_envoyer_texte: "Envoie un texte par radio. Seules les cartes réglées sur le même groupe radio le " +
+            "reçoivent.",
+        radio_envoyer_nombre: "Envoie un nombre par radio. Seules les cartes réglées sur le même groupe radio " +
+            "le reçoivent.",
+
+        // ---- Boucles et maths ----
+        boucle_infinie: "Répète sans fin les blocs placés à l'intérieur. C'est la boucle principale du programme : " +
+            "la carte ne s'arrête jamais de l'exécuter. Ajoutez un bloc « attendre » pour la ralentir.",
+        math_min_max: "Renvoie la plus petite ou la plus grande de deux valeurs.",
+        math_absolue: "Renvoie la valeur absolue d'un nombre, c'est-à-dire sans son signe (−5 devient 5).",
+        math_racine: "Renvoie la racine carrée d'un nombre.",
+        math_arrondi_custom: "Arrondit un nombre à l'entier le plus proche, au-dessus (supérieur) ou en dessous " +
+            "(inférieur).",
+        math_convert: "Convertit un angle de degrés en radians, ou de radians en degrés.",
+        math_map: "Projette une valeur d'une plage vers une autre. Exemple : une valeur de 0 à 1023 devient une " +
+            "valeur de 0 à 4. Utile pour adapter la mesure d'un capteur.",
+
+        // ---- Grove : ruban, afficheur, capteurs ----
+        grove_ruban_couleur: "Allume tout le ruban de LED RGB avec la couleur choisie.",
+        grove_ruban_effacer: "Éteint toutes les LED du ruban.",
+        grove_ruban_couleur_index: "Allume une seule LED du ruban avec la couleur choisie. Le numéro des LED " +
+            "commence à 0.",
+        grove_ruban_effacer_index: "Éteint une seule LED du ruban. Le numéro des LED commence à 0.",
+        grove_ruban_perso: "Allume tout le ruban avec une couleur composée de rouge, vert et bleu, chacun de 0 à 255.",
+        grove_ruban_perso_index: "Allume une seule LED du ruban avec une couleur composée de rouge, vert et bleu, " +
+            "chacun de 0 à 255. Le numéro des LED commence à 0.",
+        grove_4d_nombre: "Affiche un nombre sur l'afficheur à 4 chiffres.",
+        grove_4d_chiffre: "Affiche un seul chiffre à la position choisie de l'afficheur à 4 chiffres " +
+            "(positions de 0 à 3, de gauche à droite).",
+        grove_4d_points: "Allume ou éteint les deux points au milieu de l'afficheur à 4 chiffres (séparateur " +
+            "d'une heure, par exemple).",
+        grove_4d_effacer: "Éteint tous les chiffres de l'afficheur à 4 chiffres.",
+        grove_ultrason_cm: "Distance mesurée par le capteur à ultrasons branché sur la broche choisie, en centimètres.",
+        grove_ultrason_pouces: "Distance mesurée par le capteur à ultrasons branché sur la broche choisie, en pouces.",
+        grove_joystick_direction: "Vrai si le joystick est poussé dans la direction choisie (ou au centre). " +
+            "Choisir les broches sur lesquelles sont branchés ses axes X et Y.",
+        grove_gestes_est: "Vrai si le capteur de gestes vient de détecter le geste choisi (haut, bas, gauche, " +
+            "droite, avant, arrière, rotation ou vague).",
+        grove_th_mesure: "Mesure du capteur de température et d'humidité : température en °C ou °F, ou humidité en %.",
+        grove_lcd_effacer: "Efface tout le texte de l'écran LCD 16x2.",
+        grove_lcdrgb_effacer: "Efface tout le texte de l'écran LCD RGB. Le rétroéclairage ne change pas.",
+        grove_moteur_action: "Commande le pilote de moteurs : arrêter le moteur du canal choisi, le freiner, ou " +
+            "effacer son défaut après une surcharge.",
+        grove_scd30_lire: "Mesure du capteur SCD30 : CO₂ en ppm, température en °C ou humidité en %.",
+        grove_scd41_lire: "Mesure du capteur SCD41 : CO₂ en ppm, température en °C ou humidité en %.",
+
+        // ---- Maqueen Plus ----
+        maqueen_arreter: "Arrête le moteur choisi (gauche, droit ou les deux).",
+        maqueen_ligne_valeur: "Valeur brute (analogique) lue par l'un des cinq capteurs de ligne du robot. Elle " +
+            "varie avec la couleur de la surface : pour un simple noir ou blanc, utiliser l'état du capteur.",
+        maqueen_phare: "Allume ou éteint le phare gauche, droit ou les deux.",
+        maqueen_rgb_couleur: "Allume une DEL RGB du dessous du robot (ou toutes) avec la couleur choisie.",
+        maqueen_rgb_eteindre: "Éteint les DEL RGB du robot.",
+        maqueen_distance: "Distance mesurée par le capteur à ultrasons du robot, en centimètres.",
+        maqueen_v3_vitesse_suivi: "Règle la vitesse du suiveur de ligne de la version v3, sur une échelle de 1 à 5.",
+        maqueen_v3_mode_carrefour: "Choisit ce que fait le robot v3 en suivi de ligne quand il rencontre un " +
+            "carrefour : aller tout droit, tourner à gauche, tourner à droite ou s'arrêter.",
+        maqueen_v3_mode_T: "Choisit ce que fait le robot v3 en suivi de ligne quand il rencontre une intersection " +
+            "en T : tourner à gauche, à droite ou s'arrêter.",
+        maqueen_v3_mode_gauche: "Choisit ce que fait le robot v3 en suivi de ligne quand la ligne bifurque vers la " +
+            "gauche : aller tout droit, tourner à gauche ou s'arrêter.",
+        maqueen_v3_mode_droite: "Choisit ce que fait le robot v3 en suivi de ligne quand la ligne bifurque vers la " +
+            "droite : aller tout droit, tourner à droite ou s'arrêter.",
+        maqueen_v3_intersection_detectee: "Code de la dernière intersection détectée par le robot v3 : 1 gauche, " +
+            "2 droite, 3 tout droit, 4 stop.",
+        maqueen_v3_intersection_est: "Vrai si l'intersection détectée par le robot v3 est du type choisi " +
+            "(tout droit, à gauche, à droite, stop).",
+        maqueen_v3_luminosite: "Intensité lumineuse mesurée par le capteur de lumière gauche ou droit du robot v3.",
+        maqueen_v3_pid_stop: "Interrompt le mouvement asservi (PID) en cours sur le robot v3, par exemple un " +
+            "déplacement ou un virage commandé.",
+        lorsque_ir_noire: "Exécute les blocs à l'intérieur quand la touche choisie de la télécommande infrarouge " +
+            "noire est pressée.",
+        lorsque_ir_grise: "Exécute les blocs à l'intérieur quand la touche choisie de la télécommande infrarouge " +
+            "grise est pressée.",
+
+        // ---- Maqueen Lite ----
+        maqueenlite_arreter: "Arrête le moteur choisi (gauche, droit ou les deux).",
+        maqueenlite_del: "Allume ou éteint la DEL gauche, droite ou les deux du robot.",
+        maqueenlite_servo: "Place le servomoteur branché sur S1 ou S2 à l'angle choisi, en degrés.",
+        lorsque_maqueenlite_ligne: "Exécute les blocs à l'intérieur quand le capteur de ligne gauche ou droit passe " +
+            "à l'état haut (1) ou bas (0). L'état est vérifié à chaque tour de la boucle principale.",
+
+        // ---- Kitrobot v2 ----
+        kitrobot_distance: "Distance mesurée par le capteur à ultrasons du robot, en centimètres.",
+        kitrobot_avancer: "Fait avancer ou reculer le robot (sens au choix) à la vitesse choisie, en pourcentage.",
+        kitrobot_pivoter: "Fait pivoter le robot sur place, dans le sens horaire ou antihoraire, à la vitesse " +
+            "choisie en pourcentage.",
+        kitrobot_moteur: "Commande un seul moteur (gauche ou droit) : sens de rotation et vitesse en pourcentage.",
+        kitrobot_arreter_moteur: "Arrête le moteur choisi (gauche ou droit).",
+        kitrobot_arreter: "Arrête les deux moteurs du robot.",
+        kitrobot_buzzer: "Fait sonner le buzzer du robot à la fréquence choisie (en hertz) pendant la durée choisie " +
+            "(en millisecondes).",
+        kitrobot_clignoter: "Fait clignoter les lumières du robot.",
+        kitrobot_del_couleur: "Allume une LED RGB du robot avec la couleur choisie.",
+        kitrobot_del_rgb: "Allume une LED RGB du robot avec une couleur composée de rouge, vert et bleu, chacun " +
+            "de 0 à 255.",
+        kitrobot_arcenciel: "Fait défiler les couleurs de l'arc-en-ciel sur les LED RGB du robot.",
+
+        // ---- LiDAR matriciel ----
+        lidar_point: "Distance mesurée, en millimètres, au point (x, y) de la grille 8×8 du LiDAR. L'adresse " +
+            "I²C choisit le capteur si plusieurs sont branchés.",
+        lidar_direction_est: "Vrai si la direction à suivre déterminée par le LiDAR est celle choisie (à gauche, " +
+            "à droite, tout droit).",
+        lidar_distance_cote: "Distance, en centimètres, de l'obstacle à gauche, devant ou à droite du LiDAR.",
+    };
+
+    // ------------------------------------------
+    // PROGRAMMES D'EXEMPLE
+    // ------------------------------------------
+    // Un petit programme par bloc (ou par famille de blocs), montre dans la
+    // fenetre d'aide avec son code MicroPython, et inserable d'un clic dans
+    // l'espace de travail. Chaque exemple est decrit en JSON de serialisation
+    // Blockly, via les petites fonctions ex* ci-dessous. Pour en ajouter un :
+    //   exemple(['id_du_bloc'], 'Titre', 'Explication.', [ ...blocs racines... ]);
+    // (une racine = exStart / exLoop / exWhen, jamais un bloc isole : un bloc
+    // pose seul est grise et n'est pas execute).
+    const EXEMPLES_BLOCS = {};
+    function exemple(ids, titre, texte, blocs) {
+        const ex = { titre, texte, blocs };
+        ids.forEach(id => { EXEMPLES_BLOCS[id] = ex; });
+    }
+    const exB = (type, champs, entrees) => {
+        const b = { type };
+        if (champs) b.fields = champs;
+        if (entrees) b.inputs = entrees;
+        return b;
+    };
+    const exSuite = (...bs) => {
+        for (let i = bs.length - 2; i >= 0; i--) bs[i].next = { block: bs[i + 1] };
+        return bs[0];
+    };
+    const exDans = (...bs) => ({ block: exSuite(...bs) });
+    const exN = n => ({ block: exB('math_number', { NUM: n }) });
+    const exT = s => ({ block: exB('text', { TEXT: s }) });
+    const exV = b => ({ block: b });
+    const exStart = (...bs) => exB('au_demarrage', null, { DO: exDans(...bs) });
+    const exLoop = (...bs) => exB('boucle_infinie', null, { DO: exDans(...bs) });
+    const exWhen = (type, champs, ...bs) => exB(type, champs, { DO: exDans(...bs) });
+    const exWait = n => exB('attendre_temps', { UNITE: 's' }, { TEMPS: exN(n) });
+    const exIcone = i => exB('afficher_icone', { ICONE: i });
+    const exClear = () => exB('effacer_ecran');
+    const exAff = b => exB('afficher_valeur', null, { VALEUR: exV(b) });
+    const exSi = (cond, ...bs) => exB('controls_if', null, { IF0: exV(cond), DO0: exDans(...bs) });
+    const exComp = (op, a, b) => exB('logic_compare', { OP: op }, { A: exV(a), B: exV(b) });
+    const exMesure = bloc => [exLoop(exAff(bloc), exWait(1))];
+    const exTexteMesure = "Affiche la valeur mesurée toutes les secondes sur la matrice de LED.";
+
+    // ---- Temps, affichage ----
+    exemple(['attendre_temps', 'afficher_icone', 'effacer_ecran', 'boucle_infinie'], 'Cœur qui clignote',
+        "Le cœur reste affiché une seconde, puis s'efface une seconde, sans fin.",
+        [exLoop(exIcone('HEART'), exWait(1), exClear(), exWait(1))]);
+    exemple(['repeter_toutes_les'], 'Température toutes les 5 secondes',
+        "Affiche la température de la carte, puis recommence 5 secondes plus tard.",
+        [exStart(exB('repeter_toutes_les', { H: 0, M: 0, S: 5, MS: 0 },
+            { DO: exDans(exAff(exB('capteur_temperature'))) }))]);
+    exemple(['afficher_valeur'], 'Dé électronique',
+        "Affiche un nombre au hasard entre 1 et 6, puis un autre 2 secondes plus tard.",
+        [exLoop(exAff(exB('math_random_int', null, { FROM: exN(1), TO: exN(6) })), exWait(2))]);
+    exemple(['faire_defiler'], 'Message défilant', "Fait défiler « Bonjour ! » une fois au démarrage.",
+        [exStart(exB('faire_defiler', null, { VALEUR: exT('Bonjour !') }))]);
+    const LED_SOURIRE = ['1_1', '3_1', '0_3', '1_4', '2_4', '3_4', '4_3'];
+    const champsImage = {};
+    for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) {
+        champsImage['LED_' + x + '_' + y] = LED_SOURIRE.includes(x + '_' + y) ? 'TRUE' : 'FALSE';
+    }
+    exemple(['afficher_image_matrice'], 'Un sourire dessiné',
+        "Affiche une image dessinée case par case : ici, un sourire.",
+        [exStart(exB('afficher_image_matrice', champsImage))]);
+
+    // ---- Boutons, gestes, logo, broches, son ----
+    exemple(['lorsque_bouton'], 'Bouton A : sourire, bouton B : effacer',
+        "Chaque bouton a son propre bloc « lorsque » : A affiche un visage heureux, B efface l'écran.",
+        [exWhen('lorsque_bouton', { BOUTON: 'a' }, exIcone('HAPPY')),
+         exWhen('lorsque_bouton', { BOUTON: 'b' }, exClear())]);
+    exemple(['si_bouton_appuye'], 'Surveiller deux boutons',
+        "À chaque tour de boucle, le programme regarde si A ou B est enfoncé.",
+        [exLoop(exB('si_bouton_appuye', { BOUTON: 'a' }, { DO: exDans(exIcone('HAPPY')) }),
+                exB('si_bouton_appuye', { BOUTON: 'b' }, { DO: exDans(exClear()) }))]);
+    exemple(['bouton_est_appuye'], 'Condition sur un bouton',
+        "Dans un bloc « si », le bouton A affiche un cœur et le bouton B efface l'écran.",
+        [exLoop(exSi(exB('bouton_est_appuye', { BOUTON: 'a' }), exIcone('HEART')),
+                exSi(exB('bouton_est_appuye', { BOUTON: 'b' }), exClear()))]);
+    exemple(['lorsque_geste'], 'Secouer la carte',
+        "Quand on secoue la carte, un fantôme apparaît une seconde.",
+        [exWhen('lorsque_geste', { GESTE: 'shake' }, exIcone('GHOST'), exWait(1), exClear())]);
+    exemple(['si_secoue_alors'], 'Secousse dans une boucle',
+        "À chaque secousse, un fantôme apparaît une seconde.",
+        [exLoop(exB('si_secoue_alors', null, { DO: exDans(exIcone('GHOST'), exWait(1), exClear()) }))]);
+    exemple(['geste_est_actif'], 'Triste pendant la secousse',
+        "Un visage triste s'affiche tant que la carte est secouée.",
+        [exLoop(exSi(exB('geste_est_actif', { GESTE: 'shake' }), exIcone('SAD')))]);
+    exemple(['lorsque_logo'], 'Toucher le logo', "Touchez le logo : un cœur s'affiche.",
+        [exWhen('lorsque_logo', { ACTION: 'touched' }, exIcone('HEART'))]);
+    exemple(['si_logo_touche'], 'Logo dans une boucle', "Un cœur s'affiche quand le logo est touché.",
+        [exLoop(exB('si_logo_touche', null, { DO: exDans(exIcone('HEART')) }))]);
+    exemple(['logo_est_touche'], 'Condition sur le logo', "Un cœur s'affiche tant que le logo est touché.",
+        [exLoop(exSi(exB('logo_est_touche'), exIcone('HEART')))]);
+    exemple(['lorsque_broche'], 'Toucher la broche P0',
+        "Un seul doigt sur P0 suffit : un visage heureux s'affiche une seconde.",
+        [exWhen('lorsque_broche', { BROCHE: 'pin0', ETAT: 'touched' }, exIcone('HAPPY'), exWait(1), exClear())]);
+    exemple(['broche_est_pressee'], 'Condition sur une broche',
+        "Un visage heureux s'affiche tant que P0 est touchée.",
+        [exLoop(exSi(exB('broche_est_pressee', { BROCHE: 'pin0' }), exIcone('HAPPY')))]);
+    exemple(['lorsque_son_detecte'], 'Réagir à un bruit',
+        "Un bruit fort fait apparaître un visage triste une seconde.",
+        [exWhen('lorsque_son_detecte', { SON: 'LOUD' }, exIcone('SAD'), exWait(1), exClear())]);
+    exemple(['micro_definir_seuil'], 'Régler le seuil du bruit',
+        "Seuil à 200 : seuls les bruits assez forts déclenchent le visage triste.",
+        [exStart(exB('micro_definir_seuil', { SON: 'LOUD' }, { SEUIL: exN(200) })),
+         exWhen('lorsque_son_detecte', { SON: 'LOUD' }, exIcone('SAD'), exWait(1), exClear())]);
+    exemple(['reinitialiser_microbit'], 'Redémarrer avec le bouton A',
+        "Un cœur s'affiche à chaque démarrage ; le bouton A redémarre la carte.",
+        [exStart(exIcone('HEART')), exWhen('lorsque_bouton', { BOUTON: 'a' }, exB('reinitialiser_microbit'))]);
+
+    // ---- Capteurs ----
+    [['capteur_acceleration', exB('capteur_acceleration', { AXIS: 'x' }), "Accélération sur l'axe x"],
+     ['capteur_luminosite', exB('capteur_luminosite'), 'Niveau de lumière'],
+     ['capteur_boussole_direction', exB('capteur_boussole_direction'), 'Direction de la boussole'],
+     ['capteur_boussole_force', exB('capteur_boussole_force', { AXIS: 'x' }), 'Champ magnétique sur x'],
+     ['capteur_temperature', exB('capteur_temperature'), 'Température'],
+     ['capteur_rotation', exB('capteur_rotation', { AXIS: 'pitch' }), 'Inclinaison avant/arrière'],
+     ['temps_execution', exB('temps_execution', { UNITE: 'ms' }), "Temps depuis le démarrage"],
+     ['micro_intensite_son', exB('micro_intensite_son'), 'Niveau sonore'],
+    ].forEach(([id, bloc, titre]) => exemple([id], titre, exTexteMesure, exMesure(bloc)));
+    exemple(['capteur_boussole_calibrer'], 'Calibrer puis lire la boussole',
+        "La calibration se fait une fois au démarrage, puis la direction est affichée chaque seconde.",
+        [exStart(exB('capteur_boussole_calibrer')),
+         exLoop(exAff(exB('capteur_boussole_direction')), exWait(1))]);
+    exemple(['gamme_accelerometre'], 'Gamme 8g pour des chocs forts',
+        "Règle l'accéléromètre sur 8g, puis affiche la force mesurée chaque seconde.",
+        [exStart(exB('gamme_accelerometre', { GAMME: '8' })),
+         exLoop(exAff(exB('capteur_acceleration', { AXIS: 'strength' })), exWait(1))]);
+    exemple(['reset_chrono', 'valeur_chrono'], 'Chronomètre',
+        "Le chronomètre démarre à 0 au lancement, puis le temps écoulé (en secondes) est affiché chaque seconde.",
+        [exStart(exB('reset_chrono')), exLoop(exAff(exB('valeur_chrono', { UNITE: 's' })), exWait(1))]);
+    exemple(['attendre_jusqua'], 'Attendre le bouton A pour démarrer',
+        "Un visage triste reste affiché tant qu'on n'appuie pas sur A ; ensuite un cœur apparaît.",
+        [exStart(exIcone('SAD'), exB('attendre_jusqua', null, { CONDITION: exV(exB('bouton_est_appuye', { BOUTON: 'a' })) }),
+                 exIcone('HEART'))]);
+    exemple(['nombre_clics_bouton'], 'Au 10e clic sur B',
+        "Un cœur s'affiche quand le bouton B a été pressé 10 fois en tout.",
+        [exLoop(exSi(exComp('EQ', exB('nombre_clics_bouton', { BOUTON: 'b' }), exB('math_number', { NUM: 10 })),
+                     exIcone('HEART')))]);
+
+    // ---- Audio, radio ----
+    exemple(['audio_jouer', 'audio_arreter'], 'Son avec les boutons',
+        "A joue un rire ; B arrête le son.",
+        [exWhen('lorsque_bouton', { BOUTON: 'a' }, exB('audio_jouer', { SON: 'GIGGLE' })),
+         exWhen('lorsque_bouton', { BOUTON: 'b' }, exB('audio_arreter'))]);
+    exemple(['music_jouer_melodie'], 'Mélodie sur le bouton A', "Le bouton A joue une mélodie.",
+        [exWhen('lorsque_bouton', { BOUTON: 'a' }, exB('music_jouer_melodie', { MELODY: 'ENTERTAINER' }))]);
+    exemple(['speech_dire'], 'La carte parle', "La carte dit « Hello » au démarrage (en anglais).",
+        [exStart(exB('speech_dire', { SPEED: 100, PITCH: 100 }, { TEXT: exT('Hello') }))]);
+    exemple(['radio_activer', 'radio_envoyer_texte'], 'Envoyer un message radio',
+        "La radio est allumée au démarrage ; le bouton A envoie « Salut » aux autres cartes du même groupe.",
+        [exStart(exB('radio_activer')),
+         exWhen('lorsque_bouton', { BOUTON: 'a' }, exB('radio_envoyer_texte', null, { MESSAGE: exT('Salut') }))]);
+    exemple(['radio_envoyer_nombre'], 'Envoyer un nombre par radio',
+        "Le bouton A envoie le nombre 5 aux autres cartes du même groupe.",
+        [exStart(exB('radio_activer')),
+         exWhen('lorsque_bouton', { BOUTON: 'a' }, exB('radio_envoyer_nombre', null, { NOMBRE: exN(5) }))]);
+
+    // ---- Maths ----
+    const exCalcul = (id, bloc, titre) => exemple([id], titre, "Affiche le résultat du calcul au démarrage.", [exStart(exAff(bloc))]);
+    exCalcul('math_min_max', exB('math_min_max', { OP: 'max' }, { A: exN(3), B: exN(7) }), 'Le plus grand de 3 et 7');
+    exCalcul('math_absolue', exB('math_absolue', null, { NUM: exN(-5) }), 'Valeur absolue de −5');
+    exCalcul('math_racine', exB('math_racine', { OP: 'sqrt' }, { NUM: exN(16) }), 'Racine carrée de 16');
+    exCalcul('math_arrondi_custom', exB('math_arrondi_custom', { OP: 'round' }, { NUM: exN(3.7) }), 'Arrondir 3,7');
+    exCalcul('math_convert', exB('math_convert', { OP: 'radians' }, { NUM: exN(180) }), '180 degrés en radians');
+    exemple(['math_map'], 'Lumière de 0-255 vers 0-4',
+        "Convertit le niveau de lumière (0 à 255) en une valeur de 0 à 4.",
+        [exLoop(exAff(exB('math_map', null, { VAL: exV(exB('capteur_luminosite')), FROMLOW: exN(0),
+            FROMHIGH: exN(255), TOLOW: exN(0), TOHIGH: exN(4) })), exWait(1))]);
+
+    // ---- Grove ----
+    exemple(['grove_ruban_couleur', 'grove_ruban_effacer'], 'Ruban rouge puis éteint',
+        "Tout le ruban s'allume en rouge deux secondes, puis s'éteint.",
+        [exStart(exB('grove_ruban_couleur', { COULEUR: '0xFF0000' }), exWait(2), exB('grove_ruban_effacer'))]);
+    exemple(['grove_ruban_couleur_index'], 'Deux LED de couleurs différentes',
+        "La LED n° 0 s'allume en vert et la LED n° 1 en bleu.",
+        [exStart(exB('grove_ruban_couleur_index', { COULEUR: '0x00FF00' }, { INDEX: exN(0) }),
+                 exB('grove_ruban_couleur_index', { COULEUR: '0x0000FF' }, { INDEX: exN(1) }))]);
+    exemple(['grove_ruban_effacer_index'], 'Éteindre une seule LED',
+        "Tout le ruban s'allume en rouge, puis la LED n° 0 s'éteint deux secondes plus tard.",
+        [exStart(exB('grove_ruban_couleur', { COULEUR: '0xFF0000' }), exWait(2),
+                 exB('grove_ruban_effacer_index', null, { INDEX: exN(0) }))]);
+    exemple(['grove_ruban_perso'], 'Une couleur orange', "Rouge 255, vert 128, bleu 0 : un orange.",
+        [exStart(exB('grove_ruban_perso', null, { R: exN(255), V: exN(128), B: exN(0) }))]);
+    exemple(['grove_ruban_perso_index'], 'Une LED en violet', "La LED n° 0 prend une couleur violette.",
+        [exStart(exB('grove_ruban_perso_index', null, { INDEX: exN(0), R: exN(255), V: exN(0), B: exN(128) }))]);
+    exemple(['grove_4d_nombre'], 'Afficher 1234', "Le nombre 1234 s'affiche sur l'afficheur à 4 chiffres.",
+        [exStart(exB('grove_4d_nombre', null, { VALEUR: exN(1234) }))]);
+    exemple(['grove_4d_chiffre'], 'Un chiffre à une position',
+        "Le chiffre 7 s'affiche à la position 2 (les positions vont de 0 à 3).",
+        [exStart(exB('grove_4d_chiffre', null, { VALEUR: exN(7), POSITION: exN(2) }))]);
+    exemple(['grove_4d_points'], 'Heure avec deux points', "Affiche 1234 avec les deux points allumés (12:34).",
+        [exStart(exB('grove_4d_nombre', null, { VALEUR: exN(1234) }), exB('grove_4d_points', { ETAT: 'True' }))]);
+    exemple(['grove_4d_effacer'], 'Afficher puis effacer', "Le nombre reste affiché deux secondes, puis disparaît.",
+        [exStart(exB('grove_4d_nombre', null, { VALEUR: exN(1234) }), exWait(2), exB('grove_4d_effacer'))]);
+    exemple(['grove_ultrason_cm'], 'Distance en centimètres',
+        "Affiche chaque seconde la distance mesurée par le capteur branché sur P0.",
+        exMesure(exB('grove_ultrason_cm', { BROCHE: 'pin0' })));
+    exemple(['grove_ultrason_pouces'], 'Distance en pouces',
+        "Affiche chaque seconde la distance mesurée par le capteur branché sur P0.",
+        exMesure(exB('grove_ultrason_pouces', { BROCHE: 'pin0' })));
+    exemple(['grove_joystick_direction'], 'Joystick vers le haut',
+        "Un visage heureux s'affiche quand le joystick (axes sur P0 et P1) est poussé vers le haut.",
+        [exLoop(exSi(exB('grove_joystick_direction', { X: 'pin0', Y: 'pin1', DIRECTION: 'haut' }), exIcone('HAPPY')))]);
+    exemple(['grove_gestes_est'], 'Geste vers le haut',
+        "Un visage heureux s'affiche quand le capteur détecte un geste vers le haut.",
+        [exLoop(exSi(exB('grove_gestes_est', { GESTE: 'haut' }), exIcone('HAPPY')))]);
+    exemple(['grove_th_mesure'], 'Température du capteur', exTexteMesure,
+        exMesure(exB('grove_th_mesure', { GRANDEUR: 'c' })));
+    exemple(['grove_scd30_lire'], 'CO₂ du SCD30', exTexteMesure, exMesure(exB('grove_scd30_lire', { GRANDEUR: 'co2' })));
+    exemple(['grove_scd41_lire'], 'CO₂ du SCD41', exTexteMesure, exMesure(exB('grove_scd41_lire', { GRANDEUR: 'co2' })));
+    exemple(['grove_lcd_init', 'grove_lcd_texte', 'grove_lcd_effacer', 'grove_lcd_alimenter'], 'Bonjour sur l\'écran LCD',
+        "Affiche « Bonjour » en haut à gauche pendant deux secondes, puis efface l'écran.",
+        [exStart(exB('grove_lcd_texte', null, { TEXTE: exT('Bonjour'), X: exN(0), Y: exN(0) }), exWait(2),
+                 exB('grove_lcd_effacer'))]);
+    exemple(['grove_lcdrgb_init', 'grove_lcdrgb_texte', 'grove_lcdrgb_effacer', 'grove_lcdrgb_alimenter',
+             'grove_lcdrgb_fond_couleur', 'grove_lcdrgb_fond_rvb', 'grove_lcdrgb_retro'], 'Fond bleu puis éteint',
+        "Le fond passe au bleu, « Bonjour » s'affiche, puis le rétroéclairage s'éteint deux secondes plus tard.",
+        [exStart(exB('grove_lcdrgb_fond_couleur', { COULEUR: '0x0000FF' }),
+                 exB('grove_lcdrgb_texte', null, { TEXTE: exT('Bonjour'), X: exN(0), Y: exN(0) }), exWait(2),
+                 exB('grove_lcdrgb_retro', { ETAT: 'False' }))]);
+    exemple(['grove_moteur_vitesse', 'grove_moteur_action'], 'Moteur 2 secondes',
+        "Le moteur du canal 1 tourne à la vitesse 50 pendant deux secondes, puis s'arrête.",
+        [exStart(exB('grove_moteur_vitesse', { CANAL: '1' }, { VITESSE: exN(50) }), exWait(2),
+                 exB('grove_moteur_action', { ACTION: 'arret', CANAL: '1' }))]);
+
+    // ---- Maqueen Plus, Maqueen Lite ----
+    exemple(['maqueen_moteur', 'maqueen_arreter'], 'Avancer 2 secondes',
+        "Les deux moteurs tournent à la vitesse 50 pendant deux secondes, puis s'arrêtent.",
+        [exStart(exB('maqueen_moteur', { COTE: 'les_deux' }, { VITESSE: exN(50) }), exWait(2),
+                 exB('maqueen_arreter', { COTE: 'les_deux' }))]);
+    exemple(['maqueen_phare'], 'Phares clignotants', "Les deux phares s'allument une seconde, puis s'éteignent une seconde.",
+        [exLoop(exB('maqueen_phare', { COTE: 'les_deux', ETAT: '1' }), exWait(1),
+                exB('maqueen_phare', { COTE: 'les_deux', ETAT: '0' }), exWait(1))]);
+    exemple(['maqueen_rgb_couleur', 'maqueen_rgb_eteindre'], 'DEL RGB rouges',
+        "Toutes les DEL RGB s'allument en rouge deux secondes, puis s'éteignent.",
+        [exStart(exB('maqueen_rgb_couleur', { INDEX: '4', COULEUR: '0xFF0000' }), exWait(2),
+                 exB('maqueen_rgb_eteindre'))]);
+    exemple(['maqueen_distance'], 'Distance devant le robot', exTexteMesure, exMesure(exB('maqueen_distance')));
+    exemple(['maqueen_ligne_valeur'], 'Valeur du capteur central', exTexteMesure,
+        exMesure(exB('maqueen_ligne_valeur', { CAPTEUR: 'M' })));
+    exemple(['maqueen_v3_vitesse_suivi', 'maqueen_v3_mode_carrefour', 'maqueen_v3_mode_T', 'maqueen_v3_mode_gauche',
+             'maqueen_v3_mode_droite'], 'Suivi de ligne (v3)',
+        "Règle la vitesse du suiveur de ligne, choisit « tout droit » aux carrefours, puis active le suivi.",
+        [exStart(exB('maqueen_v3_vitesse_suivi', { VITESSE: '3' }), exB('maqueen_v3_mode_carrefour', { MODE: '3' }),
+                 exB('maqueen_v3_suiveur', { ACTIF: '1' }))]);
+    exemple(['maqueen_v3_intersection_detectee'], 'Code de l\'intersection', exTexteMesure,
+        exMesure(exB('maqueen_v3_intersection_detectee')));
+    exemple(['maqueen_v3_intersection_est'], 'Intersection à gauche',
+        "Un visage heureux s'affiche quand l'intersection détectée est « à gauche ».",
+        [exLoop(exSi(exB('maqueen_v3_intersection_est', { TYPE: '1' }), exIcone('HAPPY')))]);
+    exemple(['maqueen_v3_luminosite'], 'Lumière à gauche', exTexteMesure,
+        exMesure(exB('maqueen_v3_luminosite', { COTE: 'gauche' })));
+    exemple(['lorsque_ir_noire'], 'Touche Power de la télécommande noire',
+        "Un cœur s'affiche quand la touche Power est pressée.",
+        [exWhen('lorsque_ir_noire', { TOUCHE: 'power' }, exIcone('HEART'))]);
+    exemple(['lorsque_ir_grise'], 'Touche CH de la télécommande grise',
+        "Un cœur s'affiche quand la touche CH est pressée.",
+        [exWhen('lorsque_ir_grise', { TOUCHE: 'ch' }, exIcone('HEART'))]);
+    exemple(['maqueenlite_moteur', 'maqueenlite_arreter'], 'Avancer 2 secondes (Lite)',
+        "Les deux moteurs tournent à la vitesse 50 pendant deux secondes, puis s'arrêtent.",
+        [exStart(exB('maqueenlite_moteur', { COTE: 'les_deux' }, { VITESSE: exN(50) }), exWait(2),
+                 exB('maqueenlite_arreter', { COTE: 'les_deux' }))]);
+    exemple(['maqueenlite_del'], 'DEL clignotantes (Lite)', "Les deux DEL s'allument une seconde, puis s'éteignent une seconde.",
+        [exLoop(exB('maqueenlite_del', { COTE: 'les_deux', ETAT: 'TRUE' }), exWait(1),
+                exB('maqueenlite_del', { COTE: 'les_deux', ETAT: 'FALSE' }), exWait(1))]);
+    exemple(['maqueenlite_servo'], 'Servo de 90° à 0°', "Le servo S1 se place à 90°, puis à 0° une seconde plus tard.",
+        [exStart(exB('maqueenlite_servo', { CANAL: 'S1' }, { ANGLE: exN(90) }), exWait(1),
+                 exB('maqueenlite_servo', { CANAL: 'S1' }, { ANGLE: exN(0) }))]);
+    exemple(['lorsque_maqueenlite_ligne'], 'Réagir au capteur de ligne gauche',
+        "Un cœur s'affiche quand le capteur de ligne gauche passe à l'état haut (1).",
+        [exWhen('lorsque_maqueenlite_ligne', { COTE: 'gauche', ETAT: 'haut' }, exIcone('HEART'))]);
+
+    // ---- Kitrobot v2 ----
+    exemple(['kitrobot_avancer', 'kitrobot_arreter'], 'Avancer 2 secondes',
+        "Le robot avance à 50 % pendant deux secondes, puis s'arrête.",
+        [exStart(exB('kitrobot_avancer', { SENS: 'avant' }, { VITESSE: exN(50) }), exWait(2), exB('kitrobot_arreter'))]);
+    exemple(['kitrobot_pivoter'], 'Pivoter 1 seconde', "Le robot pivote sur place à 50 % pendant une seconde, puis s'arrête.",
+        [exStart(exB('kitrobot_pivoter', { SENS: 'horaire' }, { VITESSE: exN(50) }), exWait(1), exB('kitrobot_arreter'))]);
+    exemple(['kitrobot_moteur', 'kitrobot_arreter_moteur'], 'Un seul moteur',
+        "Le moteur gauche tourne à 50 % pendant deux secondes, puis s'arrête.",
+        [exStart(exB('kitrobot_moteur', { COTE: 'gauche', SENS: 'horaire' }, { VITESSE: exN(50) }), exWait(2),
+                 exB('kitrobot_arreter_moteur', { COTE: 'gauche' }))]);
+    exemple(['kitrobot_buzzer'], 'Un bip', "Le buzzer sonne à 440 Hz pendant 500 ms au démarrage.",
+        [exStart(exB('kitrobot_buzzer', null, { FREQUENCE: exN(440), DUREE: exN(500) }))]);
+    exemple(['kitrobot_clignoter'], 'Clignotement du robot', "Fait clignoter le robot au démarrage.",
+        [exStart(exB('kitrobot_clignoter'))]);
+    exemple(['kitrobot_del_couleur'], 'LED en rouge', "La LED RGB n° 0 s'allume en rouge.",
+        [exStart(exB('kitrobot_del_couleur', { COULEUR: '0xFF0000' }, { INDEX: exN(0) }))]);
+    exemple(['kitrobot_del_rgb'], 'LED en vert', "La LED RGB n° 0 s'allume en vert (rouge 0, vert 255, bleu 0).",
+        [exStart(exB('kitrobot_del_rgb', null, { INDEX: exN(0), R: exN(0), V: exN(255), B: exN(0) }))]);
+    exemple(['kitrobot_arcenciel'], 'Arc-en-ciel', "Lance l'animation arc-en-ciel au démarrage.",
+        [exStart(exB('kitrobot_arcenciel'))]);
+    exemple(['kitrobot_distance'], 'Distance devant le robot', exTexteMesure, exMesure(exB('kitrobot_distance')));
+
+    // ---- LiDAR ----
+    // Les lectures (distance, direction, urgence) relisent la DERNIERE acquisition,
+    // pas le capteur en direct : « acquérir » doit donc les preceder dans la boucle.
+    exemple(['lidar_point'], 'Distance au centre de la grille',
+        "Acquiert les données, puis affiche la distance (mm) mesurée au point (3, 3).",
+        [exLoop(exB('lidar_acquerir'), exAff(exB('lidar_point', { ADRESSE: '48', X: 3, Y: 3 })), exWait(1))]);
+    exemple(['lidar_direction_est'], 'Direction « à gauche »',
+        "Après chaque acquisition, un visage heureux s'affiche si la direction à suivre est « à gauche ».",
+        [exLoop(exB('lidar_acquerir'), exSi(exB('lidar_direction_est', { SENS: '1' }), exIcone('HAPPY')))]);
+    exemple(['lidar_distance_cote'], 'Distance devant',
+        "Acquiert les données, puis affiche la distance devant le LiDAR, en centimètres.",
+        [exLoop(exB('lidar_acquerir'), exAff(exB('lidar_distance_cote', { COTE: 'avant' })), exWait(1))]);
+    exemple(['lidar_distance_evitement', 'lidar_acquerir', 'lidar_direction'], 'Éviter un obstacle',
+        "Règle la distance d'évitement à 200 mm, puis acquiert les données à chaque tour et affiche la " +
+        "direction conseillée (1 gauche, 2 droite, 3 tout droit).",
+        [exStart(exB('lidar_distance_evitement', null, { DISTANCE: exN(200) })),
+         exLoop(exB('lidar_acquerir'), exAff(exB('lidar_direction')), exWait(1))]);
+    exemple(['lidar_urgence'], 'Signal d\'urgence',
+        "Après chaque acquisition, un visage triste s'affiche si un obstacle est à moins de 100 mm.",
+        [exLoop(exB('lidar_acquerir'), exSi(exB('lidar_urgence'), exIcone('SAD')))]);
+
+    // ---- Complements : blocs deja decrits par une infobulle (servos, radio avancee,
+    // modules Grove secondaires, Maqueen, Kitrobot) ----
+    exemple(['au_demarrage'], 'Une fois au démarrage, puis en boucle',
+        "« Au démarrage » s'exécute une seule fois ; ensuite la boucle tourne sans fin.",
+        [exStart(exB('faire_defiler', null, { VALEUR: exT('Prêt') })), exLoop(exIcone('HAPPY'))]);
+
+    exemple(['radio_groupe'], 'Choisir un groupe radio',
+        "La carte rejoint le groupe 5 : seules les cartes du même groupe reçoivent ses messages.",
+        [exStart(exB('radio_activer'), exB('radio_groupe', null, { GROUPE: exN(5) })),
+         exWhen('lorsque_bouton', { BOUTON: 'a' }, exB('radio_envoyer_texte', null, { MESSAGE: exT('Salut') }))]);
+    exemple(['radio_envoyer_valeur'], 'Envoyer une mesure nommée',
+        "Le bouton A envoie la température sous le nom « temp ».",
+        [exStart(exB('radio_activer')),
+         exWhen('lorsque_bouton', { BOUTON: 'a' },
+                exB('radio_envoyer_valeur', null, { NOM: exT('temp'), VALEUR: exV(exB('capteur_temperature')) }))]);
+    exemple(['radio_quand_recu', 'radio_lecture'], 'Afficher le nombre reçu',
+        "Quand un nombre arrive par radio, il s'affiche sur la matrice de LED.",
+        [exStart(exB('radio_activer')),
+         exWhen('radio_quand_recu', { TYPE: 'nombre' }, exAff(exB('radio_lecture', { QUOI: 'nombre' })))]);
+    exemple(['radio_puissance'], 'Régler la puissance', "Puissance maximale (7) : la portée est la plus grande.",
+        [exStart(exB('radio_activer'), exB('radio_puissance', null, { NIVEAU: exN(7) }))]);
+    exemple(['radio_canal'], 'Choisir la bande de fréquence',
+        "Bande 7 : deux cartes doivent utiliser la même bande pour s'entendre.",
+        [exStart(exB('radio_activer'), exB('radio_canal', null, { CANAL: exN(7) }))]);
+
+    exemple(['servo_angle'], 'Servo de 90° à 0°', "Le servo sur P0 se place à 90°, puis à 0° une seconde plus tard.",
+        [exStart(exB('servo_angle', { BROCHE: 'pin0' }, { ANGLE: exN(90) }), exWait(1),
+                 exB('servo_angle', { BROCHE: 'pin0' }, { ANGLE: exN(0) }))]);
+    exemple(['servo_continu', 'servo_arreter'], 'Servo à rotation continue',
+        "Le servo tourne à 50 % pendant deux secondes, puis s'arrête.",
+        [exStart(exB('servo_continu', { BROCHE: 'pin0' }, { VITESSE: exN(50) }), exWait(2),
+                 exB('servo_arreter', { BROCHE: 'pin0' }))]);
+    exemple(['servo_arret_neutre'], 'Arrêt au neutre',
+        "Avec l'arrêt au neutre actif, une vitesse nulle arrête le servo au lieu de le maintenir.",
+        [exStart(exB('servo_arret_neutre', { BROCHE: 'pin0', ETAT: 'True' }),
+                 exB('servo_continu', { BROCHE: 'pin0' }, { VITESSE: exN(0) }))]);
+    exemple(['servo_intervalle'], 'Limiter la course du servo',
+        "Limite le servo à l'intervalle 30° à 150°, puis le place à 90°.",
+        [exStart(exB('servo_intervalle', { BROCHE: 'pin0' }, { MINI: exN(30), MAXI: exN(150) }),
+                 exB('servo_angle', { BROCHE: 'pin0' }, { ANGLE: exN(90) }))]);
+    exemple(['servo_impulsion'], 'Position centrale',
+        "Une impulsion de 1500 µs place le servo en position centrale.",
+        [exStart(exB('servo_impulsion', { BROCHE: 'pin0' }, { MICROS: exN(1500) }))]);
+
+    exemple(['grove_led_etat'], 'LED clignotante', "La LED branchée sur P0 s'allume une seconde, puis s'éteint une seconde.",
+        [exLoop(exB('grove_led_etat', { ETAT: '1', BROCHE: 'pin0' }), exWait(1),
+                exB('grove_led_etat', { ETAT: '0', BROCHE: 'pin0' }), exWait(1))]);
+    exemple(['grove_led_luminosite'], 'LED à mi-luminosité', "La LED sur P0 est réglée à la moitié de sa luminosité (512 sur 1023).",
+        [exStart(exB('grove_led_luminosite', { BROCHE: 'pin0' }, { NIVEAU: exN(512) }))]);
+    exemple(['grove_ruban_definir', 'grove_ruban_luminosite'], 'Ruban à demi-luminosité',
+        "Définit un ruban de 16 LED sur P0, règle sa luminosité à 50 %, puis l'allume en rouge.",
+        [exStart(exB('grove_ruban_definir', { BROCHE: 'pin0', NB: 16 }),
+                 exB('grove_ruban_luminosite', null, { NIVEAU: exN(50) }),
+                 exB('grove_ruban_couleur', { COULEUR: '0xFF0000' }))]);
+    exemple(['grove_4d_definir', 'grove_4d_luminosite'], 'Afficheur 4 chiffres tamisé',
+        "Branche l'afficheur (CLK sur P0, DIO sur P1), règle sa luminosité à 3, puis affiche 1234.",
+        [exStart(exB('grove_4d_definir', { CLK: 'pin0', DIO: 'pin1' }),
+                 exB('grove_4d_luminosite', null, { NIVEAU: exN(3) }),
+                 exB('grove_4d_nombre', null, { VALEUR: exN(1234) }))]);
+    exemple(['grove_joystick_valeur'], 'Valeur de l\'axe X', exTexteMesure,
+        exMesure(exB('grove_joystick_valeur', { BROCHE: 'pin0' })));
+    exemple(['grove_joystick_bouton'], 'Appui sur le joystick', "Un cœur s'affiche quand on appuie sur le manche du joystick.",
+        [exLoop(exSi(exB('grove_joystick_bouton', { BROCHE: 'pin0' }), exIcone('HEART')))]);
+    exemple(['grove_gestes_init', 'grove_gestes_lire'], 'Lire le geste détecté',
+        "Initialise le capteur de gestes, puis affiche chaque seconde le dernier geste détecté.",
+        [exStart(exB('grove_gestes_init')), exLoop(exAff(exB('grove_gestes_lire')), exWait(1))]);
+    exemple(['grove_th_init'], 'Humidité du capteur', "Initialise le capteur, puis affiche l'humidité (en %) chaque seconde.",
+        [exStart(exB('grove_th_init')), exLoop(exAff(exB('grove_th_mesure', { GRANDEUR: 'h' })), exWait(1))]);
+    exemple(['grove_dht11_definir', 'grove_dht11_mesure'], 'Température du DHT11',
+        "Branche le DHT11 sur P1 et affiche la température chaque seconde. Fiable seulement sur micro:bit V1.",
+        [exStart(exB('grove_dht11_definir', { BROCHE: 'pin1' })),
+         exLoop(exAff(exB('grove_dht11_mesure', { GRANDEUR: 'c' })), exWait(1))]);
+    exemple(['grove_dht22_definir', 'grove_dht22_mesure'], 'Température du DHT22',
+        "Branche le DHT22 sur P1 et affiche la température chaque seconde. Fiable seulement sur micro:bit V1.",
+        [exStart(exB('grove_dht22_definir', { BROCHE: 'pin1' })),
+         exLoop(exAff(exB('grove_dht22_mesure', { GRANDEUR: 'c' })), exWait(1))]);
+    exemple(['grove_couleur_init', 'grove_couleur_lire'], 'Lire le rouge détecté',
+        "Initialise le capteur de couleur, puis affiche chaque seconde l'intensité de rouge mesurée.",
+        [exStart(exB('grove_couleur_init')), exLoop(exAff(exB('grove_couleur_lire', { CANAL: 'rouge' })), exWait(1))]);
+    exemple(['grove_moteur_defaut'], 'Surveiller le défaut du moteur', exTexteMesure,
+        exMesure(exB('grove_moteur_defaut', { CANAL: '1' })));
+    exemple(['grove_scd30_init'], 'Mesurer le CO₂ (SCD30)', "Initialise le capteur, puis affiche le CO₂ (ppm) chaque seconde.",
+        [exStart(exB('grove_scd30_init')), exLoop(exAff(exB('grove_scd30_lire', { GRANDEUR: 'co2' })), exWait(1))]);
+    exemple(['grove_scd41_init'], 'Mesurer le CO₂ (SCD41)', "Initialise le capteur, puis affiche le CO₂ (ppm) chaque seconde.",
+        [exStart(exB('grove_scd41_init')), exLoop(exAff(exB('grove_scd41_lire', { GRANDEUR: 'co2' })), exWait(1))]);
+
+    exemple(['maqueen_ligne_etat'], 'Capteur de ligne central', "Un visage heureux s'affiche quand le capteur central voit la ligne.",
+        [exLoop(exSi(exB('maqueen_ligne_etat', { CAPTEUR: 'M' }), exIcone('HAPPY')))]);
+    exemple(['maqueen_v3_suiveur'], 'Suivre une ligne 10 secondes',
+        "Le robot v3 suit la ligne pendant dix secondes, puis arrête le suiveur.",
+        [exStart(exB('maqueen_v3_suiveur', { ACTIF: '1' }), exWait(10), exB('maqueen_v3_suiveur', { ACTIF: '0' }))]);
+    exemple(['maqueen_v3_vitesse_reelle'], 'Vitesse de la roue gauche', exTexteMesure,
+        exMesure(exB('maqueen_v3_vitesse_reelle', { COTE: 'gauche' })));
+    exemple(['maqueen_v3_pid_avancer', 'maqueen_v3_pid_stop'], 'Avancer de 50 cm puis arrêter',
+        "Le robot v3 avance de 50 cm sans attendre la fin ; une seconde plus tard, le mouvement est interrompu.",
+        [exStart(exB('maqueen_v3_pid_avancer', { SENS: 'avant', ATTENDRE: 'FALSE' }, { DISTANCE: exN(50) }), exWait(1),
+                 exB('maqueen_v3_pid_stop'))]);
+    exemple(['maqueen_v3_pid_tourner'], 'Tourner de 90°', "Le robot v3 tourne de 90° vers la gauche et attend la fin du virage.",
+        [exStart(exB('maqueen_v3_pid_tourner', { SENS: 'gauche', ATTENDRE: 'TRUE' }, { ANGLE: exN(90) }))]);
+    exemple(['maqueen_v3_del_carrosserie'], 'DEL de carrosserie rouges', "Les deux DEL de la coque s'allument en rouge.",
+        [exStart(exB('maqueen_v3_del_carrosserie', { COTE: 'les_deux', COULEUR: 'rouge' }))]);
+    exemple(['maqueen_ir_init', 'maqueen_ir_decoder', 'maqueen_ir_dernier_code'], 'Afficher le dernier code infrarouge',
+        "Connecte le récepteur infrarouge sur P8, puis affiche chaque seconde le dernier code reçu (−1 si rien).",
+        [exStart(exB('maqueen_ir_init', { BROCHE: 'pin8' })),
+         exLoop(exB('maqueen_ir_decoder'), exAff(exB('maqueen_ir_dernier_code')), exWait(1))]);
+    exemple(['maqueenlite_distance'], 'Distance devant le robot (Lite)', exTexteMesure, exMesure(exB('maqueenlite_distance')));
+    exemple(['maqueenlite_ligne'], 'Capteur de ligne gauche (Lite)', "Un visage heureux s'affiche quand le capteur gauche est à 1.",
+        [exLoop(exSi(exComp('EQ', exB('maqueenlite_ligne', { COTE: 'gauche' }), exB('math_number', { NUM: 1 })), exIcone('HAPPY')))]);
+
+    exemple(['kitrobot_definir_servos'], 'Choisir les broches des servos',
+        "Servo gauche sur P1 et droit sur P2 (les valeurs par défaut), puis avance deux secondes.",
+        [exStart(exB('kitrobot_definir_servos', { GAUCHE: 'pin1', DROIT: 'pin2' }),
+                 exB('kitrobot_avancer', { SENS: 'avant' }, { VITESSE: exN(50) }), exWait(2), exB('kitrobot_arreter'))]);
+    exemple(['kitrobot_definir_ultrason'], 'Brancher l\'ultrason', "Le capteur est sur P8 ; la distance est affichée chaque seconde.",
+        [exStart(exB('kitrobot_definir_ultrason', { BROCHE: 'pin8' })),
+         exLoop(exAff(exB('kitrobot_distance')), exWait(1))]);
+    exemple(['kitrobot_definir_buzzer'], 'Brancher le buzzer', "Le buzzer est sur P0 ; il sonne à 440 Hz pendant 500 ms.",
+        [exStart(exB('kitrobot_definir_buzzer', { BROCHE: 'pin0' }),
+                 exB('kitrobot_buzzer', null, { FREQUENCE: exN(440), DUREE: exN(500) }))]);
+    exemple(['kitrobot_definir_lignes', 'kitrobot_ligne'], 'Capteurs de ligne',
+        "Capteurs de ligne sur P1 (gauche) et P2 (droit) : un visage heureux s'affiche quand le capteur gauche voit la ligne.",
+        [exStart(exB('kitrobot_definir_lignes', { GAUCHE: 'pin1', DROIT: 'pin2' })),
+         exLoop(exSi(exB('kitrobot_ligne', { COTE: 'gauche' }), exIcone('HAPPY')))]);
+    exemple(['kitrobot_definir_ruban'], 'Ruban du robot', "Le ruban de 8 LED est sur P0 ; l'animation arc-en-ciel démarre.",
+        [exStart(exB('kitrobot_definir_ruban', { BROCHE: 'pin0', NB: 8 }), exB('kitrobot_arcenciel'))]);
+    exemple(['kitrobot_case_avant', 'kitrobot_case_arriere', 'kitrobot_pivoter_gauche', 'kitrobot_pivoter_droite'],
+        'Parcours en cases',
+        "Avance d'une case, pivote à droite, avance encore d'une case, puis recule d'une case.",
+        [exStart(exB('kitrobot_case_avant'), exB('kitrobot_pivoter_droite'), exB('kitrobot_case_avant'),
+                 exB('kitrobot_case_arriere'))]);
+
+    const voileAide = document.getElementById('voile-aide');
+
+    function texteAideBloc(bloc) {
+        if (AIDE_BLOCS[bloc.type]) return AIDE_BLOCS[bloc.type];
+        try {
+            let infobulle = bloc.tooltip;
+            while (typeof infobulle === 'function') infobulle = infobulle();
+            if (typeof infobulle === 'string' && infobulle.trim()) return infobulle.trim();
+        } catch (erreur) { /* infobulle dynamique en echec : on passe au message par defaut */ }
+        return "Aucune aide détaillée n'a encore été rédigée pour ce bloc.";
+    }
+
+    /** Code MicroPython de CE bloc seul (ses blocs-valeurs imbriques compris, pas les suivants). */
+    function codeDuBloc(bloc) {
+        try {
+            let code = Blockly.Python.blockToCode(bloc, true);
+            if (Array.isArray(code)) code = code[0];
+            return (code || '').replace(/\s+$/, '');
+        } catch (erreur) {
+            return '';
+        }
+    }
+
+    function ouvrirAideBloc(bloc) {
+        if (!voileAide) return;
+        let nom = '';
+        try { nom = bloc.toString(80); } catch (erreur) { nom = bloc.type; }
+        document.getElementById('aide-bloc-nom').textContent = nom || bloc.type;
+        document.getElementById('aide-bloc-texte').textContent = texteAideBloc(bloc);
+        const code = codeDuBloc(bloc);
+        document.getElementById('aide-bloc-code-titre').style.display = code ? '' : 'none';
+        const zoneCode = document.getElementById('aide-bloc-code');
+        zoneCode.style.display = code ? '' : 'none';
+        zoneCode.textContent = code;
+
+        const ex = EXEMPLES_BLOCS[bloc.type];
+        const zoneExemple = document.getElementById('aide-exemple');
+        exempleAffiche = ex || null;
+        zoneExemple.style.display = ex ? '' : 'none';
+        if (ex) {
+            document.getElementById('aide-exemple-titre').textContent = 'Exemple : ' + ex.titre;
+            document.getElementById('aide-exemple-desc').textContent = ex.texte;
+            document.getElementById('aide-exemple-code').textContent = codeExemple(ex);
+        }
+
+        document.getElementById('aide-exemple-details').open = false;
+        voileAide.classList.add('ouvert');
+        // Apres l'ouverture : Blockly mesure son conteneur, qui doit etre visible.
+        if (ex) afficherExempleEnBlocs(ex);
+        document.getElementById('aide-fermer').focus();
+    }
+    function fermerAideBloc() { if (voileAide) voileAide.classList.remove('ouvert'); }
+
+    let exempleAffiche = null;
+
+    // Petit espace Blockly en lecture seule, cree une fois puis reutilise.
+    let espaceExemple = null;
+    function afficherExempleEnBlocs(ex) {
+        const conteneur = document.getElementById('aide-exemple-blocs');
+        try {
+            if (!espaceExemple) {
+                espaceExemple = Blockly.inject(conteneur, {
+                    readOnly: true, sounds: false, trashcan: false,
+                    zoom: { controls: false, wheel: false, pinch: false, startScale: 1 },
+                    move: { scrollbars: true, drag: true, wheel: false },
+                });
+                // inject() fait de ce petit espace l'espace "principal" de Blockly
+                // (copier/coller, annulation...) : on rend ce role au vrai programme.
+                Blockly.common.setMainWorkspace(window.workspace);
+            }
+            espaceExemple.clear();
+            espaceExemple.setScale(1);
+            Blockly.svgResize(espaceExemple);
+            Blockly.serialization.workspaces.load({ blocks: { languageVersion: 0,
+                blocks: JSON.parse(JSON.stringify(ex.blocs)).map((b, i) => Object.assign(b, { x: 0, y: i * 1000 })) } },
+                espaceExemple);
+            // Les blocs racines sont empiles les uns sous les autres.
+            let y = 0;
+            espaceExemple.getTopBlocks(true).forEach(b => {
+                const pos = b.getRelativeToSurfaceXY();
+                b.moveBy(-pos.x, y - pos.y);
+                y += b.getHeightWidth().height + 24;
+            });
+            // Echelle reduite si le programme depasse la zone, pour le voir en entier.
+            const zone = espaceExemple.getBlocksBoundingBox();
+            const largeur = zone.right - zone.left, hauteur = zone.bottom - zone.top;
+            const echelle = Math.max(0.4, Math.min(1, (conteneur.clientWidth - 24) / largeur,
+                                                      (conteneur.clientHeight - 24) / hauteur));
+            espaceExemple.setScale(echelle);
+            espaceExemple.scroll(12 - zone.left * echelle, 12 - zone.top * echelle);
+        } catch (erreur) {
+            console.error('Exemple en blocs :', erreur);
+        }
+    }
+
+    /** Code MicroPython d'un exemple, calcule dans un espace de travail temporaire (le programme en cours n'est pas touche). */
+    function codeExemple(ex) {
+        const espace = new Blockly.Workspace();
+        try {
+            Blockly.serialization.workspaces.load({ blocks: { languageVersion: 0,
+                blocks: JSON.parse(JSON.stringify(ex.blocs)).map((b, i) => Object.assign(b, { x: 0, y: i * 100 })) } }, espace);
+            let code = genererCodeDepuisBlocs(espace);
+            // Les pilotes de modules (dizaines de lignes) noieraient l'exemple :
+            // ils sont ajoutes tout seuls au programme reel.
+            const avecPilote = /# >>> pilote /.test(code);
+            code = code.replace(/# >>> pilote (\S+)\r?\n[\s\S]*?\r?\n# <<< pilote \S+\r?\n?/g, '')
+                       .replace(/\n{3,}/g, '\n\n').trim();
+            return code + (avecPilote ? '\n\n# (le pilote du module est ajouté automatiquement)' : '');
+        } catch (erreur) {
+            console.error('Exemple d\'aide :', erreur);
+            return '';
+        } finally {
+            espace.dispose();
+        }
+    }
+
+    /** Ajoute l'exemple sous les blocs existants, en un seul pas d'annulation (Ctrl+Z). */
+    function insererExemple(ex) {
+        const espace = window.workspace;
+        let x = 40, y = 40;
+        const existants = espace.getTopBlocks(false);
+        if (existants.length) {
+            const zones = existants.map(b => b.getBoundingRectangle());
+            x = Math.min(...zones.map(r => r.left));
+            y = Math.max(...zones.map(r => r.bottom)) + 60;
+        }
+        let premier = null;
+        Blockly.Events.setGroup(true);
+        try {
+            JSON.parse(JSON.stringify(ex.blocs)).forEach(def => {
+                const b = Blockly.serialization.blocks.append(def, espace, { recordUndo: true });
+                const pos = b.getRelativeToSurfaceXY();
+                b.moveBy(x - pos.x, y - pos.y);
+                y = b.getBoundingRectangle().bottom + 40;
+                if (!premier) premier = b;
+            });
+        } finally {
+            Blockly.Events.setGroup(false);
+        }
+        if (premier) {
+            try { espace.centerOnBlock(premier.id); } catch (erreur) { /* le centrage n'est qu'un confort */ }
+            premier.select();
+        }
+    }
+
+    if (voileAide) {
+        document.getElementById('aide-fermer').addEventListener('click', fermerAideBloc);
+        document.getElementById('aide-inserer').addEventListener('click', () => {
+            if (!exempleAffiche) return;
+            insererExemple(exempleAffiche);
+            fermerAideBloc();
+        });
+        // Clic sur le voile (hors de la fenetre) ou Echap : on referme.
+        voileAide.addEventListener('mousedown', e => { if (e.target === voileAide) fermerAideBloc(); });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && voileAide.classList.contains('ouvert')) fermerAideBloc();
+        });
+    }
+
+    Blockly.ContextMenuRegistry.registry.register({
+        id: 'aide_sur_ce_bloc',
+        scopeType: Blockly.ContextMenuRegistry.ScopeType.BLOCK,
+        displayText: () => 'Aide sur ce bloc',
+        preconditionFn: () => 'enabled',
+        callback: scope => ouvrirAideBloc(scope.block),
+        weight: 1,
+    });
+    window.aideBlocTest = { ouvrir: ouvrirAideBloc, fermer: fermerAideBloc, AIDE_BLOCS,
+                            espaceExemple: () => espaceExemple,
+                            EXEMPLES_BLOCS, codeExemple, insererExemple };
+
     async function envoyerSurLaCarte() {
         const codePython = window.currentPythonCode;
         if (!codePython || !codePython.trim()) {
@@ -5543,6 +6594,8 @@ try {
         }
 
         boutonEnvoyer.disabled = true;
+        let envoiReussi = false;
+        fenetreEnvoi.ouvrir('Génération du programme…');
         // On distingue les deux moitiés de l'opération : un firmware invalide
         // n'a rien à voir avec le lecteur, et proposer d'en redésigner un
         // envoyait sur une fausse piste.
@@ -5556,6 +6609,7 @@ try {
             etape = 'lecteur';
             if (!dossierCarte) {
                 afficherEtat('Choisissez le lecteur MICROBIT…', false);
+                fenetreEnvoi.etape('Choisissez le lecteur MICROBIT…');
                 const choisi = await window.showDirectoryPicker({ mode: 'readwrite', id: 'microbit' });
                 if (!await estLecteurMicrobit(choisi)) {
                     throw new Error("Ce dossier ne ressemble pas au lecteur MICROBIT : ni DETAILS.TXT " +
@@ -5569,10 +6623,24 @@ try {
             }
 
             afficherEtat('Écriture sur la carte…', false);
+            fenetreEnvoi.etape('Écriture sur la carte…');
+            fenetreEnvoi.progression(0);
             const fichier = await dossierCarte.getFileHandle('programme-microbit.hex', { create: true });
             const flux = await fichier.createWritable();
-            await flux.write(new Blob([contenuHex], { type: 'application/octet-stream' }));
+            // Par morceaux : le pourcentage affiche compte de vrais octets
+            // ecrits. Plafonne a 99 % tant que close() n'est pas revenu — c'est
+            // lui qui valide reellement l'ecriture sur le lecteur.
+            const blob = new Blob([contenuHex], { type: 'application/octet-stream' });
+            const TAILLE_MORCEAU = 32 * 1024;
+            for (let debut = 0; debut < blob.size; debut += TAILLE_MORCEAU) {
+                await flux.write(blob.slice(debut, debut + TAILLE_MORCEAU));
+                fenetreEnvoi.progression(Math.min(99, (Math.min(debut + TAILLE_MORCEAU, blob.size) / blob.size) * 100));
+            }
+            fenetreEnvoi.etape('Finalisation…');
             await flux.close();
+            fenetreEnvoi.progression(100);
+            fenetreEnvoi.etape('Programme envoyé. La carte clignote puis redémarre.');
+            envoiReussi = true;
 
             afficherEtat('Programme envoyé. La carte clignote puis redémarre.', false);
         } catch (erreur) {
@@ -5588,6 +6656,10 @@ try {
                 afficherEtat(erreur.message + ' — recliquez pour redésigner le lecteur.', true);
             }
         } finally {
+            // Succes : on laisse "100 %" lisible un instant. Echec ou
+            // annulation : le message d'erreur est dans la barre d'etat, la
+            // fenetre n'a plus de raison de rester.
+            fenetreEnvoi.fermer(envoiReussi ? 1200 : 0);
             boutonEnvoyer.disabled = false;
         }
     }
@@ -5753,8 +6825,11 @@ try {
     let editionManuelleActive = false;
 
     /** Le code tel que les blocs le decrivent, scrutation des evenements comprise. */
-    function genererCodeDepuisBlocs() {
-        let codePython = Blockly.Python.workspaceToCode(window.workspace);
+    // `espace` : par defaut l'espace de travail de l'eleve ; l'aide sur un bloc
+    // (voir AIDE SUR UN BLOC) passe un espace temporaire pour calculer le
+    // code d'un exemple sans toucher au programme en cours.
+    function genererCodeDepuisBlocs(espace) {
+        let codePython = Blockly.Python.workspaceToCode(espace || window.workspace);
 
         const appels = GESTIONNAIRES
             .filter(([signature]) => codePython.includes(signature))
@@ -6897,6 +7972,9 @@ try {
     // Relancer la simulation coupe ce qui jouait encore : sinon deux exécutions
     // se superposent.
     window.simu_clearQueue = function() { window.simuQueue = []; jetonSimulation++; arreterSon(); };
+    // Lu par index.html (_executer_morceaux) pour savoir si une attente en
+    // cours a ete interrompue (reinitialisation, nouveau declenchement).
+    window.simu_jeton = function() { return jetonSimulation; };
 
     // Sert de base a running_time() (index.html), qui doit avancer avec le
     // temps reellement ecoule pour que les blocs "chronometre" (reset_chrono/
@@ -7155,6 +8233,27 @@ try {
     let etatLeds = {};
     let gesteGroveEnAttente = '';
     let tamponLcd = ['                ', '                '];
+    // Module LCD RGB Backlight : couleur du fond [r, v, b] et fond allume ou
+    // non. null = module v1 (fond bleu fixe, voir le CSS de #grove-lcd).
+    let fondLcdRgb = null;
+    let retroLcdAllume = true;
+    function appliquerFondLcd() {
+        if (!zoneLcd) return;
+        if (!fondLcdRgb) {
+            zoneLcd.style.background = '';
+            zoneLcd.style.removeProperty('--lcd-texte');
+            return;
+        }
+        const [r, v, b] = retroLcdAllume ? fondLcdRgb : [38, 42, 41];
+        const haut = 'rgb(' + Math.min(255, Math.round(r * 1.08)) + ',' + Math.min(255, Math.round(v * 1.08)) + ',' + Math.min(255, Math.round(b * 1.08)) + ')';
+        const bas = 'rgb(' + Math.round(r * 0.85) + ',' + Math.round(v * 0.85) + ',' + Math.round(b * 0.85) + ')';
+        zoneLcd.style.background = 'linear-gradient(180deg, ' + haut + ' 0%, ' + bas + ' 100%)';
+        // Caracteres sombres sur un fond clair, clairs sur un fond sombre :
+        // sinon un fond blanc (couleur d'initialisation) rendrait le texte
+        // invisible.
+        const luminance = 0.299 * r + 0.587 * v + 0.114 * b;
+        zoneLcd.style.setProperty('--lcd-texte', retroLcdAllume && luminance > 140 ? '#0d1b2a' : '#f4f8ff');
+    }
     let etatMoteurs = { 1: 'arrêt', 2: 'arrêt' };
     const zoneServos = document.getElementById('grove-servos');
     let etatServos = {};
@@ -7300,7 +8399,7 @@ try {
         ['grove-sec-ultrason', /^grove_ultrason_/],
         ['grove-sec-joystick', /^grove_joystick_/],
         ['grove-sec-gestes',   /^grove_gestes_/],
-        ['grove-sec-lcd',      /^grove_lcd_/],
+        ['grove-sec-lcd',      /^grove_lcd(rgb)?_/],
         // Les SCD mesurent aussi température et humidité : leurs curseurs
         // servent donc aux trois capteurs.
         ['grove-sec-th',       /^grove_(th|scd30|scd41)_/],
@@ -7341,6 +8440,9 @@ try {
         gesteGroveEnAttente = '';
         tamponLcd = ['                ', '                '];
         if (zoneLcd) zoneLcd.classList.remove('eteint');
+        fondLcdRgb = null;
+        retroLcdAllume = true;
+        appliquerFondLcd();
         dessinerLcd();
         etatMoteurs = { 1: 'arrêt', 2: 'arrêt' };
         dessinerMoteurs();
@@ -8723,7 +9825,21 @@ try {
         else if (action.type === 'lcd') {
             if (action.action === 'init' || action.action === 'effacer') {
                 tamponLcd = ['                ', '                '];
-                if (action.action === 'init') zoneLcd.classList.remove('eteint');
+                if (action.action === 'init') {
+                    zoneLcd.classList.remove('eteint');
+                    // 'rgb' : module RGB Backlight (fond blanc a l'init, comme
+                    // sur la carte) ; sinon module v1 a fond bleu fixe.
+                    fondLcdRgb = action.texte === 'rgb' ? [255, 255, 255] : null;
+                    retroLcdAllume = true;
+                    appliquerFondLcd();
+                }
+            } else if (action.action === 'fond') {
+                const [r, v, b] = action.texte.split(',').map(Number);
+                fondLcdRgb = [r, v, b];
+                appliquerFondLcd();
+            } else if (action.action === 'retro') {
+                retroLcdAllume = action.texte === '1';
+                appliquerFondLcd();
             } else if (action.action === 'allumer') {
                 zoneLcd.classList.remove('eteint');
             } else if (action.action === 'eteindre') {

@@ -150,6 +150,10 @@
     .menu-fichier-separateur { height: 1px; background: var(--bordure-chrome); margin: 2px 0 10px; }
     #import-hex-btn, #import-py-btn { background: #e67e22; }
     #import-hex-btn:hover, #import-py-btn:hover { background: #d35400; }
+    /* Boutons reduits a leur logo : le libelle passe dans l'infobulle (title) et
+       aria-label pour les lecteurs d'ecran. */
+    .btn-logo { padding: 5px 11px; }
+    .btn-logo .icone-bouton { font-size: 1.25em; margin-right: 0; }
     #capture-ecran-btn { background: #16a085; }
     #capture-ecran-btn:hover { background: #12816a; }
     #btn-envoyer { background: #16a085; }
@@ -186,6 +190,51 @@
     #panneau-options p { margin: 0 0 12px 0; font-size: 12px; color: #9fb3c8; max-width: 40ch; }
     #panneau-options .actions { display: flex; gap: 8px; }
     #panneau-options .actions button { margin: 0; font-size: 13px; padding: 7px 12px; }
+    /* Fenetre d'envoi sur la carte : au-dessus de tout (le z-index de Blockly
+       pour ses menus deroulants monte tres haut), bloque les clics tant que
+       le transfert dure. */
+    #voile-envoi { position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+                   display: none; align-items: center; justify-content: center; z-index: 200000; }
+    #voile-envoi.ouvert { display: flex; }
+    #fenetre-envoi { background: var(--fond-code); color: var(--texte-chrome); border-radius: 10px;
+                     padding: 22px 26px; width: 360px; max-width: 90vw; text-align: center;
+                     box-shadow: 0 8px 30px rgba(0,0,0,0.5); border: 1px solid var(--bordure-chrome); }
+    #fenetre-envoi h3 { margin: 0 0 6px 0; color: #2ecc71; font-size: 15px; text-transform: uppercase; }
+    #envoi-phase { margin: 0 0 14px 0; font-size: 13px; min-height: 1.3em; }
+    #envoi-barre { height: 14px; background: var(--fond-saisie); border: 1px solid var(--bordure-chrome);
+                   border-radius: 7px; overflow: hidden; }
+    #envoi-remplissage { height: 100%; width: 0%; background: #2ecc71; transition: width 0.12s linear; }
+    #envoi-pourcent { margin: 10px 0 0 0; font-size: 22px; font-weight: bold; }
+    /* Fenetre d'aide d'un bloc (clic droit > "Aide sur ce bloc"). Au-dessus
+       du menu contextuel de Blockly. */
+    #voile-aide { position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+                  display: none; align-items: center; justify-content: center; z-index: 200100; }
+    #voile-aide.ouvert { display: flex; }
+    #fenetre-aide { background: var(--fond-code); color: var(--texte-chrome); border-radius: 10px;
+                    padding: 20px 24px; width: 460px; max-width: 92vw; max-height: 85vh; overflow-y: auto;
+                    box-shadow: 0 8px 30px rgba(0,0,0,0.5); border: 1px solid var(--bordure-chrome); }
+    #aide-entete { display: flex; align-items: center; gap: 10px; margin: 0 0 10px 0; }
+    #aide-logo { height: 30px; width: auto; flex: 0 0 auto; }
+    #fenetre-aide h3 { margin: 0; color: #2ecc71; font-size: 12px; text-transform: uppercase; }
+    #aide-bloc-nom { margin: 0 0 12px 0; font-size: 16px; font-weight: bold; word-break: break-word; }
+    #aide-bloc-texte { margin: 0 0 12px 0; font-size: 13px; line-height: 1.45; white-space: pre-wrap; }
+    #aide-bloc-code-titre { margin: 0 0 4px 0; font-size: 11px; color: #9fb3c8; text-transform: uppercase; }
+    #aide-bloc-code { margin: 0 0 14px 0; padding: 8px 10px; font-size: 12px; background: var(--fond-saisie);
+                      color: var(--texte-saisie); border-radius: 5px; overflow-x: auto; white-space: pre; }
+    #aide-exemple { margin: 0 0 14px 0; padding: 10px 12px; border-radius: 6px;
+                    border: 1px solid var(--bordure-chrome); }
+    #aide-exemple-titre { margin: 0 0 4px 0; font-size: 13px; font-weight: bold; color: #2ecc71; }
+    #aide-exemple-desc { margin: 0 0 8px 0; font-size: 12px; line-height: 1.4; }
+    /* Petit espace Blockly en lecture seule : le programme d'exemple en blocs. */
+    #aide-exemple-blocs { position: relative; height: 230px; margin: 0 0 10px 0; border-radius: 5px;
+                          overflow: hidden; border: 1px solid var(--bordure-chrome); }
+    #aide-exemple-blocs .blocklyMainBackground { fill: var(--fond-saisie); stroke: none; }
+    #aide-exemple-details { margin: 0 0 10px 0; font-size: 12px; }
+    #aide-exemple-details summary { cursor: pointer; margin-bottom: 6px; }
+    #aide-exemple-code { margin: 0; padding: 8px 10px; font-size: 12px; background: var(--fond-saisie);
+                         color: var(--texte-saisie); border-radius: 5px; overflow-x: auto; white-space: pre; }
+    #aide-inserer { margin: 0; font-size: 12px; padding: 6px 12px; }
+    #aide-fermer { margin: 0; font-size: 13px; padding: 7px 14px; }
     #btn-ordre-defaut { background: #7f8c8d; }
     #btn-ordre-defaut:hover { background: #616a6b; }
 
@@ -743,7 +792,7 @@
                 background: rgba(255,255,255,0.055);
                 font-family: Consolas, "DejaVu Sans Mono", monospace;
                 font-size: 14px; line-height: 16px; text-align: center;
-                color: #f4f8ff; text-shadow: 0 0 3px rgba(215,232,255,0.8); }
+                color: var(--lcd-texte, #f4f8ff); text-shadow: 0 0 3px rgba(215,232,255,0.8); }
     /* La trame est une grille sombre au pas du point, posee PAR-DESSUS le
        texte : elle decoupe les jambages en points et donne l'aspect matriciel
        sans avoir a redessiner une fonte 5x8 caractere par caractere. */
@@ -751,11 +800,14 @@
                  background-image:
                    repeating-linear-gradient(to right,  rgba(6,16,64,0.34) 0 1px, transparent 1px 2px),
                    repeating-linear-gradient(to bottom, rgba(6,16,64,0.34) 0 1px, transparent 1px 2px); }
-    /* Retro-eclairage eteint : l'ecran devient gris-vert et le texte reste
-       faiblement lisible, comme sur le vrai module. */
-    #grove-lcd.eteint { background: linear-gradient(180deg, #55605c 0%, #454e4b 100%); }
-    #grove-lcd.eteint .lcd-cell { color: #99a5a1; text-shadow: none;
-                                  background: rgba(255,255,255,0.04); }
+    /* Affichage eteint ("LCD : eteindre l'affichage") : sur le module reel
+       (Grove LCD 16x2 v1, JHD1802) le retro-eclairage est cable en
+       permanence et n'est PAS commandable en I2C — seul le bit "display
+       off" du controleur existe : les caracteres disparaissent (la memoire
+       d'affichage est conservee, ils reviennent a l'allumage) mais le fond
+       bleu reste allume. Signale par l'utilisateur : l'ancien rendu gris-vert
+       laissait croire a un retro-eclairage coupe, ce que la carte ne fait pas. */
+    #grove-lcd.eteint .lcd-cell { color: transparent; text-shadow: none; }
 
     #grove-couleur { width: 100%; height: 30px; padding: 0; border: 0; background: none; cursor: pointer; }
     #grove-moteurs, #grove-servos { background: var(--fond-saisie); border-radius: 4px; padding: 6px 8px; font-size: 11px; }
@@ -808,13 +860,13 @@
         <input type="file" id="import-py-input" accept=".py" style="display:none;">
       </div>
     </div>
-    <button id="capture-ecran-btn" title="Télécharger une image PNG des blocs"><span class="icone-bouton">📷</span> Capture d'écran des blocs (.png)</button>
-    <button id="btn-envoyer" title="Écrire le programme sur le lecteur MICROBIT"><span class="icone-bouton">📤</span> Envoyer sur la carte</button>
+    <button id="capture-ecran-btn" class="btn-logo" title="Capture d'écran des blocs (.png)" aria-label="Capture d'écran des blocs (.png)"><span class="icone-bouton">📷</span></button>
+    <button id="btn-envoyer" class="btn-logo" title="Envoyer sur la carte : écrire le programme sur le lecteur MICROBIT" aria-label="Envoyer sur la carte"><span class="icone-bouton">📤</span></button>
     <button id="btn-annuler" class="btn-vue" title="Annuler (Ctrl+Z)"><span class="icone-bouton">↶</span> Annuler</button>
     <button id="btn-refaire" class="btn-vue" title="Refaire (Ctrl+Maj+Z)"><span class="icone-bouton">↷</span> Refaire</button>
     <button id="btn-options" class="btn-vue" title="Panneau administrateur"><span class="icone-bouton">⚙</span></button>
-    <button id="btn-vue-code" class="btn-vue" title="Afficher ou masquer la transcription MicroPython">Code</button>
-    <button id="btn-vue-simu" class="btn-vue" title="Afficher ou masquer le simulateur">Simulateur</button>
+    <button id="btn-vue-code" class="btn-vue btn-logo" title="Code : afficher ou masquer la transcription MicroPython" aria-label="Afficher ou masquer la transcription MicroPython"><span class="icone-bouton" style="font-family: Consolas, monospace; font-weight: bold;">&lt;/&gt;</span></button>
+    <button id="btn-vue-simu" class="btn-vue btn-logo" title="Simulateur : afficher ou masquer le simulateur" aria-label="Afficher ou masquer le simulateur"><span class="icone-bouton">🖥️</span></button>
     <button id="btn-theme" class="btn-vue" title="Passer au thème clair"><span class="icone-bouton">🌙</span></button>
     <button id="btn-contraste" class="btn-vue" title="Passer en contraste élevé"><span class="icone-bouton">◐</span></button>
     <span id="copyright-toolbar">🄯 RAJ Editions</span>
@@ -1774,6 +1826,25 @@
         def eteindre(self): window.simu_lcd('eteindre', '', 0, 0)
         def texte(self, message, x, y): window.simu_lcd('texte', str(message), int(x), int(y))
 
+    # Grove LCD RGB Backlight V4.0 : meme ecran simule que le LCD v1 (un seul
+    # panneau), avec en plus la couleur du fond et son extinction.
+    class _EcranLCDRGBMock:
+        def __init__(self):
+            window.simu_lcd('init', 'rgb', 0, 0)
+            self.couleur = (255, 255, 255)
+        def effacer(self): window.simu_lcd('effacer', '', 0, 0)
+        def allumer(self): window.simu_lcd('allumer', '', 0, 0)
+        def eteindre(self): window.simu_lcd('eteindre', '', 0, 0)
+        def texte(self, message, x, y): window.simu_lcd('texte', str(message), int(x), int(y))
+        def fond(self, r, v, b):
+            r = max(0, min(255, int(r)))
+            v = max(0, min(255, int(v)))
+            b = max(0, min(255, int(b)))
+            self.couleur = (r, v, b)
+            window.simu_lcd('fond', str(r) + ',' + str(v) + ',' + str(b), 0, 0)
+        def retro(self, actif):
+            window.simu_lcd('retro', '1' if actif else '0', 0, 0)
+
     class _CapteurCouleurMock:
         def __init__(self): pass
         def lire(self, canal): return int(window.simu_couleurCanal(canal))
@@ -2027,6 +2098,7 @@
     def _grove_gestes(): return _grove_obj('gestes', _CapteurGestesMock)
     def _grove_th(): return _grove_obj('th', _CapteurTHMock)
     def _grove_lcd(): return _grove_obj('lcd', _EcranLCDMock)
+    def _grove_lcdrgb(): return _grove_obj('lcdrgb', _EcranLCDRGBMock)
     def _grove_couleur(): return _grove_obj('couleur', _CapteurCouleurMock)
     def _grove_scd30(): return _grove_obj('scd30', _CapteurSCD30Mock)
     def _grove_scd41(): return _grove_obj('scd41', _CapteurSCD41Mock)
@@ -2098,6 +2170,96 @@
     _session_active = False
     _session_code = None
 
+    _RE_ATTENTE = re.compile(r"^while not \((.*)\):[ \t]*$")
+    _RE_SLEEP10 = re.compile(r"^[ \t]+sleep\(10\)[ \t]*$")
+
+    def _decouper_attentes(code):
+        '''Coupe `code` en [("code", texte), ("attente", condition), ...] a
+        chaque "attendre jusqu'a" de PREMIER NIVEAU (le motif exact que genere
+        attendre_jusqua : `while not (COND):` puis `  sleep(10)`). Une liste
+        d'un seul element signifie qu'il n'y en a aucun.'''
+        lignes = code.split("\n")
+        morceaux = []
+        courant = []
+        i = 0
+        while i < len(lignes):
+            m = _RE_ATTENTE.match(lignes[i])
+            if m and i + 1 < len(lignes) and _RE_SLEEP10.match(lignes[i + 1]):
+                morceaux.append(("code", "\n".join(courant)))
+                morceaux.append(("attente", m.group(1)))
+                courant = []
+                i += 2
+            else:
+                courant.append(lignes[i])
+                i += 1
+        morceaux.append(("code", "\n".join(courant)))
+        return morceaux
+
+    def _executer_morceaux(morceaux, env, rapporter, suite):
+        '''Execute les morceaux dans l'ordre. Un "attendre jusqu'a" bloque
+        vraiment sur la carte ; exec() ne peut pas se mettre en pause, donc on
+        decoupe le code a cet endroit : ce qui precede est execute et son
+        affichage rejoue, PUIS la condition est surveillee (toutes les 25 ms,
+        la page reste reactive : un appui de bouton virtuel peut la rendre
+        vraie), PUIS la suite est executee. `suite()` est appele une fois tout
+        termine. Abandonne sans bruit si une reinitialisation ou un nouveau
+        declenchement a eu lieu entre-temps (jeton de simulation change).'''
+        jeton = window.simu_jeton()
+        index = [0]
+
+        def evaluer(condition):
+            try:
+                return bool(eval(condition, env)), None
+            except Exception as e:
+                return False, e
+
+        def avancer():
+            global _sleep_compteur
+            while index[0] < len(morceaux):
+                genre, contenu = morceaux[index[0]]
+                if genre == "code":
+                    _sleep_compteur = 0
+                    try:
+                        if contenu.strip():
+                            exec(contenu, env)
+                    except Exception as e:
+                        rapporter(e)
+                        window.simuEnCours = False
+                        return
+                    index[0] += 1
+                else:
+                    pret, erreur = evaluer(contenu)
+                    if erreur is not None:
+                        rapporter(erreur)
+                        window.simuEnCours = False
+                        return
+                    if pret:
+                        index[0] += 1
+                        continue
+                    # Occupe : un appui de bouton virtuel ne doit pas
+                    # relancer toute la simulation pendant l'attente.
+                    window.simuEnCours = True
+                    window._simuApresVidageFile = lambda: interroger(contenu)
+                    window.simu_playQueue()
+                    return
+            suite()
+
+        def interroger(condition):
+            if window.simu_jeton() != jeton:
+                return
+            pret, erreur = evaluer(condition)
+            if erreur is not None:
+                rapporter(erreur)
+                window.simuEnCours = False
+                return
+            if pret:
+                index[0] += 1
+                avancer()
+            else:
+                window.setTimeout(lambda: interroger(condition), 25)
+
+        avancer()
+
     def _demarrer_session(code):
         '''Reconstruit tout l'environnement Python depuis zero et l'execute
         une fois ("Au demarrage"). Renvoie 'tours' si une boucle infinie de
@@ -2114,6 +2276,10 @@
         # quand meme liberer les capteurs virtuels, sinon simuEnCours reste
         # bloque a True indefiniment (plus rien ne le repasserait a False).
         window.simuEnCours = False
+        # Pas de session "poursuivable" tant que "Au demarrage" n'est pas
+        # termine (il peut attendre un "attendre jusqu'a", voir
+        # _executer_morceaux) : sinon un capteur virtuel la reprendrait a mi-chemin.
+        _session_active = False
         # Chaque NOUVELLE session repart de peripheriques neufs — mais une
         # session simplement POURSUIVIE (voir continuer_ou_lancer_simulation)
         # ne doit surtout pas passer par ici : c'est justement ce qui doit
@@ -2152,7 +2318,7 @@
             '_grove_distance_pouces': _grove_distance_pouces,
             '_grove_joystick': _grove_joystick,
             '_CapteurGestes': _CapteurGestesMock,
-            '_CapteurTH': _CapteurTHMock, '_EcranLCD': _EcranLCDMock,
+            '_CapteurTH': _CapteurTHMock, '_EcranLCD': _EcranLCDMock, '_EcranLCDRGB': _EcranLCDRGBMock,
             '_CapteurCouleur': _CapteurCouleurMock,
             '_CapteurSCD30': _CapteurSCD30Mock, '_CapteurSCD41': _CapteurSCD41Mock,
             '_CapteurDHT11': _CapteurDHT11Mock, '_CapteurDHT22': _CapteurDHT22Mock,
@@ -2188,7 +2354,7 @@
             '_grove_objets': _grove_objets, '_grove_obj': _grove_obj,
             '_grove_ruban': _grove_ruban, '_grove_afficheur': _grove_afficheur,
             '_grove_gestes': _grove_gestes, '_grove_th': _grove_th,
-            '_grove_lcd': _grove_lcd, '_grove_couleur': _grove_couleur,
+            '_grove_lcd': _grove_lcd, '_grove_lcdrgb': _grove_lcdrgb, '_grove_couleur': _grove_couleur,
             '_grove_scd30': _grove_scd30, '_grove_scd41': _grove_scd41,
             '_servo_etat': _servo_etat, '_servo_impulsion': _servo_impulsion,
             '_servo_angle': _servo_angle, '_servo_arreter': _servo_arreter,
@@ -2256,25 +2422,25 @@
             code_repli = code_nettoye.replace("while True:", "for _ in range(5):")
             _session_active = False
             _session_code = None
+
+            def _fini_repli():
+                window.simu_ok()
+                window.simu_playQueue()
+
+            morceaux_repli = _decouper_attentes(code_repli)
+            if len(morceaux_repli) > 1:
+                _executer_morceaux(morceaux_repli, env, _rapporter_erreur, _fini_repli)
+                return 'attente'
             _sleep_compteur = 0
             try:
                 exec(code_repli, env)
-                window.simu_ok()
-                window.simu_playQueue()
+                _fini_repli()
                 return 'fait'
             except Exception as e:
                 _rapporter_erreur(e)
                 return 'erreur'
 
         avant, corps, apres = decoupe
-        _sleep_compteur = 0
-        try:
-            exec(avant, env)
-        except Exception as e:
-            _rapporter_erreur(e)
-            _session_active = False
-            _session_code = None
-            return 'erreur'
 
         def _tour_suivant():
             global _sleep_compteur
@@ -2312,8 +2478,33 @@
         # enchainer) est pilotee cote JS : voir simu_lancerTours dans un.js.
         window.simu_tourSuivant = _tour_suivant
         window.simu_finDesTours = _fin_des_tours
-        _session_active = True
-        _session_code = code
+
+        def _demarrage_termine():
+            global _session_active, _session_code
+            _session_active = True
+            _session_code = code
+
+        morceaux = _decouper_attentes(avant)
+        if len(morceaux) > 1:
+            # "attendre jusqu'à" dans "Au demarrage" : bloquant sur la vraie
+            # carte, donc le programme ne passe a la boucle qu'une fois la
+            # condition vraie. On l'attend vraiment (voir _executer_morceaux)
+            # au lieu d'echouer, puis on enchaine sur les tours.
+            def _suite():
+                _demarrage_termine()
+                window.simu_lancerTours(5)
+            _executer_morceaux(morceaux, env, _rapporter_erreur, _suite)
+            return 'attente'
+
+        _sleep_compteur = 0
+        try:
+            exec(avant, env)
+        except Exception as e:
+            _rapporter_erreur(e)
+            _session_active = False
+            _session_code = None
+            return 'erreur'
+        _demarrage_termine()
         return 'tours'
 
     def lancer_simulation(ev):
@@ -2367,6 +2558,39 @@
     window.simu_invaliderSession = invalider_session_simulation
     document["run-sim"].bind("click", lancer_simulation)
   </script>
+  <div id="voile-envoi" role="dialog" aria-modal="true" aria-labelledby="envoi-titre">
+    <div id="fenetre-envoi">
+      <h3 id="envoi-titre">Envoi sur la carte</h3>
+      <p id="envoi-phase" aria-live="polite"></p>
+      <div id="envoi-barre" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="envoi-remplissage"></div>
+      </div>
+      <p id="envoi-pourcent">0 %</p>
+    </div>
+  </div>
+  <div id="voile-aide" role="dialog" aria-modal="true" aria-labelledby="aide-bloc-nom">
+    <div id="fenetre-aide">
+      <div id="aide-entete">
+        <img src="logo.png" alt="" id="aide-logo">
+        <h3>Aide sur ce bloc</h3>
+      </div>
+      <p id="aide-bloc-nom"></p>
+      <p id="aide-bloc-texte"></p>
+      <p id="aide-bloc-code-titre">Code MicroPython généré</p>
+      <pre id="aide-bloc-code"></pre>
+      <div id="aide-exemple">
+        <p id="aide-exemple-titre"></p>
+        <p id="aide-exemple-desc"></p>
+        <div id="aide-exemple-blocs"></div>
+        <details id="aide-exemple-details">
+          <summary>Voir le code MicroPython</summary>
+          <pre id="aide-exemple-code"></pre>
+        </details>
+        <button id="aide-inserer" type="button">Insérer cet exemple dans mon espace de travail</button>
+      </div>
+      <button id="aide-fermer" type="button">Fermer</button>
+    </div>
+  </div>
   <div id="toast-admin"></div>
 </body>
 </html>

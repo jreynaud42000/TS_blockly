@@ -549,6 +549,80 @@ automatiquement le mode tactile capacitif de la carte V2
 (set_touch_mode(CAPACITIVE)) : un seul doigt sur la broche suffit donc,
 comme dans le simulateur (qui, lui, n'a jamais eu besoin de circuit GND).
 
+"LCD : allumer / eteindre l'affichage" (Grove LCD 16x2 v1, JHD1802,
+monochrome) : le retro-eclairage de ce module est cable en permanence, il
+n'existe aucune commande I2C pour le couper. Le bloc agit seulement sur
+l'affichage des caracteres (bit "display on/off" du controleur HD44780) : le
+texte disparait puis revient a l'allumage, le fond bleu reste allume - sur la
+vraie carte comme dans le simulateur (aligne depuis : il grisait auparavant
+tout l'ecran, ce que la carte ne fait pas). Pour un "vrai" ecran eteint, il
+faudrait couper l'alimentation du module. Apres "eteindre", ne pas oublier
+"allumer" : "LCD : effacer" ne rallume pas l'affichage.
+
+Grove LCD RGB Backlight V4.0 (JHD1313M3) - blocs "LCD RGB : ..." (categorie
+Grove) : deux circuits I2C sur le meme module, texte a l'adresse 0x3E (memes
+commandes que le LCD v1) et retro-eclairage RGB a 0x62 (puce PCA9633).
+Initialisation du fond selon la fiche Seeed : MODE1=0, MODE2=0, LEDOUT=0xAA,
+puis PWM registre 4 = rouge, 3 = vert, 2 = bleu. Blocs : initialiser,
+afficher (x, y), effacer, allumer/eteindre l'affichage (caracteres seulement),
+retro-eclairage couleur (palette), retro-eclairage rouge/vert/bleu (0 a 255)
+et allumer/eteindre le retro-eclairage (eteindre le coupe, allumer remet la
+derniere couleur). Au demarrage le fond est blanc. Alimentation 5 V : la
+V4.0 n'accepte pas le 3,3 V. La V5.0 (adresse 0x30, puce SGM31323) n'est PAS
+geree. Le simulateur reutilise le meme panneau d'ecran que le LCD v1, avec la
+couleur du fond et des caracteres adaptes a sa luminosite. Les blocs LCD ne
+sont pas reconstruits en blocs a l'import d'un .py (comme les autres blocs
+Grove) : ils deviennent des blocs "code".
+
+Aide sur un bloc : clic droit sur un bloc de l'espace de travail >
+"Aide sur ce bloc" ouvre une fenetre (avec le logo de l'application, logo.png,
+dans son en-tete) avec le nom du bloc, son texte d'aide et
+le code MicroPython qu'il genere (le bloc seul, pas les suivants). Le texte
+vient, par priorite : de la table AIDE_BLOCS (un.js, une ligne par bloc, avec
+son identifiant technique), puis de l'infobulle du bloc (setTooltip, blocs
+natifs de Blockly compris), sinon un message "aucune aide detaillee". Tous
+les blocs personnalises ont aujourd'hui un texte (105 entrees dans AIDE_BLOCS
+en plus des infobulles existantes) ; un bloc cree plus tard n'en aura pas tant
+qu'on n'y ajoute pas sa ligne. Pour
+rediger l'aide d'un bloc, ajouter sa ligne dans AIDE_BLOCS. Fermeture : bouton
+Fermer, touche Echap ou clic hors de la fenetre.
+
+Programmes d'exemple : sous le texte d'aide, la fenetre propose un petit
+programme d'exemple (titre, explication, le programme EN BLOCS dans un petit
+espace Blockly en lecture seule, reduit si besoin pour tenir en entier ; le
+code MicroPython est replie sous "Voir le code MicroPython") et un bouton
+"Insérer cet exemple dans mon espace de travail". L'exemple est ajoute SOUS
+les blocs existants, sans rien effacer, en un seul pas d'annulation (un
+Ctrl+Z le retire entierement). Attention : si le programme contient deja un
+"Au demarrage" ou un "Repeter indefiniment", l'exemple en ajoute un second ;
+c'est a l'utilisateur de fusionner ou de supprimer. 131 exemples couvrent 174
+blocs (les familles partagent un exemple : LCD, LCD RGB, ruban, etc.). Ils
+sont declares dans EXEMPLES_BLOCS (un.js), avec la fonction exemple(ids,
+titre, texte, blocs) ; les blocs racines doivent etre des conteneurs
+(exStart, exLoop, exWhen), un bloc pose seul etant grise. Les LiDAR : les
+lectures (distance, direction, urgence) relisent la DERNIERE acquisition, donc
+leurs exemples appellent "acquerir" avant. Blocs sans exemple : les blocs
+natifs de Blockly, les deux blocs de secours (code_brut, expression_brute) et
+lidar_initialiser : son generateur ecrit
+`TRUE` / `FALSE` (sans majuscule unique) au lieu de `True` / `False`, ce qui
+donnerait un NameError sur la vraie carte - bug connu, a corriger avant d'en
+faire un exemple (le moteur de reconstruction attend aujourd'hui ces memes
+`TRUE`/`FALSE`, a adapter en meme temps).
+
+Les blocs de la boite a
+outils (volet de gauche) n'ont pas de menu contextuel : Blockly n'en propose
+que pour les blocs deja poses.
+
+"Envoyer sur la carte" : une fenetre modale s'affiche au premier plan
+pendant tout le transfert (generation, choix du lecteur, ecriture,
+finalisation) avec une barre de 0 a 100 %. Le pourcentage compte de vrais
+octets ecrits, par morceaux de 32 Ko ; il reste a 99 % ("Finalisation...")
+tant que le lecteur n'a pas valide la fin de l'ecriture. La reprogrammation
+de la carte elle-meme, ensuite, n'est pas mesurable depuis le navigateur. En
+cas d'erreur ou d'annulation la fenetre se ferme et le message reste dans la
+barre d'etat. Balisage : #voile-envoi (index.html) ; logique : fenetreEnvoi
+(un.js).
+
 ---------------------------------------------------------
 11. LE FICHIER FIRMWARE.HEX
 ---------------------------------------------------------

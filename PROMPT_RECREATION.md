@@ -1812,6 +1812,39 @@ reproduire — une recherche dans la documentation officielle du matériel
 vaut mieux qu'une supposition, surtout quand rien dans le code lui-même ne
 semble fautif à la lecture.
 
+**PIÈGE nº 58 — le filet silencieux du PIÈGE nº 54 ne couvrait que le corps
+de la boucle : « attendre jusqu'à » dans « Au démarrage » affichait encore le
+bandeau rouge.** Signalé par l'utilisateur (capture du bandeau « n'aboutit
+pas dans ce tour de simulation »). `_AttenteSimulateur` n'était interceptée
+que dans `_tour_suivant()` ; `exec(avant, env)` et le repli sans boucle
+passaient par le `except Exception` générique. Or « attendre le bouton A
+puis démarrer » est précisément le motif naturel d'un « Au démarrage ».
+Hypothèse retenue (la capture ne montrait pas les blocs) : l'attente est
+dans « Au démarrage » ; à reconfirmer si le bandeau réapparaît.
+
+Corrigé en rendant l'attente RÉELLE plutôt qu'en la taisant : `exec()` ne
+peut pas se suspendre, mais le générateur produit toujours le même motif
+exact (`while not (COND):` puis `  sleep(10)`). `_decouper_attentes()`
+(`index.html`) coupe le code à chaque occurrence de premier niveau, et
+`_executer_morceaux()` exécute le morceau d'avant, rejoue son affichage
+(`_simuApresVidageFile` + `simu_playQueue`), surveille ensuite la condition
+toutes les 25 ms (la page reste réactive, un appui virtuel peut la rendre
+vraie), puis exécute la suite et enchaîne sur les tours. Détails à ne pas
+oublier : `window.simuEnCours = True` pendant l'attente (sinon un appui sur
+un capteur virtuel relancerait toute la simulation) ; `_session_active =
+False` jusqu'à la fin de « Au démarrage » (sinon un capteur « reprendrait »
+une session à mi-chemin) ; `window.simu_jeton()` (nouveau, `un.js`) pour
+abandonner sans bruit si « Réinitialiser » ou un nouveau « Lancer » survient
+pendant l'attente. Les attentes imbriquées (dans un `if`, une boucle...)
+gardent l'ancien comportement (erreur lisible) : seules celles de premier
+niveau sont découpées. Même mécanisme appliqué au repli sans boucle unique.
+
+Vérifié dans le navigateur : « afficher Triste » → « attendre jusqu'à A » →
+« afficher Cœur » : le visage triste reste affiché pendant l'attente, sans
+bandeau ; un appui de 150 ms sur A affiche le cœur et la boucle démarre ;
+« Réinitialiser » pendant l'attente l'abandonne (un appui ultérieur ne
+déclenche rien).
+
 ## 12. Panneau administrateur
 
 Extension du principe du §5 (`updateToolbox` à chaud) en un vrai panneau à
