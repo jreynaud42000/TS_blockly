@@ -5,9 +5,12 @@
 // nom `main.py`. C'est le travail de `@microbit/microbit-fs` — et de lui seul :
 // sans cette étape, le .hex produit ne contient aucun programme.
 //
-// Import global (sans accolades) depuis Skypack ; on garde l'espace de noms en
-// secours, ce CDN ne servant pas toujours d'export par défaut.
-import microbitFsDefaut, * as microbitFsNommes from 'https://cdn.skypack.dev/@microbit/microbit-fs';
+// Module EMBARQUE (lib/microbit/microbit-fs.js, microbit-fs 0.10.1, fichier
+// autonome tire d'esm.sh) : plus de CDN, donc hors ligne possible. Il n'a pas
+// d'export par défaut, seulement des exports nommés ; `microbitFsDefaut` reste
+// défini (vide) pour que le code de secours ci-dessous continue de fonctionner.
+import * as microbitFsNommes from './lib/microbit/microbit-fs.js';
+const microbitFsDefaut = undefined;
 
 import { fusionnerHex, isUniversalHex, separateUniversalHex } from './trois.js';
 
@@ -23,8 +26,8 @@ function classeSystemeDeFichiers() {
 
   if (typeof classe !== 'function') {
     throw new Error(
-      "Le module micro:bit FS n'a pas pu être chargé depuis le CDN " +
-      '(vérifier la connexion réseau ou remplacer cdn.skypack.dev par esm.sh dans deux.js).'
+      "Le module micro:bit FS n'a pas pu être chargé " +
+      '(fichier lib/microbit/microbit-fs.js absent ou corrompu).'
     );
   }
   return classe;

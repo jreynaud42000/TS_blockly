@@ -197,6 +197,137 @@ try {
         return 'display.clear()\n';
     };
 
+    // print() : sur la carte, la sortie part sur le port serie USB ; dans le
+    // simulateur, elle va dans la console de la barre du bas (voir CONSOLE).
+    Blockly.Blocks['afficher_console'] = { init: function() {
+        this.appendValueInput("VALEUR").appendField("afficher dans la console");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(160);
+        this.setTooltip("Écrit la valeur dans la console, sur une nouvelle ligne.");
+    }};
+    P.forBlock['afficher_console'] = function(block) {
+        importerMicrobit();
+        return 'print(' + (P.valueToCode(block, 'VALEUR', P.ORDER_NONE) || '""') + ')\n';
+    };
+
+    // ---------- IA : vision et son (Teachable Machine) ----------
+    //
+    // La reconnaissance tourne dans le NAVIGATEUR (camera / micro, panneau IA,
+    // ia.js). La carte n'a pas de camera : elle recoit seulement le RESULTAT,
+    // une ligne de texte par l'USB, que lit son `uart` (par defaut relie a
+    // l'USB sur micro:bit) :
+    //     IA:<vision|son>:<classe>:<confiance 0-100>\n
+    // <classe> est le nom de la classe passe par slugIA() (minuscules, sans
+    // accents, lettres/chiffres/_ seulement) : c'est aussi le nom du
+    // gestionnaire genere on_ia_<type>_<classe>. Le navigateur envoie une ligne
+    // a chaque CHANGEMENT de classe (classe vide quand la confiance retombe sous
+    // le seuil). Le simulateur recoit les memes lignes par un faux `uart`.
+
+    /** Nom de classe -> identifiant sur : "Chat noir !" devient "chat_noir". */
+    function slugIA(texte) {
+        const s = String(texte == null ? '' : texte).normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        return s || 'x';
+    }
+    window.slugIA = slugIA;
+
+    function piloteIA() {
+        importerMicrobit();
+        pilote('ia', [
+            '_ia_dernier = {"vision": "", "son": ""}',
+            '_ia_proba = {"vision": 0, "son": 0}',
+            '_ia_tampon = ""',
+            'uart.init(115200)',
+            '',
+            'def _ia_traiter():',
+            '    global _ia_tampon',
+            '    while uart.any():',
+            '        morceau = uart.read()',
+            '        if morceau:',
+            '            try:',
+            '                _ia_tampon = _ia_tampon + str(morceau, "utf-8")',
+            '            except Exception:',
+            '                pass',
+            '    if len(_ia_tampon) > 200 and "\\n" not in _ia_tampon:',
+            '        _ia_tampon = ""                        # pas de ligne complete : on repart de zero',
+            '    while "\\n" in _ia_tampon:',
+            '        coupe = _ia_tampon.split("\\n", 1)',
+            '        _ia_tampon = coupe[1]',
+            '        try:',
+            '            champs = coupe[0].strip().split(":")',
+            '            if len(champs) >= 3 and champs[0] == "IA" and champs[1] in _ia_dernier:',
+            '                genre = champs[1]',
+            '                classe = champs[2]',
+            '                _ia_proba[genre] = int(champs[3]) if len(champs) > 3 else 100',
+            '                if classe != _ia_dernier[genre]:',
+            '                    _ia_dernier[genre] = classe',
+            '                    action = globals().get("on_ia_" + genre + "_" + classe)',
+            '                    if action:',
+            '                        action()',
+            '        except Exception:',
+            '            pass',
+        ]);
+    }
+
+    const TYPES_IA = [["vision", "vision"], ["son", "son"]];
+
+    Blockly.Blocks['ia_lorsque_reconnu'] = { init: function() {
+        this.appendDummyInput().appendField("lorsque l'IA")
+            .appendField(new Blockly.FieldDropdown(TYPES_IA), "TYPE")
+            .appendField("reconnaît")
+            .appendField(new Blockly.FieldTextInput("classe"), "CLASSE");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(330);
+        this.setTooltip("S'exécute quand l'IA passe à cette classe. Écrivez le nom de la classe comme dans " +
+                        "Teachable Machine (accents et majuscules sans importance).");
+    }};
+    P.forBlock['ia_lorsque_reconnu'] = function(block) {
+        piloteIA();
+        return declarerGestionnaire('on_ia_' + block.getFieldValue('TYPE') + '_' + slugIA(block.getFieldValue('CLASSE')),
+                                    P.statementToCode(block, 'DO'));
+    };
+
+    Blockly.Blocks['ia_classe_est'] = { init: function() {
+        this.appendDummyInput().appendField("l'IA")
+            .appendField(new Blockly.FieldDropdown(TYPES_IA), "TYPE")
+            .appendField("reconnaît")
+            .appendField(new Blockly.FieldTextInput("classe"), "CLASSE");
+        this.setOutput(true, "Boolean");
+        this.setColour(330);
+        this.setTooltip("Vrai tant que la dernière classe reconnue par l'IA est celle-ci.");
+    }};
+    P.forBlock['ia_classe_est'] = function(block) {
+        piloteIA();
+        return ['(_ia_dernier["' + block.getFieldValue('TYPE') + '"] == "' + slugIA(block.getFieldValue('CLASSE')) + '")',
+                P.ORDER_RELATIONAL];
+    };
+
+    Blockly.Blocks['ia_derniere_classe'] = { init: function() {
+        this.appendDummyInput().appendField("dernière classe reconnue par l'IA")
+            .appendField(new Blockly.FieldDropdown(TYPES_IA), "TYPE");
+        this.setOutput(true, "String");
+        this.setColour(330);
+        this.setTooltip("Nom de la classe sans accents ni majuscules (« chat_noir »), ou texte vide si rien n'est reconnu.");
+    }};
+    P.forBlock['ia_derniere_classe'] = function(block) {
+        piloteIA();
+        return ['_ia_dernier["' + block.getFieldValue('TYPE') + '"]', P.ORDER_MEMBER];
+    };
+
+    Blockly.Blocks['ia_confiance'] = { init: function() {
+        this.appendDummyInput().appendField("confiance de l'IA")
+            .appendField(new Blockly.FieldDropdown(TYPES_IA), "TYPE")
+            .appendField("(%)");
+        this.setOutput(true, "Number");
+        this.setColour(330);
+        this.setTooltip("De 0 à 100 : certitude de la dernière classe reconnue.");
+    }};
+    P.forBlock['ia_confiance'] = function(block) {
+        piloteIA();
+        return ['_ia_proba["' + block.getFieldValue('TYPE') + '"]', P.ORDER_MEMBER];
+    };
+
     // ---------- Blocs « lorsque … » ----------
     //
     // MicroPython n'a pas de système d'événements : ces blocs produisent une
@@ -4209,16 +4340,115 @@ try {
     // ==========================================
     // 2. CRÉATION DE L'INTERFACE (TOOLBOX)
     // ==========================================
+    // ---------- Couleurs des categories ----------
+    // Une couleur par categorie, UNE seule table : la bande / puce de la colonne de categories ET les blocs de la categorie
+    // la suivent. Demande de l'utilisateur : AUCUNE couleur identique entre deux categories. Les 17 couleurs sont choisies pour
+    // etre aussi differentes que possible (ecart minimal CIE Lab de 26 entre deux couleurs, mesure sur les blocs ET sur les
+    // puces vives), assez sombres pour le texte blanc des blocs (contraste >= 3,9), puis attribuees dans l'ordre de la colonne
+    // de facon que deux categories VOISINES soient tres differentes (ecart >= 97). Les sous-categories (Radio, Grove, Robots)
+    // heritent de leur parent. Pour changer une couleur : modifier la ligne ci-dessous.
+    const PALETTE_CATEGORIES = {
+        'Boucles': '#1f5c52',
+        'Temps': '#d50bd5',
+        'Affichage': '#5c521f',
+        'Entrées/Sorties': '#0909b3',
+        'Capteurs': '#915808',
+        'Actionneurs (Audio)': '#2270bf',
+        'Servos': '#910808',
+        'Radio': '#1c8aa0',
+        'IA': '#d50b70',
+        'Grove': '#178255',
+        'Logique': '#a83896',
+        'Variables': '#678217',
+        'Maths': '#6738a8',
+        'Texte': '#d53e0b',
+        'Fonctions': '#123668',
+        'Listes': '#089108',
+        'Robots': '#74062b',
+    };
+    // Blocs de categories dynamiques de Blockly (absents de la liste du tiroir).
+    const BLOCS_PALETTE_SUPPLEMENTAIRES = {
+        'Variables': ['variables_get', 'variables_set', 'math_change'],
+        'Fonctions': ['procedures_defnoreturn', 'procedures_defreturn', 'procedures_callnoreturn',
+                      'procedures_callreturn', 'procedures_ifreturn'],
+    };
+    // ---------- Ordre des categories ----------
+    // Ordre voulu par l'utilisateur (la table sert aussi d'ordre « par defaut » du panneau administrateur, qui part de
+    // TOOLBOX_ORIGINAL). Les categories qui n'y figurent pas (robots, LiDAR) restent
+    // a la suite, dans leur ordre d'origine. « Communication » est renommee « Radio ». « Graphique » n'existe pas encore.
+    const ORDRE_CATEGORIES = ['Boucles', 'Temps', 'Affichage', 'Entrées/Sorties', 'Capteurs', 'Actionneurs (Audio)', 'Servos', 'Radio', 'IA', 'Grove',
+                              'Logique', 'Variables', 'Maths', 'Texte', 'Fonctions', 'Listes'];
+    const NOMS_ROBOTS = ['Maqueen Plus', 'Maqueen Lite', 'Kitrobot v2', 'LiDAR'];   // regroupes dans « Robots »
+    const CATEGORIE_LISTES = {
+        "kind": "category", "name": "Listes", "colour": "260",
+        "contents": [
+            { "kind": "block", "type": "lists_create_with", "extraState": { "itemCount": 3 } },
+            { "kind": "block", "type": "lists_create_with", "extraState": { "itemCount": 0 } },
+            { "kind": "block", "type": "lists_repeat", "inputs": { "NUM": { "shadow": { "type": "math_number", "fields": { "NUM": "5" } } } } },
+            { "kind": "block", "type": "lists_length" },
+            { "kind": "block", "type": "lists_isEmpty" },
+            { "kind": "block", "type": "lists_indexOf" },
+            { "kind": "block", "type": "lists_getIndex" },
+            { "kind": "block", "type": "lists_setIndex" },
+            { "kind": "block", "type": "lists_getSublist" }
+        ]
+    };
+    function reordonnerToolbox(toolbox) {
+        const cats = toolbox.contents;
+        for (const c of cats) if (c.kind === 'category' && c.name === 'Communication') c.name = 'Radio';
+        if (!cats.some(c => c.kind === 'category' && c.name === 'Listes')) cats.push(JSON.parse(JSON.stringify(CATEGORIE_LISTES)));
+        const rang = c => { const i = ORDRE_CATEGORIES.indexOf(c.name); return i === -1 ? ORDRE_CATEGORIES.length : i; };
+        const indexInitial = new Map(cats.map((c, i) => [c, i]));
+        cats.sort((a, b) => rang(a) - rang(b) || indexInitial.get(a) - indexInitial.get(b));   // tri stable
+        // Les quatre robots deviennent des sous-menus d'une categorie « Robots », placee en dernier.
+        const robots = cats.filter(c => c.kind === 'category' && NOMS_ROBOTS.includes(c.name));
+        if (robots.length) {
+            robots.sort((a, b) => NOMS_ROBOTS.indexOf(a.name) - NOMS_ROBOTS.indexOf(b.name));
+            for (const r of robots) cats.splice(cats.indexOf(r), 1);
+            cats.push({ "kind": "category", "name": "Robots", "colour": "120", "contents": robots });
+        }
+        return toolbox;
+    }
+
+    function appliquerPaletteToolbox(toolbox) {
+        reordonnerToolbox(toolbox);
+        const parType = {};
+        const parcourir = (categories, couleurParent) => {
+            for (const cat of categories) {
+                if (cat.kind !== 'category') continue;
+                const couleur = PALETTE_CATEGORIES[cat.name] || couleurParent;
+                if (!couleur) continue;
+                cat.colour = couleur;
+                for (const type of BLOCS_PALETTE_SUPPLEMENTAIRES[cat.name] || []) if (!parType[type]) parType[type] = couleur;
+                const contenu = cat.contents || [];
+                for (const e of contenu) if (e.kind === 'block' && e.type && !parType[e.type]) parType[e.type] = couleur;
+                parcourir(contenu, couleur);
+            }
+        };
+        parcourir(toolbox.contents, null);
+        for (const type of Object.keys(parType)) {
+            const def = Blockly.Blocks[type];
+            if (!def || def.__palette || typeof def.init !== 'function') continue;
+            const initOriginal = def.init;
+            const couleur = parType[type];
+            def.init = function () { initOriginal.apply(this, arguments); this.setColour(couleur); };
+            def.__palette = true;
+        }
+        return toolbox;
+    }
+
     window.workspace = Blockly.inject('blocklyDiv', {
+      // Images (corbeille, fleches) et sons de Blockly : dossier LOCAL. Sans
+      // cette option, Blockly va les chercher sur blockly-demo.appspot.com.
+      media: 'lib/blockly/media/',
       // Sans ces options, Blockly reste figé à l'échelle 1 : ni boutons de zoom,
-      // ni molette, ni recentrage. Avec zoom.wheel ET move.wheel actifs,
-      // Ctrl+molette agrandit et la molette seule fait défiler.
+      // ni molette, ni recentrage. Molette seule = zoom (voir move.wheel plus bas).
       zoom: {
-        // Les boutons internes de Blockly sont desactives : ils sont dessines
-        // dans le canevas, donc rognes des que la place manque, et ils se
-        // chevauchaient avec la corbeille. Ils sont remplaces par des boutons
-        // de la barre du haut, toujours visibles.
-        controls: false,
+        // Boutons ronds de Blockly (recentrer, +, -) dans la zone de blocs, en plus du
+        // groupe de la barre du haut (demande de l'utilisateur, image de reference).
+        // Ils sont dessines dans le canevas : voir les reglages de position / de
+        // chevauchement avec la corbeille dans index.html (.blocklyZoom...).
+        controls: true,
         wheel: true,
         pinch: true,
         startScale: 1.0,
@@ -4229,14 +4459,18 @@ try {
       move: {
         scrollbars: { horizontal: true, vertical: true },
         drag: true,
-        wheel: true
+        // Demande de l'utilisateur : la molette seule zoome / dezoome (autour du
+        // curseur). Il faut zoom.wheel ACTIF et move.wheel INACTIF : avec les deux,
+        // Blockly reserve le zoom a Ctrl+molette et fait defiler avec la molette.
+        // On defile desormais au glisser (fond de l'espace) ou aux barres de defilement.
+        wheel: false
       },
-      grid: { spacing: 20, length: 3, colour: '#e4e4e4', snap: false },
+      grid: { spacing: 20, length: 3, colour: '#e8e8e8', snap: true },
       trashcan: true,
       // Un seul bloc de demarrage a la fois : deux rendraient l'ordre
       // d'execution ambigu. Le tiroir grise le bloc quand il est deja pose.
       maxInstances: { 'au_demarrage': 1 },
-      toolbox: {
+      toolbox: appliquerPaletteToolbox({
         "kind": "categoryToolbox",
         "contents": [
           {
@@ -4256,7 +4490,8 @@ try {
               { "kind": "block", "type": "faire_defiler", "inputs": { "VALEUR": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour !" } } } } },
               { "kind": "block", "type": "afficher_icone" },
               { "kind": "block", "type": "afficher_image_matrice" },
-              { "kind": "block", "type": "effacer_ecran" }
+              { "kind": "block", "type": "effacer_ecran" },
+              { "kind": "block", "type": "afficher_console", "inputs": { "VALEUR": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour !" } } } } }
             ]
           },
           {
@@ -4335,6 +4570,16 @@ try {
               { "kind": "block", "type": "radio_canal", "inputs": { "CANAL": { "shadow": { "type": "math_number", "fields": { "NUM": "7" } } } } }
             ]
             }
+            ]
+          },
+          {
+            "kind": "category", "name": "IA", "colour": "330",
+            "contents": [
+              { "kind": "label", "text": "Résultat envoyé par le panneau IA" },
+              { "kind": "block", "type": "ia_lorsque_reconnu" },
+              { "kind": "block", "type": "ia_classe_est" },
+              { "kind": "block", "type": "ia_derniere_classe" },
+              { "kind": "block", "type": "ia_confiance" }
             ]
           },
           {
@@ -4648,7 +4893,7 @@ try {
             ]
           }
         ]
-      }
+      })
     });
 
     // Espace de depart : le demarrage puis la boucle, comme dans MakeCode.
@@ -5130,7 +5375,7 @@ try {
         if (!blocsRestants.length) return;
 
         const indication = document.createElement('p');
-        indication.style.cssText = 'margin:10px 0 6px;font-size:12px;color:#9fb3c8;';
+        indication.style.cssText = 'margin:10px 0 6px;font-size:12px;color:#b8b8b8;';
         indication.textContent = 'Regrouper des blocs dans un nouveau sous-menu :';
         zoneSousMenus.appendChild(indication);
 
@@ -5188,7 +5433,7 @@ try {
         const f = (filtre || '').toLowerCase().trim();
         if (!f) {
             const indication = document.createElement('p');
-            indication.style.cssText = 'font-size:12px;color:#9fb3c8;';
+            indication.style.cssText = 'font-size:12px;color:#b8b8b8;';
             indication.textContent = 'Tapez un mot pour retrouver un bloc (ex: "attendre", "afficher").';
             zoneLibelles.appendChild(indication);
             return;
@@ -5238,7 +5483,7 @@ try {
 
         if (!types.length) {
             const vide = document.createElement('p');
-            vide.style.cssText = 'font-size:12px;color:#9fb3c8;';
+            vide.style.cssText = 'font-size:12px;color:#b8b8b8;';
             vide.textContent = 'Aucun bloc ne correspond.';
             zoneLibelles.appendChild(vide);
         }
@@ -5494,16 +5739,20 @@ try {
     // elles représentent quelque chose de réel, comme les couleurs des
     // boutons d'action — un robot ne devient pas "plus accessible" en
     // changeant de couleur, ce n'est pas du texte à lire.
+    // Police du texte des blocs : celle par defaut de Blockly, comme la version Arduino R4 (reglee dans le theme, pas en CSS :
+    // Blockly mesure le texte avec cette police pour dimensionner les blocs ; jamais de gras).
+    const POLICE_BLOCS = { family: 'sans-serif', weight: 'normal', size: 11 };   // police par defaut de Blockly (alignement sur la version Arduino R4)
     const THEME_SOMBRE_NORMAL = Blockly.Theme.defineTheme('sombreMicrobitV2', {
         base: Blockly.Themes.Classic,
+        fontStyle: POLICE_BLOCS,
         componentStyles: {
-            workspaceBackgroundColour: '#1e1e2e',
-            toolboxBackgroundColour: '#2c3e50',
-            toolboxForegroundColour: '#ecf0f1',
-            flyoutBackgroundColour: '#26333f',
-            flyoutForegroundColour: '#ecf0f1',
+            workspaceBackgroundColour: '#1e1f23',
+            toolboxBackgroundColour: '#141517',
+            toolboxForegroundColour: '#dddddd',
+            flyoutBackgroundColour: '#2a2c31',
+            flyoutForegroundColour: '#b5b8bf',
             flyoutOpacity: 1,
-            scrollbarColour: '#4a5a6a',
+            scrollbarColour: '#5a5e66',
             insertionMarkerColour: '#ffffff',
             insertionMarkerOpacity: 0.3,
             cursorColour: '#ffffff'
@@ -5511,6 +5760,7 @@ try {
     });
     const THEME_SOMBRE_ELEVE = Blockly.Theme.defineTheme('sombreEleveMicrobitV2', {
         base: Blockly.Themes.Classic,
+        fontStyle: POLICE_BLOCS,
         componentStyles: {
             workspaceBackgroundColour: '#000000',
             toolboxBackgroundColour: '#000000',
@@ -5526,6 +5776,7 @@ try {
     });
     const THEME_CLAIR_ELEVE = Blockly.Theme.defineTheme('clairEleveMicrobitV2', {
         base: Blockly.Themes.Classic,
+        fontStyle: POLICE_BLOCS,
         componentStyles: {
             workspaceBackgroundColour: '#ffffff',
             toolboxBackgroundColour: '#ffffff',
@@ -5540,6 +5791,20 @@ try {
         }
     });
 
+    // « Clair normal » etait le theme Classic fourni par Blockly : un theme derive permet d'y fixer la police.
+    const THEME_CLAIR_NORMAL = Blockly.Theme.defineTheme('clairMicrobitV2', {
+        base: Blockly.Themes.Classic,
+        fontStyle: POLICE_BLOCS,
+        componentStyles: {
+            workspaceBackgroundColour: '#ffffff',
+            toolboxBackgroundColour: '#2e2e2e',     // colonne de categories sombre meme en clair (version Arduino R4)
+            toolboxForegroundColour: '#dddddd',
+            flyoutBackgroundColour: '#d9d9d9',
+            flyoutForegroundColour: '#555555',
+            flyoutOpacity: 1
+        }
+    });
+
     function themeClairActif() {
         return document.documentElement.dataset.theme === 'light';
     }
@@ -5549,7 +5814,7 @@ try {
     function appliquerThemeBlockly() {
         const clair = themeClairActif(), eleve = contrasteEleveActif();
         const theme = clair
-            ? (eleve ? THEME_CLAIR_ELEVE : Blockly.Themes.Classic)
+            ? (eleve ? THEME_CLAIR_ELEVE : THEME_CLAIR_NORMAL)
             : (eleve ? THEME_SOMBRE_ELEVE : THEME_SOMBRE_NORMAL);
         window.workspace.setTheme(theme);
     }
@@ -5563,7 +5828,7 @@ try {
             // class="icone-bouton"> (taille réduite) posé autour de l'icône :
             // on cible ce span, avec repli sur le bouton si jamais absent.
             const icone = btnTheme.querySelector('.icone-bouton') || btnTheme;
-            icone.textContent = clair ? '☀️' : '🌙';
+            icone.textContent = 'Thème : ' + (clair ? 'clair' : 'sombre');   // theme actuel ; le titre dit l'action
             btnTheme.title = clair ? 'Passer au thème sombre' : 'Passer au thème clair';
         }
         try { localStorage.setItem('themeApp', clair ? 'light' : 'dark'); }
@@ -5666,6 +5931,7 @@ try {
     function afficherEtat(message, enErreur) {
         if (!zoneEtat) return;
         zoneEtat.textContent = message;
+        zoneEtat.title = message || '';   // message complet au survol (le texte est tronque s'il est trop long)
         zoneEtat.classList.toggle('erreur', !!enErreur);
     }
     // Utilisé aussi par le simulateur Brython, qui n'a pas d'autre moyen de
@@ -5692,7 +5958,7 @@ try {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'programme-microbit.hex';
+            a.download = nomFichierPour('programme-microbit.hex');
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -5768,6 +6034,611 @@ try {
     window.fenetreEnvoiTest = fenetreEnvoi;
 
     // ------------------------------------------
+    // CONSOLE (barre du bas, masquable)
+    // ------------------------------------------
+    // Une seule zone, deux sources : les print() du SIMULATEUR (file d'actions
+    // du simulateur, voir print_console dans index.html) et la sortie serie de
+    // la VRAIE CARTE (Web Serial, Chrome/Edge). Chaque ligne porte sa source
+    // (data-src : sim / carte / info) pour la colorer et pour n'effacer que ce
+    // qu'il faut.
+    const consoleSortie = document.getElementById('console-sortie');
+    const consoleEtat = document.getElementById('console-etat');
+    const btnConsoleCarte = document.getElementById('btn-console-carte');
+    const btnConsoleEffacer = document.getElementById('btn-console-effacer');
+    const formConsole = document.getElementById('console-saisie');
+    const champConsole = document.getElementById('console-entree');
+    const btnConsoleEnvoyer = document.getElementById('console-envoyer');
+    const MAX_LIGNES_CONSOLE = 1000;
+    // Ligne en cours par source : un morceau recu sans saut de ligne final
+    // (frequent en serie) doit se coller au suivant, pas faire une nouvelle ligne.
+    const ligneConsoleCourante = { sim: null, carte: null, info: null };
+
+    function nouvelleLigneConsole(source) {
+        const ligne = document.createElement('span');
+        ligne.className = 'console-ligne';
+        ligne.dataset.src = source;
+        ligne.dataset.t = String(Date.now());   // heure de reception, pour l'export Excel
+        consoleSortie.appendChild(ligne);
+        // Une boucle sans pause inonderait la page : on garde les dernieres lignes.
+        while (consoleSortie.childElementCount > MAX_LIGNES_CONSOLE) {
+            const premiere = consoleSortie.firstElementChild;
+            for (const k of Object.keys(ligneConsoleCourante)) {
+                if (ligneConsoleCourante[k] === premiere) ligneConsoleCourante[k] = null;
+            }
+            premiere.remove();
+        }
+        return ligne;
+    }
+
+    function ecrireConsole(texte, source) {
+        if (!consoleSortie) return;
+        if (source !== 'info') ouvrirConsoleAuto();
+        const enBas = consoleSortie.scrollTop + consoleSortie.clientHeight >= consoleSortie.scrollHeight - 8;
+        const morceaux = String(texte).replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+        morceaux.forEach((morceau, i) => {
+            if (i > 0) ligneConsoleCourante[source] = null;            // saut de ligne : on ferme la ligne en cours
+            if (morceau === '' && i === morceaux.length - 1) return;   // rien apres le dernier saut de ligne
+            if (!ligneConsoleCourante[source]) ligneConsoleCourante[source] = nouvelleLigneConsole(source);
+            ligneConsoleCourante[source].textContent += morceau;
+        });
+        // On ne force le defilement que si l'utilisateur etait deja en bas.
+        if (enBas) consoleSortie.scrollTop = consoleSortie.scrollHeight;
+        planifierGraphique();
+    }
+
+    function effacerConsole(source) {
+        if (!consoleSortie) return;
+        if (!source) {
+            consoleSortie.textContent = '';
+            for (const k of Object.keys(ligneConsoleCourante)) ligneConsoleCourante[k] = null;
+            planifierGraphique();
+            return;
+        }
+        consoleSortie.querySelectorAll('.console-ligne[data-src="' + source + '"]').forEach(l => l.remove());
+        ligneConsoleCourante[source] = null;
+        planifierGraphique();
+    }
+
+    window.simu_console = function(texte) { window.simuQueue.push({ type: 'console', texte: String(texte) }); };
+    window.simu_effacerConsole = effacerConsole;
+
+    // Faux uart du simulateur (voir _UartMock, index.html) : file de texte envoyee
+    // par le panneau IA. N'accepte rien tant que la simulation ne tourne pas, pour
+    // qu'un vieux resultat ne soit pas livre au prochain "Lancer".
+    window.simu_uartFile = [];
+    window.simu_uartPousser = function(texte) {
+        if (window.simuEnCours) window.simu_uartFile.push(String(texte));
+    };
+    window.simu_uartDisponible = function() { return window.simu_uartFile.length > 0; };
+    window.simu_uartLire = function() { const t = window.simu_uartFile.join(''); window.simu_uartFile = []; return t; };
+    window.simu_uartLireLigne = function() {
+        const tout = window.simu_uartFile.join('');
+        const i = tout.indexOf('\n');
+        if (i < 0) { window.simu_uartFile = []; return tout; }
+        window.simu_uartFile = tout.length > i + 1 ? [tout.slice(i + 1)] : [];
+        return tout.slice(0, i + 1);
+    };
+
+    if (btnConsoleEffacer) btnConsoleEffacer.addEventListener('click', () => effacerConsole());
+
+    // ---- Export Excel (.xlsx) ----
+    // Fichier ecrit a la main, sans bibliotheque : un .xlsx est une archive ZIP
+    // de quelques fichiers XML. Les entrees sont simplement STOCKEES (pas de
+    // compression), ce qui suffit pour quelques milliers de lignes et evite
+    // d'embarquer un compresseur. Marche hors ligne, exe compris.
+    const TABLE_CRC32 = (() => {
+        const table = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+            let c = n;
+            for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+            table[n] = c >>> 0;
+        }
+        return table;
+    })();
+    function crc32(octets) {
+        let c = 0xFFFFFFFF;
+        for (let i = 0; i < octets.length; i++) c = TABLE_CRC32[(c ^ octets[i]) & 0xFF] ^ (c >>> 8);
+        return (c ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    /** Archive ZIP (sans compression) : fichiers = [{ nom, contenu: texte UTF-8 }]. */
+    function creerZip(fichiers) {
+        const encodeur = new TextEncoder();
+        const maintenant = new Date();
+        const heureDos = (maintenant.getHours() << 11) | (maintenant.getMinutes() << 5) | (maintenant.getSeconds() >> 1);
+        const dateDos = ((maintenant.getFullYear() - 1980) << 9) | ((maintenant.getMonth() + 1) << 5) | maintenant.getDate();
+        const locaux = [], centraux = [];
+        let decalage = 0;
+        const u16 = v => [v & 0xFF, (v >>> 8) & 0xFF];
+        const u32 = v => [v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF];
+        fichiers.forEach(f => {
+            const nom = encodeur.encode(f.nom), donnees = encodeur.encode(f.contenu), crc = crc32(donnees);
+            // 0x0800 : noms en UTF-8 ; methode 0 : stocke.
+            const commun = [...u16(20), ...u16(0x0800), ...u16(0), ...u16(heureDos), ...u16(dateDos),
+                            ...u32(crc), ...u32(donnees.length), ...u32(donnees.length), ...u16(nom.length), ...u16(0)];
+            locaux.push(Uint8Array.from([...u32(0x04034b50), ...commun]), nom, donnees);
+            centraux.push(Uint8Array.from([...u32(0x02014b50), ...u16(20), ...commun,
+                                           ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(decalage)]), nom);
+            decalage += 30 + nom.length + donnees.length;
+        });
+        const tailleCentral = centraux.reduce((t, p) => t + p.length, 0);
+        const fin = Uint8Array.from([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(fichiers.length),
+                                     ...u16(fichiers.length), ...u32(tailleCentral), ...u32(decalage), ...u16(0)]);
+        return new Blob([...locaux, ...centraux, fin], { type: 'application/zip' });
+    }
+
+    const echapperXml = t => String(t).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const heureLisible = ms => {
+        const d = new Date(ms), p = (n, l = 2) => String(n).padStart(l, '0');
+        return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' + p(d.getMilliseconds(), 3);
+    };
+    const NOMS_SOURCES = { sim: 'Simulateur', carte: 'Carte', info: 'Information' };
+
+    /** Lignes actuellement affichees dans la console, avec heure, source et valeur numerique eventuelle. */
+    function lignesPourExport() {
+        if (!consoleSortie) return [];
+        return Array.from(consoleSortie.querySelectorAll('.console-ligne')).map((l, i) => {
+            const texte = l.textContent;
+            const nombre = texte.trim() !== '' && Number.isFinite(Number(texte.trim().replace(',', '.')))
+                ? Number(texte.trim().replace(',', '.')) : null;
+            return { n: i + 1, heure: heureLisible(Number(l.dataset.t) || Date.now()),
+                     source: NOMS_SOURCES[l.dataset.src] || l.dataset.src, texte, nombre };
+        });
+    }
+
+    function creerXlsxConsole(lignes) {
+        const texteCell = t => '<c t="inlineStr"><is><t xml:space="preserve">' + echapperXml(t) + '</t></is></c>';
+        const lignesXml = ['<row r="1">' + ['N°', 'Heure', 'Source', 'Texte', 'Valeur numérique'].map(texteCell).join('') + '</row>'];
+        lignes.forEach((l, i) => {
+            lignesXml.push('<row r="' + (i + 2) + '"><c><v>' + l.n + '</v></c>' + texteCell(l.heure) + texteCell(l.source) +
+                           texteCell(l.texte) + (l.nombre === null ? '' : '<c><v>' + l.nombre + '</v></c>') + '</row>');
+        });
+        const enTete = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+        const ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+        return creerZip([
+            { nom: '[Content_Types].xml', contenu: enTete +
+              '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+              '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+              '<Default Extension="xml" ContentType="application/xml"/>' +
+              '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+              '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+              '</Types>' },
+            { nom: '_rels/.rels', contenu: enTete +
+              '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+              '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+              '</Relationships>' },
+            { nom: 'xl/workbook.xml', contenu: enTete + '<workbook ' + ns +
+              ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+              '<sheets><sheet name="Console" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+            { nom: 'xl/_rels/workbook.xml.rels', contenu: enTete +
+              '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+              '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+              '</Relationships>' },
+            { nom: 'xl/worksheets/sheet1.xml', contenu: enTete + '<worksheet ' + ns + '>' +
+              '<cols><col min="1" max="1" width="7" customWidth="1"/><col min="2" max="2" width="14" customWidth="1"/>' +
+              '<col min="3" max="3" width="13" customWidth="1"/><col min="4" max="4" width="50" customWidth="1"/>' +
+              '<col min="5" max="5" width="18" customWidth="1"/></cols>' +
+              '<sheetData>' + lignesXml.join('') + '</sheetData></worksheet>' },
+        ]);
+    }
+
+    const btnConsoleExporter = document.getElementById('btn-console-exporter');
+    if (btnConsoleExporter) {
+        btnConsoleExporter.addEventListener('click', () => {
+            const lignes = lignesPourExport();
+            if (!lignes.length) { etatConsole('Rien à exporter : la console est vide.'); return; }
+            const p = n => String(n).padStart(2, '0'), d = new Date();
+            const nom = 'console-microbit-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' +
+                        p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.xlsx';
+            const blob = creerXlsxConsole(lignes);
+            const url = URL.createObjectURL(new Blob([blob], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+            const a = document.createElement('a');
+            a.href = url; a.download = nom;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            etatConsole(lignes.length + ' ligne(s) exportée(s) dans ' + nom + '.');
+        });
+    }
+    window.exportConsoleTest = { lignesPourExport, creerXlsxConsole };
+
+    // ---- Graphique : courbes des valeurs numeriques de la console ----
+    // Dessine sur un canevas, sans bibliotheque (marche hors ligne). Il lit les
+    // lignes DEJA presentes dans la console (comme l'export Excel), donc
+    // simulateur et vraie carte sont traites pareil. Formats reconnus, un par ligne :
+    //   21.5            un nombre            -> serie "Valeur"
+    //   (12, 40, 7)     n-uplet (aussi 12,40,7 ou 12 40 7, comme le traceur de Mu)
+    //                                        -> series "Serie 1", "Serie 2"...
+    //   temp:21 lum:40  paires nom:valeur    -> une serie par nom (aussi nom=valeur)
+    // Une virgule collee entre deux chiffres est decimale (« 21,5 ») tant qu'il n'y
+    // a qu'un nombre ; un n-uplet separe ses valeurs par virgule, point-virgule ou espace.
+    const CHIFFRES = '[-+]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:[eE][-+]?\\d+)?';
+    const RE_UN_NOMBRE = new RegExp('^[-+]?(?:\\d+(?:[.,]\\d+)?|[.,]\\d+)(?:[eE][-+]?\\d+)?$');
+    const RE_VALEUR = new RegExp('^' + CHIFFRES + '$');
+    const RE_PAIRE = new RegExp('([\\p{L}_][\\p{L}\\p{N}_ -]*?)\\s*[:=]\\s*(' + CHIFFRES + ')', 'gu');
+    const COULEURS_COURBES = ['#4fc3f7', '#ff8a65', '#81c784', '#ffd54f', '#ba68c8', '#4db6ac', '#f06292', '#a1887f'];
+    const MAX_POINTS_COURBE = 600;
+
+    function extraireMesures(texte) {
+        const t = texte.trim();
+        if (!t) return [];
+        if (RE_UN_NOMBRE.test(t)) return [['Valeur', Number(t.replace(',', '.'))]];
+        const entre = /^\(.*\)$/.test(t) ? t.slice(1, -1).trim() : t;
+        const morceaux = entre.split(/\s*[;,]\s*|\s+/).filter(m => m !== '');
+        if (morceaux.length > 1 && morceaux.every(m => RE_VALEUR.test(m))) {
+            return morceaux.map((m, i) => ['Série ' + (i + 1), Number(m)]);
+        }
+        const paires = [];
+        let trouve;
+        RE_PAIRE.lastIndex = 0;
+        while ((trouve = RE_PAIRE.exec(t)) !== null) paires.push([trouve[1].trim(), Number(trouve[2])]);
+        return paires;
+    }
+
+    /** Series { nom, points: [{t, v}] } tirees des lignes de la console, t en secondes depuis la premiere mesure. */
+    function collecterSeries() {
+        if (!consoleSortie) return [];
+        const mesures = [];
+        consoleSortie.querySelectorAll('.console-ligne').forEach(l => {
+            if (l.dataset.src === 'info') return;
+            const t = Number(l.dataset.t) || 0;
+            extraireMesures(l.textContent).forEach(([nom, v]) => {
+                if (Number.isFinite(v)) mesures.push({ t, v, nom, source: l.dataset.src });
+            });
+        });
+        if (!mesures.length) return [];
+        // Simulateur ET carte presents : on prefixe le nom pour ne pas melanger leurs courbes.
+        const sources = new Set(mesures.map(m => m.source));
+        const t0 = Math.min(...mesures.map(m => m.t));
+        const parCle = new Map();
+        mesures.forEach(m => {
+            const cle = sources.size > 1 ? (NOMS_SOURCES[m.source] || m.source) + ' · ' + m.nom : m.nom;
+            if (!parCle.has(cle)) parCle.set(cle, { nom: cle, points: [] });
+            parCle.get(cle).points.push({ t: (m.t - t0) / 1000, v: m.v });
+        });
+        return Array.from(parCle.values()).map(s => {
+            if (s.points.length > MAX_POINTS_COURBE) s.points = s.points.slice(-MAX_POINTS_COURBE);
+            return s;
+        });
+    }
+
+    /** Graduations « rondes » : pas de 1, 2 ou 5 x 10^n couvrant [min, max] en ~n intervalles. */
+    function graduations(min, max, n) {
+        const brut = (max - min) / n;
+        const puissance = Math.pow(10, Math.floor(Math.log10(brut)));
+        const reste = brut / puissance;
+        const pas = (reste < 1.5 ? 1 : reste < 3 ? 2 : reste < 7 ? 5 : 10) * puissance;
+        const valeurs = [];
+        for (let v = Math.ceil(min / pas) * pas; v <= max + pas * 1e-9; v += pas) valeurs.push(Math.abs(v) < pas * 1e-9 ? 0 : v);
+        return { valeurs, pas };
+    }
+    const formaterGraduation = (v, pas) => {
+        const decimales = Math.max(0, Math.min(6, -Math.floor(Math.log10(pas))));
+        return v.toFixed(decimales);
+    };
+
+    const zoneGraphique = document.getElementById('console-graphique');
+    const canevasConsole = document.getElementById('console-canevas');
+    let minuterieGraphique = null;
+    const graphiqueVisible = () => !!zoneGraphique && !zoneGraphique.classList.contains('replie');
+
+    function planifierGraphique() {
+        if (!graphiqueVisible() || minuterieGraphique) return;
+        // Regroupe les rafales de lignes : un seul dessin toutes les ~100 ms.
+        minuterieGraphique = setTimeout(() => { minuterieGraphique = null; dessinerGraphique(); }, 100);
+    }
+
+    function dessinerGraphique() {
+        if (!graphiqueVisible() || !canevasConsole) return;
+        const largeur = zoneGraphique.clientWidth, hauteur = zoneGraphique.clientHeight;
+        if (largeur < 20 || hauteur < 20) return;
+        const ratio = window.devicePixelRatio || 1;
+        if (canevasConsole.width !== Math.round(largeur * ratio) || canevasConsole.height !== Math.round(hauteur * ratio)) {
+            canevasConsole.width = Math.round(largeur * ratio);
+            canevasConsole.height = Math.round(hauteur * ratio);
+        }
+        const ctx = canevasConsole.getContext('2d');
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.clearRect(0, 0, largeur, hauteur);
+        // Couleurs du theme en cours (sombre, clair, contraste eleve).
+        const css = getComputedStyle(document.documentElement);
+        const texte = css.getPropertyValue('--texte-saisie').trim() || '#d6e0ea';
+        const trame = css.getPropertyValue('--bordure-chrome').trim() || '#555555';
+        ctx.font = '11px sans-serif';
+        ctx.textBaseline = 'middle';
+
+        const series = collecterSeries();
+        if (!series.length) {
+            ctx.fillStyle = texte; ctx.globalAlpha = 0.7; ctx.textAlign = 'center';
+            ctx.fillText('Aucune valeur numérique à tracer.', largeur / 2, hauteur / 2 - 8);
+            ctx.fillText('Écrivez des nombres avec « afficher dans la console » (ex. 21.5, ou temp:21 lum:40).', largeur / 2, hauteur / 2 + 10);
+            ctx.globalAlpha = 1;
+            return;
+        }
+
+        const haut = 22, bas = 20, gauche = 46, droite = 12;
+        const zw = largeur - gauche - droite, zh = hauteur - haut - bas;
+        if (zw < 30 || zh < 20) return;
+        let tmax = Math.max(...series.map(s => s.points[s.points.length - 1].t));
+        let tmin = Math.min(...series.map(s => s.points[0].t));
+        let vmin = Math.min(...series.map(s => Math.min(...s.points.map(p => p.v))));
+        let vmax = Math.max(...series.map(s => Math.max(...s.points.map(p => p.v))));
+        if (tmax - tmin < 1e-9) { tmin -= 1; tmax += 1; }
+        if (vmax - vmin < 1e-9) { vmin -= 1; vmax += 1; }
+        const marge = (vmax - vmin) * 0.06; vmin -= marge; vmax += marge;
+        const X = t => gauche + (t - tmin) / (tmax - tmin) * zw;
+        const Y = v => haut + (1 - (v - vmin) / (vmax - vmin)) * zh;
+
+        // Grille et graduations
+        ctx.lineWidth = 1; ctx.strokeStyle = trame; ctx.fillStyle = texte; ctx.textAlign = 'right';
+        const gy = graduations(vmin, vmax, Math.max(2, Math.floor(zh / 28)));
+        gy.valeurs.forEach(v => {
+            const y = Math.round(Y(v)) + 0.5;
+            ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.moveTo(gauche, y); ctx.lineTo(gauche + zw, y); ctx.stroke();
+            ctx.globalAlpha = 1; ctx.fillText(formaterGraduation(v, gy.pas), gauche - 5, y);
+        });
+        ctx.textAlign = 'center';
+        const gx = graduations(tmin, tmax, Math.max(2, Math.floor(zw / 70)));
+        gx.valeurs.forEach(t => {
+            const x = Math.round(X(t)) + 0.5;
+            ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.moveTo(x, haut); ctx.lineTo(x, haut + zh); ctx.stroke();
+            ctx.globalAlpha = 1; ctx.fillText(formaterGraduation(t, gx.pas) + ' s', x, hauteur - bas / 2 + 1);
+        });
+        ctx.globalAlpha = 1; ctx.strokeStyle = texte;
+        ctx.strokeRect(gauche + 0.5, haut + 0.5, zw, zh);
+
+        // Courbes
+        ctx.save();
+        ctx.beginPath(); ctx.rect(gauche, haut, zw, zh); ctx.clip();
+        series.forEach((s, i) => {
+            ctx.strokeStyle = ctx.fillStyle = COULEURS_COURBES[i % COULEURS_COURBES.length];
+            ctx.lineWidth = 1.8; ctx.lineJoin = 'round';
+            ctx.beginPath();
+            s.points.forEach((p, k) => { if (k === 0) ctx.moveTo(X(p.t), Y(p.v)); else ctx.lineTo(X(p.t), Y(p.v)); });
+            ctx.stroke();
+            if (s.points.length <= 80) s.points.forEach(p => { ctx.beginPath(); ctx.arc(X(p.t), Y(p.v), 2.4, 0, Math.PI * 2); ctx.fill(); });
+        });
+        ctx.restore();
+
+        // Legende : couleur, nom et derniere valeur
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        let x = gauche;
+        series.forEach((s, i) => {
+            const derniere = s.points[s.points.length - 1].v;
+            const etiquette = s.nom + ' = ' + (Number.isInteger(derniere) ? derniere : derniere.toFixed(2));
+            ctx.fillStyle = COULEURS_COURBES[i % COULEURS_COURBES.length];
+            ctx.fillRect(x, haut / 2 - 4, 10, 8);
+            ctx.fillStyle = texte;
+            ctx.fillText(etiquette, x + 14, haut / 2);
+            x += 14 + ctx.measureText(etiquette).width + 16;
+        });
+    }
+
+    function afficherVueConsole(vue) {
+        const graphique = vue === 'graphique';
+        // La poignee de redimensionnement de la vue masquee est recopiee : on garde la meme hauteur.
+        if (consoleSortie && zoneGraphique) {
+            const h = (graphique ? consoleSortie : zoneGraphique).offsetHeight;
+            if (h > 0) (graphique ? zoneGraphique : consoleSortie).style.height = h + 'px';
+            consoleSortie.classList.toggle('replie', graphique);
+            zoneGraphique.classList.toggle('replie', !graphique);
+        }
+        const ongletTexte = document.getElementById('onglet-console-texte');
+        const ongletGraphique = document.getElementById('onglet-console-graphique');
+        [[ongletTexte, !graphique], [ongletGraphique, graphique]].forEach(([b, actif]) => {
+            if (!b) return;
+            b.classList.toggle('actif', actif);
+            b.setAttribute('aria-selected', String(actif));
+        });
+        if (graphique) dessinerGraphique();
+    }
+    const ongletTexteConsole = document.getElementById('onglet-console-texte');
+    const ongletGraphiqueConsole = document.getElementById('onglet-console-graphique');
+    if (ongletTexteConsole) ongletTexteConsole.addEventListener('click', () => afficherVueConsole('texte'));
+    if (ongletGraphiqueConsole) ongletGraphiqueConsole.addEventListener('click', () => afficherVueConsole('graphique'));
+    if (zoneGraphique && 'ResizeObserver' in window) new ResizeObserver(() => planifierGraphique()).observe(zoneGraphique);
+    window.graphiqueConsoleTest = { extraireMesures, collecterSeries, dessinerGraphique, afficherVueConsole };
+
+    // ---- Afficher / masquer la barre (bouton >_ de la barre d'outils) ----
+    // Masquee au depart. Elle s'ouvre toute seule a la premiere sortie (print
+    // du simulateur ou de la carte) tant que l'utilisateur ne l'a pas fermee
+    // lui-meme : apres une fermeture volontaire, plus d'ouverture surprise.
+    const consolePanneau = document.getElementById('console-panneau');
+    const btnVueConsole = document.getElementById('btn-vue-console');
+    const btnConsoleFermer = document.getElementById('btn-console-fermer');
+    let consoleFermeeParUtilisateur = false;
+    const consoleOuverte = () => !!consolePanneau && !consolePanneau.classList.contains('replie');
+    function ouvrirConsoleAuto() {
+        if (consolePanneau && !consoleOuverte() && !consoleFermeeParUtilisateur) {
+            basculerPanneau(btnVueConsole, consolePanneau);
+        }
+    }
+    if (btnVueConsole && consolePanneau) {
+        btnVueConsole.addEventListener('click', () => {
+            const etaitOuverte = consoleOuverte();
+            basculerPanneau(btnVueConsole, consolePanneau);
+            consoleFermeeParUtilisateur = etaitOuverte;
+        });
+    }
+    if (btnConsoleFermer && consolePanneau) {
+        btnConsoleFermer.addEventListener('click', () => {
+            if (consoleOuverte()) basculerPanneau(btnVueConsole, consolePanneau);
+            consoleFermeeParUtilisateur = true;
+        });
+    }
+    // Agrandir la zone de sortie (poignee de la zone) rogne l'espace de blocs :
+    // Blockly doit etre prevenu, sinon il garde une hauteur perimee.
+    if (consolePanneau && 'ResizeObserver' in window) {
+        new ResizeObserver(() => {
+            try { Blockly.svgResize(window.workspace); } catch (erreur) { /* page en cours de chargement */ }
+        }).observe(consolePanneau);
+    }
+
+    // ---- Vraie carte : port serie USB (DAPLink, 115200 bauds) ----
+    let portSerie = null;
+    let lecteurSerie = null;
+    // Vrai tant que l'utilisateur veut etre connecte : apres l'envoi d'un
+    // programme la carte redemarre, son port disparait puis revient, et on
+    // le rouvre alors tout seul pour ne pas rater les premiers print().
+    let connexionVoulue = false;
+    const pause = ms => new Promise(r => setTimeout(r, ms));
+
+    function etatConsole(texte) { if (consoleEtat) consoleEtat.textContent = texte; }
+
+    function majBoutonsConsole() {
+        const connecte = !!portSerie;
+        if (btnConsoleCarte) {
+            btnConsoleCarte.textContent = connecte ? '🔌 Déconnecter' : '🔌 Connecter';
+            btnConsoleCarte.classList.toggle('connecte', connecte);
+        }
+        if (champConsole) champConsole.disabled = !connecte;
+        if (btnConsoleEnvoyer) btnConsoleEnvoyer.disabled = !connecte;
+    }
+
+    async function lireSortieCarte(port) {
+        const decodeur = new TextDecoder();
+        try {
+            while (port.readable && portSerie === port) {
+                lecteurSerie = port.readable.getReader();
+                try {
+                    for (;;) {
+                        const { value, done } = await lecteurSerie.read();
+                        if (done) break;
+                        if (value) ecrireConsole(decodeur.decode(value, { stream: true }), 'carte');
+                    }
+                } finally {
+                    lecteurSerie.releaseLock();
+                    lecteurSerie = null;
+                }
+            }
+        } catch (erreur) {
+            // Port arrache ou erreur de lecture : traite juste apres.
+        }
+        if (portSerie === port) await fermerPortSerie(false, 'Liaison avec la carte interrompue.');
+    }
+
+    async function ouvrirPortSerie(port) {
+        await port.open({ baudRate: 115200 });
+        portSerie = port;
+        majBoutonsConsole();
+        etatConsole('Carte connectée (115200 bauds). Sa sortie s\'affiche en vert.');
+        ecrireConsole('— carte connectée —\n', 'info');
+        lireSortieCarte(port);
+    }
+
+    async function fermerPortSerie(parUtilisateur, message) {
+        const port = portSerie;
+        portSerie = null;
+        if (parUtilisateur) connexionVoulue = false;
+        majBoutonsConsole();
+        try { if (lecteurSerie) await lecteurSerie.cancel(); } catch (erreur) { /* deja ferme */ }
+        // close() echoue tant que le lecteur n'a pas rendu son verrou.
+        for (let i = 0; i < 20 && lecteurSerie; i++) await pause(50);
+        try { if (port) await port.close(); } catch (erreur) { /* deja ferme */ }
+        if (message) {
+            etatConsole(message);
+            ecrireConsole('— ' + message + ' —\n', 'info');
+        }
+    }
+
+    if (btnConsoleCarte) {
+        btnConsoleCarte.addEventListener('click', async () => {
+            if (portSerie) { await fermerPortSerie(true, 'Carte déconnectée.'); return; }
+            if (!('serial' in navigator)) {
+                etatConsole('La console de la carte demande Chrome ou Edge (Web Serial).');
+                return;
+            }
+            try {
+                // 0x0D28 : constructeur de l'interface USB des micro:bit (DAPLink).
+                const port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x0D28 }] });
+                connexionVoulue = true;
+                await ouvrirPortSerie(port);
+            } catch (erreur) {
+                connexionVoulue = false;
+                etatConsole(erreur.name === 'NotFoundError'
+                    ? 'Aucune carte choisie.'
+                    : 'Connexion impossible : ' + erreur.message +
+                      ' (un autre onglet ou programme utilise peut-être déjà la carte).');
+            }
+        });
+    }
+
+    if ('serial' in navigator) {
+        navigator.serial.addEventListener('disconnect', evenement => {
+            if (evenement.target === portSerie) fermerPortSerie(false, 'Carte débranchée ou redémarrée.');
+        });
+        navigator.serial.addEventListener('connect', async evenement => {
+            if (!connexionVoulue || portSerie) return;
+            for (let essai = 0; essai < 6 && !portSerie; essai++) {
+                try { await ouvrirPortSerie(evenement.target); return; }
+                catch (erreur) { await pause(400); }
+            }
+        });
+    }
+
+    if (formConsole) {
+        formConsole.addEventListener('submit', async evenement => {
+            evenement.preventDefault();
+            if (!portSerie || !portSerie.writable) return;
+            const texte = champConsole.value;
+            champConsole.value = '';
+            const ecrivain = portSerie.writable.getWriter();
+            try {
+                await ecrivain.write(new TextEncoder().encode(texte + '\r\n'));
+                ecrireConsole('> ' + texte + '\n', 'info');
+            } catch (erreur) {
+                etatConsole('Envoi impossible : ' + erreur.message);
+            } finally {
+                ecrivain.releaseLock();
+            }
+        });
+    }
+
+    // Envoi de texte a la vraie carte pour le panneau IA (ia.js). Les envois sont
+    // mis en file : un seul getWriter() a la fois, sinon le second echoue.
+    // Renvoie false si aucune carte n'est connectee.
+    let fileEcritureSerie = Promise.resolve();
+    window.ecrireSerie = function (texte) {
+        if (!portSerie || !portSerie.writable) return Promise.resolve(false);
+        const port = portSerie;
+        fileEcritureSerie = fileEcritureSerie.then(async () => {
+            if (portSerie !== port || !port.writable) return false;
+            const ecrivain = port.writable.getWriter();
+            try {
+                await ecrivain.write(new TextEncoder().encode(texte));
+                return true;
+            } catch (erreur) {
+                return false;
+            } finally {
+                ecrivain.releaseLock();
+            }
+        });
+        return fileEcritureSerie;
+    };
+    window.carteConnectee = () => !!portSerie;
+
+    // ---- Panneau IA (bouton 🧠) : le moteur est dans ia.js ----
+    const iaPanneau = document.getElementById('ia-panneau');
+    const btnVueIA = document.getElementById('btn-vue-ia');
+    const btnIAFermer = document.getElementById('btn-ia-fermer');
+    if (btnVueIA && iaPanneau) {
+        btnVueIA.addEventListener('click', () => basculerPanneau(btnVueIA, iaPanneau));
+    }
+    if (btnIAFermer && iaPanneau) {
+        btnIAFermer.addEventListener('click', () => {
+            if (!iaPanneau.classList.contains('replie')) basculerPanneau(btnVueIA, iaPanneau);
+        });
+    }
+    if (iaPanneau && 'ResizeObserver' in window) {
+        new ResizeObserver(() => {
+            try { Blockly.svgResize(window.workspace); } catch (erreur) { /* page en cours de chargement */ }
+        }).observe(iaPanneau);
+    }
+    window.ouvrirPanneauIA = function () {
+        if (iaPanneau && btnVueIA && iaPanneau.classList.contains('replie')) basculerPanneau(btnVueIA, iaPanneau);
+    };
+
+    // ------------------------------------------
     // AIDE SUR UN BLOC (clic droit)
     // ------------------------------------------
     // Entree "Aide sur ce bloc" dans le menu contextuel de chaque bloc posé
@@ -5806,6 +6677,19 @@ try {
         // ---- Affichage ----
         afficher_valeur: "Affiche une valeur (texte ou nombre) sur la matrice de LED 5×5. Un texte de plusieurs " +
             "caractères est montré caractère par caractère ; pour le faire défiler, utiliser « faire défiler ».",
+        ia_lorsque_reconnu: "Exécute les blocs quand l'IA (caméra ou micro, panneau IA) passe à la classe indiquée. " +
+            "Écrivez le nom de la classe comme dans Teachable Machine : accents et majuscules sont sans importance. " +
+            "Le bloc ne se redéclenche pas tant que la classe reste la même ; il repart quand l'IA a reconnu autre chose " +
+            "(ou plus rien, confiance sous le seuil) entre-temps. Marche dans le simulateur et sur la vraie carte.",
+        ia_classe_est: "Vrai tant que la dernière classe reconnue par l'IA est celle indiquée. À poser dans un « si » " +
+            "d'une boucle. Se remet à faux quand la confiance passe sous le seuil du panneau IA.",
+        ia_derniere_classe: "Nom de la dernière classe reconnue, sans accents ni majuscules (« Chat noir » devient " +
+            "« chat_noir »), ou un texte vide si rien n'est reconnu.",
+        ia_confiance: "Certitude de l'IA pour la dernière classe reconnue, de 0 à 100 (en %). Elle est mise à jour " +
+            "quand elle varie nettement, pas à chaque image.",
+        afficher_console: "Écrit une valeur (texte ou nombre) dans la console, une ligne à chaque fois. Dans le " +
+            "simulateur, elle apparaît dans la console (barre du bas, bouton « Console ») ; sur la vraie carte, elle part par le " +
+            "câble USB et s'affiche après « Connecter » dans la console (Chrome ou Edge).",
         faire_defiler: "Fait défiler un texte ou un nombre de droite à gauche sur la matrice de LED 5×5.",
         afficher_icone: "Affiche une icône prédéfinie (cœur, visage heureux, triste, fantôme) sur la matrice de LED.",
         afficher_image_matrice: "Dessine une image : cochez les cases de la grille 5×5 pour choisir les LED à allumer.",
@@ -6022,6 +6906,10 @@ try {
     exemple(['afficher_valeur'], 'Dé électronique',
         "Affiche un nombre au hasard entre 1 et 6, puis un autre 2 secondes plus tard.",
         [exLoop(exAff(exB('math_random_int', null, { FROM: exN(1), TO: exN(6) })), exWait(2))]);
+    exemple(['afficher_console'], 'Suivre la température dans la console',
+        "Écrit « Démarrage » une fois, puis la température de la carte chaque seconde dans la console.",
+        [exStart(exB('afficher_console', null, { VALEUR: exT('Démarrage') })),
+         exLoop(exB('afficher_console', null, { VALEUR: exV(exB('capteur_temperature')) }), exWait(1))]);
     exemple(['faire_defiler'], 'Message défilant', "Fait défiler « Bonjour ! » une fois au démarrage.",
         [exStart(exB('faire_defiler', null, { VALEUR: exT('Bonjour !') }))]);
     const LED_SOURIRE = ['1_1', '3_1', '0_3', '1_4', '2_4', '3_4', '4_3'];
@@ -6074,6 +6962,21 @@ try {
         "Seuil à 200 : seuls les bruits assez forts déclenchent le visage triste.",
         [exStart(exB('micro_definir_seuil', { SON: 'LOUD' }, { SEUIL: exN(200) })),
          exWhen('lorsque_son_detecte', { SON: 'LOUD' }, exIcone('SAD'), exWait(1), exClear())]);
+    // ---- IA (modèle Teachable Machine chargé dans le panneau 🧠) ----
+    exemple(['ia_lorsque_reconnu'], 'Reconnaître un chat',
+        "Quand la caméra reconnaît la classe « Chat », un cœur s'affiche ; quand le micro reconnaît « Clap », un fantôme.",
+        [exWhen('ia_lorsque_reconnu', { TYPE: 'vision', CLASSE: 'Chat' }, exIcone('HEART')),
+         exWhen('ia_lorsque_reconnu', { TYPE: 'son', CLASSE: 'Clap' }, exIcone('GHOST'))]);
+    exemple(['ia_classe_est'], 'Condition sur la classe reconnue',
+        "Tant que la caméra reconnaît « Chat », un cœur est affiché ; sinon l'écran est vide.",
+        [exLoop(exSi(exB('ia_classe_est', { TYPE: 'vision', CLASSE: 'Chat' }), exIcone('HEART')),
+                exSi(exB('logic_negate', null, { BOOL: exV(exB('ia_classe_est', { TYPE: 'vision', CLASSE: 'Chat' })) }), exClear()))]);
+    exemple(['ia_derniere_classe'], 'Afficher la classe reconnue dans la console',
+        "Écrit dans la console le nom de la dernière classe reconnue par la caméra, chaque seconde.",
+        [exLoop(exB('afficher_console', null, { VALEUR: exV(exB('ia_derniere_classe', { TYPE: 'vision' })) }), exWait(1))]);
+    exemple(['ia_confiance'], 'Afficher la confiance',
+        "Écrit dans la console la certitude de l'IA (0 à 100) pour le son reconnu, chaque seconde.",
+        [exLoop(exB('afficher_console', null, { VALEUR: exV(exB('ia_confiance', { TYPE: 'son' })) }), exWait(1))]);
     exemple(['reinitialiser_microbit'], 'Redémarrer avec le bouton A',
         "Un cœur s'affiche à chaque démarrage ; le bouton A redémarre la carte.",
         [exStart(exIcone('HEART')), exWhen('lorsque_bouton', { BOUTON: 'a' }, exB('reinitialiser_microbit'))]);
@@ -6442,6 +7345,7 @@ try {
         if (!voileAide) return;
         let nom = '';
         try { nom = bloc.toString(80); } catch (erreur) { nom = bloc.type; }
+        document.getElementById('aide-titre').textContent = 'Aide sur ce bloc';
         document.getElementById('aide-bloc-nom').textContent = nom || bloc.type;
         document.getElementById('aide-bloc-texte').textContent = texteAideBloc(bloc);
         const code = codeDuBloc(bloc);
@@ -6477,6 +7381,7 @@ try {
         try {
             if (!espaceExemple) {
                 espaceExemple = Blockly.inject(conteneur, {
+                    media: 'lib/blockly/media/',
                     readOnly: true, sounds: false, trashcan: false,
                     zoom: { controls: false, wheel: false, pinch: false, startScale: 1 },
                     move: { scrollbars: true, drag: true, wheel: false },
@@ -6573,6 +7478,115 @@ try {
             if (e.key === 'Escape' && voileAide.classList.contains('ouvert')) fermerAideBloc();
         });
     }
+
+    // ---- Aide sur la console (bouton « ? » de la barre du bas) ----
+    // Meme fenetre que l'aide d'un bloc, sans code ni exemple.
+    const TEXTE_AIDE_CONSOLE =
+        "La console affiche les messages écrits par le programme avec le bloc « afficher dans la console » " +
+        "(catégorie Affichage). Elle se trouve en bas de l'application.\n\n" +
+        "AFFICHER OU MASQUER\n" +
+        "• Bouton « Console » de la barre d'outils, ou croix ✕ de la console.\n" +
+        "• Elle s'ouvre toute seule à la première ligne reçue, sauf si vous l'avez fermée vous-même.\n" +
+        "• Tirez la poignée en bas à droite de la zone de texte pour l'agrandir.\n\n" +
+        "AVEC LE SIMULATEUR\n" +
+        "• Cliquez « Lancer la simulation » : les lignes apparaissent dans l'ordre où le programme les écrit.\n" +
+        "• « Lancer la simulation » et « Réinitialiser la simulation » effacent ces lignes. " +
+        "Seules les 1000 dernières lignes sont conservées.\n\n" +
+        "AVEC LA VRAIE CARTE (Chrome ou Edge uniquement)\n" +
+        "1. Branchez la carte micro:bit en USB.\n" +
+        "2. Cliquez « Connecter » et choisissez la carte micro:bit dans la liste.\n" +
+        "3. Envoyez le programme avec « Envoyer sur la carte » : la carte redémarre et la console se reconnecte " +
+        "toute seule. Les lignes envoyées par la carte s'affichent en vert.\n" +
+        "4. « Déconnecter » coupe la liaison (la console ne se reconnecte alors plus toute seule).\n" +
+        "• Si la connexion échoue, un autre onglet ou programme utilise déjà la carte : fermez-le puis réessayez.\n\n" +
+        "ENVOYER DU TEXTE À LA CARTE\n" +
+        "• Écrivez dans le champ du bas puis appuyez sur Entrée (ou « Envoyer »). Le texte envoyé s'affiche en gris, " +
+        "précédé de « > ».\n" +
+        "• La carte ne le lit que si le programme attend une saisie avec input(), ou si la carte est en mode REPL " +
+        "(programme arrêté).\n\n" +
+        "GRAPHIQUE\n" +
+        "• L'onglet « Graphique » trace en courbes les valeurs numériques de la console, au fil du temps " +
+        "(axe horizontal en secondes depuis la première mesure). La vue se met à jour toute seule.\n" +
+        "• Une ligne = un ou plusieurs points. Formats reconnus :\n" +
+        "   21.5  : un nombre (une courbe « Valeur »)\n" +
+        "   (12, 40, 7)  ou  12 40 7  : plusieurs courbes (« Série 1 », « Série 2 »…)\n" +
+        "   temp:21 lum:40  : une courbe par nom (aussi nom=valeur)\n" +
+        "• Les autres lignes (texte, informations) sont ignorées. Une virgule entre deux chiffres est une " +
+        "virgule décimale quand la ligne ne contient qu'un nombre (« 21,5 »).\n" +
+        "• La légende donne la dernière valeur de chaque courbe. Si le simulateur et la carte envoient " +
+        "des valeurs, leurs courbes sont séparées. Les 600 derniers points de chaque courbe sont tracés.\n" +
+        "• Pour tracer une mesure, écrivez-la avec « afficher dans la console » dans une boucle avec une pause.\n\n" +
+        "EXPORTER VERS EXCEL\n" +
+        "• Le bouton 📊 enregistre toutes les lignes affichées dans un fichier Excel (.xlsx).\n" +
+        "• Colonnes : numéro, heure, source (Simulateur, Carte ou Information), texte, et une colonne « Valeur " +
+        "numérique » remplie quand la ligne est un nombre : pratique pour tracer une courbe de mesures.\n\n" +
+        "AUTRES BOUTONS\n" +
+        "• 🗑 efface toute la console, y compris les lignes de la carte.";
+
+    function ouvrirAideConsole() {
+        if (!voileAide) return;
+        document.getElementById('aide-titre').textContent = 'Aide sur la console';
+        document.getElementById('aide-bloc-nom').textContent = 'Utiliser la console';
+        document.getElementById('aide-bloc-texte').textContent = TEXTE_AIDE_CONSOLE;
+        document.getElementById('aide-bloc-code-titre').style.display = 'none';
+        document.getElementById('aide-bloc-code').style.display = 'none';
+        document.getElementById('aide-exemple').style.display = 'none';
+        exempleAffiche = null;
+        voileAide.classList.add('ouvert');
+        document.getElementById('aide-fermer').focus();
+    }
+    const btnConsoleAide = document.getElementById('btn-console-aide');
+    if (btnConsoleAide) btnConsoleAide.addEventListener('click', ouvrirAideConsole);
+
+    // ---- Aide sur l'IA (bouton « ? » du panneau IA) ----
+    const TEXTE_AIDE_IA =
+        "Le panneau IA reconnaît des images (caméra) ou des sons (micro) avec un modèle créé sur " +
+        "Teachable Machine (teachablemachine.withgoogle.com). Le résultat pilote le programme par les blocs " +
+        "de la catégorie « IA », au choix dans le simulateur ou sur la vraie carte.\n\n" +
+        "1. OBTENIR UN MODÈLE (deux possibilités)\n" +
+        "A. Le créer ici, sans Internet : dans une colonne, ouvrez « ✚ Créer un modèle ». Vision : « 📷 Caméra », puis " +
+        "maintenez « Maintenir » en face de chaque classe pour capturer des images (au moins 5, mieux 30 ou plus, en variant " +
+        "angle et lumière). Son : cliquez « ● 1 s » pour enregistrer 1 seconde de son (au moins 5 par classe, et une classe " +
+        "« Bruit de fond » pour le silence). Renommez les classes, ajoutez-en avec « + Classe », puis « 🏋 Entraîner ». " +
+        "Le modèle entraîné devient aussitôt le modèle actif : « Démarrer » pour le tester. « 💾 Enregistrer » télécharge " +
+        "model.json, metadata.json et weights.bin. Les exemples ne sont pas conservés si vous rechargez la page : " +
+        "enregistrez le modèle avant.\n" +
+        "B. En importer un fait sur Teachable Machine (teachablemachine.withgoogle.com) : « Exporter le modèle », onglet " +
+        "Tensorflow.js, copiez l'adresse (après « Importer ») ou téléchargez les 3 fichiers.\n\n" +
+        "2. CHARGER UN MODÈLE EXISTANT\n" +
+        "• Collez l'adresse puis « Charger » (nécessite Internet), ou « Fichiers… » et sélectionnez les 3 fichiers à la fois " +
+        "(fonctionne sans Internet).\n" +
+        "• Les classes du modèle s'affichent. Cliquez « Démarrer » : le navigateur demande l'autorisation d'utiliser la " +
+        "caméra ou le micro. L'image et le son restent dans le navigateur ; seul le nom de la classe est transmis.\n\n" +
+        "3. PROGRAMMER\n" +
+        "• « lorsque l'IA reconnaît <classe> » : exécute les blocs quand cette classe est reconnue. " +
+        "Écrivez la classe exactement comme dans le modèle (majuscules et accents sont ignorés).\n" +
+        "• « la classe reconnue est … », « dernière classe reconnue », « confiance de l'IA » : à utiliser dans des conditions.\n" +
+        "• Seuil de confiance : en dessous, aucune classe n'est retenue.\n\n" +
+        "4. SIMULATEUR OU VRAIE CARTE\n" +
+        "• Simulateur : lancez la simulation, puis démarrez la caméra ou le micro. Les classes reconnues déclenchent les blocs.\n" +
+        "• Vraie carte : connectez-la avec le bouton « Connecter » de la console, envoyez le programme, " +
+        "cochez « Envoyer à la carte » puis démarrez la caméra ou le micro. Le navigateur doit rester ouvert : " +
+        "c'est lui qui reconnaît, la carte reçoit seulement le résultat par le câble USB.\n" +
+        "• Le programme doit contenir au moins un bloc IA, sinon la carte n'écoute pas le port USB.\n\n" +
+        "LIMITES\n" +
+        "• Chrome ou Edge conseillé. La caméra et le micro demandent une page en localhost ou en HTTPS.\n" +
+        "• Un son est reconnu sur environ 1 seconde : la classe « Background Noise » correspond au bruit de fond.";
+
+    function ouvrirAideIA() {
+        if (!voileAide) return;
+        document.getElementById('aide-titre').textContent = 'Aide sur l\'IA';
+        document.getElementById('aide-bloc-nom').textContent = 'Reconnaissance d\'images et de sons';
+        document.getElementById('aide-bloc-texte').textContent = TEXTE_AIDE_IA;
+        document.getElementById('aide-bloc-code-titre').style.display = 'none';
+        document.getElementById('aide-bloc-code').style.display = 'none';
+        document.getElementById('aide-exemple').style.display = 'none';
+        exempleAffiche = null;
+        voileAide.classList.add('ouvert');
+        document.getElementById('aide-fermer').focus();
+    }
+    const btnIAAide = document.getElementById('btn-ia-aide');
+    if (btnIAAide) btnIAAide.addEventListener('click', ouvrirAideIA);
 
     Blockly.ContextMenuRegistry.registry.register({
         id: 'aide_sur_ce_bloc',
@@ -6685,7 +7699,7 @@ try {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'script_microbit.py';
+        a.download = nomFichierPour('script_microbit.py');
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -6697,24 +7711,42 @@ try {
     // l'utilisateur, avec une image de reference). Les boutons #download-btn
     // et #download-py-btn gardent leurs ecouteurs ci-dessus inchanges — seul
     // le balisage autour a bouge, pas leur id.
-    const menuFichierBtn = document.getElementById('menu-fichier-btn');
-    const menuFichierPanneau = document.getElementById('menu-fichier-panneau');
-    if (menuFichierBtn && menuFichierPanneau) {
-        menuFichierBtn.addEventListener('click', e => {
+    document.querySelectorAll('.menu-deroulant').forEach(menu => {
+        const bouton = menu.querySelector('.menu-btn');
+        const panneau = menu.querySelector('.menu-panneau');
+        if (!bouton || !panneau) return;
+        bouton.addEventListener('click', e => {
             e.stopPropagation();
-            menuFichierPanneau.classList.toggle('visible');
+            const ouvrir = !panneau.classList.contains('visible');
+            document.querySelectorAll('.menu-panneau.visible').forEach(p => p.classList.remove('visible'));
+            if (ouvrir) panneau.classList.add('visible');
         });
-        // Un clic n'importe ou ailleurs referme le menu, comme un menu
-        // deroulant classique.
-        document.addEventListener('click', e => {
-            if (!menuFichierPanneau.contains(e.target) && e.target !== menuFichierBtn) {
-                menuFichierPanneau.classList.remove('visible');
-            }
+        // Un clic dans le menu sur une entree le referme (les entrees gardent leurs propres ecouteurs).
+        panneau.querySelectorAll('button').forEach(b => b.addEventListener('click', () => panneau.classList.remove('visible')));
+    });
+    // Un clic n'importe ou ailleurs referme les menus, comme un menu deroulant classique.
+    document.addEventListener('click', e => {
+        document.querySelectorAll('.menu-panneau.visible').forEach(p => {
+            const menu = p.closest('.menu-deroulant');
+            if (!menu || !menu.contains(e.target)) p.classList.remove('visible');
         });
-        menuFichierPanneau.querySelectorAll('button').forEach(bouton => {
-            bouton.addEventListener('click', () => menuFichierPanneau.classList.remove('visible'));
-        });
+    });
+
+    // Champ « Nom du fichier » : nomme les fichiers telecharges (.hex, .py, capture .png).
+    // Vide : les noms d'origine sont conserves. Les caracteres interdits par Windows sont retires.
+    const champNomFichier = document.getElementById('nom-fichier');
+    function nomFichierPour(nomParDefaut) {
+        const ext = nomParDefaut.slice(nomParDefaut.lastIndexOf('.'));
+        const brut = champNomFichier ? champNomFichier.value : '';
+        let base = brut.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\.(hex|py|png)$/i, '').trim().replace(/[. ]+$/, '');
+        if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(base)) base += '_';
+        return base ? base + ext : nomParDefaut;
     }
+    function definirNomFichier(nomDeFichier) {
+        if (champNomFichier) champNomFichier.value = String(nomDeFichier || '').replace(/\.(hex|py)$/i, '');
+    }
+    window.nomFichierPour = nomFichierPour;
+    if (champNomFichier) champNomFichier.addEventListener('keydown', e => { if (e.key === 'Enter') champNomFichier.blur(); });
 
     // ==========================================
     // 4. AFFICHAGE ET INJECTION AUTOMATIQUE DES ÉVÉNEMENTS
@@ -6742,6 +7774,10 @@ try {
         // La radio n'a pas d'interruption : on releve la boite aux lettres a
         // chaque tour, et le pilote appelle le gestionnaire qui convient.
         ['def on_radio_',             '_radio_traiter()'],
+        // IA : meme principe (lecture de l'USB a chaque tour). Declenche des qu'un
+        // bloc IA est utilise, pas seulement un gestionnaire : « l'IA reconnait »
+        // et « derniere classe » ont aussi besoin que l'etat soit tenu a jour.
+        ['def _ia_traiter(',          '_ia_traiter()'],
         // Meme principe que la radio : pas d'interruption materielle non plus
         // pour l'infrarouge, une seule fonction de tri appelee a chaque tour.
         ['def on_ir_',                '_ir_traiter()'],
@@ -7072,6 +8108,7 @@ try {
             window.workspace.clear();
             window.workspace.clearUndo();
             chargerEspaceDeDepart();
+            definirNomFichier('');
             afficherEtat('Nouveau projet créé.', false);
         });
     }
@@ -7405,6 +8442,11 @@ try {
             }
             return { bloc: { type: 'attendre_temps', fields: { UNITE: 'ms' },
                 inputs: { TEMPS: { block: reconstruireExpression(arg) } } }, consommees: 1 };
+        }
+
+        // ---- print(x) : afficher_console ----
+        if (estAppel(appel, 'print') && appel.args.length === 1 && !(appel.keywords && appel.keywords.length)) {
+            return { bloc: { type: 'afficher_console', inputs: { VALEUR: { block: reconstruireExpression(appel.args[0]) } } }, consommees: 1 };
         }
 
         // ---- display.show/scroll/clear ----
@@ -7807,6 +8849,7 @@ try {
                 const texteHex = await fichier.text();
                 const codePython = await extraireCodeDepuisHex(texteHex);
                 importerCodeTexte(codePython, 'Fichier .hex');
+                definirNomFichier(fichier.name);
             } catch (erreur) {
                 afficherEtat('Import .hex échoué : ' + erreur.message, true);
             }
@@ -7824,6 +8867,7 @@ try {
             try {
                 const texte = await fichier.text();
                 importerCodeTexte(texte, 'Script .py');
+                definirNomFichier(fichier.name);
             } catch (erreur) {
                 afficherEtat('Import .py échoué : ' + erreur.message, true);
             }
@@ -7927,7 +8971,7 @@ try {
             const urlPng = URL.createObjectURL(blobPng);
             const a = document.createElement('a');
             a.href = urlPng;
-            a.download = 'programme-microbit.png';
+            a.download = nomFichierPour('programme-microbit.png');
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -9822,6 +10866,10 @@ try {
             dessinerLeds();
             window.simu_playQueue();
         }
+        else if (action.type === 'console') {
+            ecrireConsole(action.texte, 'sim');
+            window.simu_playQueue();
+        }
         else if (action.type === 'lcd') {
             if (action.action === 'init' || action.action === 'effacer') {
                 tamponLcd = ['                ', '                '];
@@ -10075,6 +11123,8 @@ try {
      * vol : rien de l'exécution précédente ne peut plus reprendre la main.
      */
     window.simu_reinitialiser = function() {
+        effacerConsole('sim');
+        window.simu_uartFile = [];
         window.simuQueue = [];
         jetonSimulation++;
         arreterSon();

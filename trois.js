@@ -11,7 +11,7 @@ import {
   isUniversalHex,
   separateUniversalHex,
   microbitBoardId,
-} from 'https://esm.sh/@microbit/microbit-universal-hex';
+} from './lib/microbit/microbit-universal-hex.js';
 
 /**
  * Emballe au format universel le hex produit par le système de fichiers.

@@ -18,13 +18,16 @@
     } catch (erreur) { /* localStorage indisponible (navigation privee...) : tant pis, etat par defaut */ }
   </script>
 
-  <script src="https://unpkg.com/blockly@10.4.3/blockly_compressed.js"></script>
-  <script src="https://unpkg.com/blockly@10.4.3/blocks_compressed.js"></script>
-  <script src="https://unpkg.com/blockly@10.4.3/python_compressed.js"></script>
-  <script src="https://unpkg.com/blockly@10.4.3/msg/fr.js"></script>
+  <!-- Bibliotheques EMBARQUEES dans lib/ (plus aucun CDN) : l'application et l'exe
+       marchent hors ligne. Versions figees : Blockly 10.4.3, Brython 3.11.2,
+       microbit-fs 0.10.1 et microbit-universal-hex 0.2.2 (voir readme.txt). -->
+  <script src="lib/blockly/blockly_compressed.js"></script>
+  <script src="lib/blockly/blocks_compressed.js"></script>
+  <script src="lib/blockly/python_compressed.js"></script>
+  <script src="lib/blockly/msg/fr.js"></script>
   
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/brython/3.11.2/brython.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/brython/3.11.2/brython_stdlib.min.js"></script>
+  <script src="lib/brython/brython.min.js"></script>
+  <script src="lib/brython/brython_stdlib.min.js"></script>
   
   <style>
     /* Theme clair/sombre : variables pour les grandes surfaces (barre d'outils,
@@ -38,23 +41,23 @@
        le petit <script> juste avant </head>) pour eviter un flash. */
     :root {
       --fond-page: #f4f4f4;
-      --fond-chrome: #2c3e50;
-      --fond-chrome-profond: #1a252f;
+      --fond-chrome: #303030;
+      --fond-chrome-profond: #1c1c1c;
       --texte-chrome: #ffffff;
-      --fond-saisie: #16212c;
-      --texte-saisie: #d6e0ea;
-      --bordure-chrome: #3d566e;
+      --fond-saisie: #202020;
+      --texte-saisie: #e6e6e6;
+      --bordure-chrome: #555555;
       --fond-code: #1e1e1e;
       --texte-code: #d4d4d4;
     }
     :root[data-theme="light"] {
       --fond-page: #f4f4f4;
-      --fond-chrome: #e7ecf1;
-      --fond-chrome-profond: #c7d0da;
-      --texte-chrome: #1c2530;
+      --fond-chrome: #ececec;
+      --fond-chrome-profond: #cfcfcf;
+      --texte-chrome: #1c1c1c;
       --fond-saisie: #ffffff;
-      --texte-saisie: #2c3e50;
-      --bordure-chrome: #c3ccd6;
+      --texte-saisie: #303030;
+      --bordure-chrome: #c8c8c8;
       --fond-code: #ffffff;
       --texte-code: #24292e;
     }
@@ -86,17 +89,13 @@
       --texte-code: #000000;
     }
     :root[data-contrast="high"] #toolbar,
-    :root[data-contrast="high"] #simulator-container,
-    :root[data-contrast="high"] #code-container,
-    :root[data-contrast="high"] #menu-fichier-panneau,
+    :root[data-contrast="high"] .menu-panneau,
     :root[data-contrast="high"] #panneau-options {
       border-color: var(--bordure-chrome);
       border-style: solid;
       border-width: 2px;
     }
     :root[data-contrast="high"] #toolbar { border-width: 0 0 2px 0; }
-    :root[data-contrast="high"] #simulator-container { border-width: 0 0 0 2px; }
-    :root[data-contrast="high"] #code-container { border-width: 0 0 0 2px; }
     /* Contraste eleve, suite : les blocs eux-memes (image de reference
        fournie par l'utilisateur) — noir avec un simple contour blanc, plutot
        que remplis de la couleur de leur categorie. Blockly peint chaque bloc
@@ -111,7 +110,7 @@
     :root[data-contrast="high"] .blocklyPath {
       fill: #000000 !important;
       stroke: #ffffff !important;
-      stroke-width: 1.5px !important;
+      stroke-width: 3px !important;
     }
     :root[data-contrast="high"] .blocklyPathDark { fill: #000000 !important; }
     :root[data-contrast="high"] .blocklyPathLight { stroke: #ffffff !important; fill: none !important; }
@@ -122,53 +121,146 @@
     }
     :root[data-contrast="high"] .blocklyEditableText > .blocklyText,
     :root[data-contrast="high"] .blocklyNonEditableText > .blocklyText { fill: #ffffff !important; }
-    body { margin: 0; padding: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--fond-page);}
-    #toolbar { padding: 10px; background-color: var(--fond-chrome); color: var(--texte-chrome); display: flex; align-items: center;}
-    #copyright-toolbar { margin-left: auto; margin-right: 12px; color: #9fb3c8; font-size: 12px; white-space: nowrap; }
-    button { padding: 8px 16px; cursor: pointer; font-weight: bold; border-radius: 4px; border: none; background: #3498db; color: white; transition: 0.2s; margin-right: 10px;}
-    button:hover { background: #2980b9; }
-    /* Icones emoji des boutons de la barre d'outils : rendues nettement plus
-       grandes que le texte par defaut du navigateur, reduites ici pour rester
-       proportionnees au reste du bouton. */
-    .icone-bouton { font-size: 0.75em; margin-right: 2px; }
-    #download-py-btn { background: #9b59b6; }
-    #download-py-btn:hover { background: #8e44ad; }
-    /* Menu "Fichier" : regroupe les deux telechargements, ouverts avant en
-       deux boutons toujours visibles dans la barre d'outils. */
-    #menu-fichier-conteneur { position: relative; margin-right: 10px; }
-    #menu-fichier-btn { margin-right: 0; }
-    #menu-fichier-panneau { display: none; flex-direction: column; position: absolute;
-        top: 100%; left: 0; margin-top: 4px; padding: 8px; background: var(--fond-chrome);
-        border: 1px solid var(--bordure-chrome); border-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.4);
-        z-index: 1000; min-width: 230px; }
-    #menu-fichier-panneau.visible { display: flex; }
-    #menu-fichier-panneau button { margin-right: 0; margin-bottom: 8px; white-space: nowrap; }
-    /* :last-of-type (pas :last-child) : les <input type="file"> caches qui
-       suivent les boutons d'import dans le balisage restent bien le dernier
-       enfant du panneau, mais pas le dernier <button>. */
-    #menu-fichier-panneau button:last-of-type { margin-bottom: 0; }
-    .menu-fichier-separateur { height: 1px; background: var(--bordure-chrome); margin: 2px 0 10px; }
-    #import-hex-btn, #import-py-btn { background: #e67e22; }
-    #import-hex-btn:hover, #import-py-btn:hover { background: #d35400; }
-    /* Boutons reduits a leur logo : le libelle passe dans l'infobulle (title) et
-       aria-label pour les lecteurs d'ecran. */
-    .btn-logo { padding: 5px 11px; }
-    .btn-logo .icone-bouton { font-size: 1.25em; margin-right: 0; }
-    #capture-ecran-btn { background: #16a085; }
-    #capture-ecran-btn:hover { background: #12816a; }
-    #btn-envoyer { background: #16a085; }
-    #btn-envoyer:hover { background: #12816a; }
-    #btn-envoyer:disabled { background: #22303d; color: #7f8c8d; cursor: not-allowed; }
+    body { margin: 0; padding: 0; font-family: var(--font, 'Segoe UI', Arial, sans-serif); display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--fond-page);}
+    /* Police unique de l'interface : Segoe UI (repli Arial). Les boutons, champs et listes ne l'heritent pas tout seuls ;
+       le code (Consolas / monospace) et les dessins de la carte micro:bit gardent leurs polices propres (regles plus precises). */
+    button, input, select, textarea { font-family: inherit; }
+    /* ═══════════════════════════════════════════════════════════════════════
+       BANDEAU DU HAUT — identique a celui de la version Arduino R4 (EasyBloc / Technologie Services).
+       Seule l'apparence change : les id et les fonctions de ce logiciel sont conserves
+       (#toolbar, #btn-annuler, #btn-envoyer, menu-*-btn...). Le comportement des boutons
+       a etiquette variable (Afficher / Masquer...) est assure par bandeau.js.
+       Couleurs : turquoise (clair), turquoise fonce (sombre), noir (contraste eleve).
+       ═══════════════════════════════════════════════════════════════════════ */
+    :root {
+      --bandeau: #ff5501; --bandeau-sombre: #d94700; --accent: #ff5501; --accent-fonce: #b33a00; --top-h: 44px;   /* charte Technologie Services : bandeau orange (clair #ff5501, sombre un peu plus profond), filet bas orange fonce */
+      --font: 'Segoe UI', Arial, sans-serif;
+      --btn-green: #4caa3c; --btn-green-h: #3d8e2f;
+      --couleur-bandeau: var(--bandeau);
+    }
+    :root:not([data-theme="light"]) { --couleur-bandeau: var(--bandeau-sombre); }
+    :root[data-contrast="high"] { --couleur-bandeau: #000; }
+
+    #toolbar {
+      min-height: var(--top-h); box-sizing: border-box; position: relative;
+      background: var(--bandeau); color: #fff; border-bottom: 3px solid var(--accent-fonce);
+      display: flex; align-items: center; flex-wrap: wrap; gap: 4px 4px;
+      padding: 3px 8px; flex-shrink: 0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.25); z-index: 100; font-family: var(--font);
+    }
+    :root:not([data-theme="light"]) #toolbar { background: var(--bandeau-sombre); }
+    :root[data-contrast="high"] #toolbar { background: #000; }
+
+    .tb-btn {
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 10px; margin: 0; border: none; background: transparent; color: #fff;
+      cursor: pointer; border-radius: 4px; font-size: 13px; font-weight: normal;
+      font-family: var(--font); white-space: nowrap; transition: background 0.15s;
+    }
+    .tb-btn:hover { background: rgba(255,255,255,0.15); }
+    .tb-btn svg { flex-shrink: 0; }
+    .tb-btn:disabled, .tb-btn:disabled:hover { opacity: 0.45; cursor: not-allowed; background: transparent; }
+    /* Fonction activee (console, simulation, code, IA affiches : classe .inactif absente) : liseré blanc sous le bouton. */
+    #btn-vue-console:not(.inactif), #btn-vue-simu:not(.inactif), #btn-vue-code:not(.inactif), #btn-vue-ia:not(.inactif) {
+      box-shadow: inset 0 -3px 0 #fff; border-radius: 4px 4px 0 0; }
+    .tb-sep { width: 1px; height: 24px; background: rgba(255,255,255,0.25); margin: 0 4px; }
+
+    /* Logo (accessoire : le fichier logo.png actuel est conserve) */
+    #tb-logo { display: flex; align-items: center; padding: 0 6px 0 2px; margin-right: 2px; flex-shrink: 0; }
+    #tb-logo img { height: 30px; width: auto; display: block; }
+
+    /* Nom du fichier : encadre blanc, texte de la couleur du bandeau (champ de saisie : un clic permet de le renommer) */
+    #tb-nomfichier {
+      max-width: 240px; background: #fff; color: var(--couleur-bandeau); font-weight: 700;
+      padding: 4px 10px; margin: 0 2px; border: 2px solid #fff; border-radius: 5px;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); cursor: text;
+    }
+    #tb-nomfichier:hover { background: #eef7f7; border-color: #eef7f7; }
+    #nom-fichier {
+      width: 96px; min-width: 0; border: none; outline: none; background: transparent;
+      color: inherit; font: inherit; font-weight: 700; padding: 0; margin: 0; text-overflow: ellipsis;
+    }
+    #nom-fichier::placeholder { color: var(--couleur-bandeau); opacity: 0.6; font-weight: 600; }
+
+    /* Menus deroulants */
+    .tb-dropdown { position: relative; }
+    .tb-dropdown-menu {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0;
+      background: #fff; color: #333; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      min-width: 160px; z-index: 1000; overflow: hidden;
+    }
+    .tb-dropdown-menu.visible, .tb-dropdown-menu.open { display: block; }
+    .tb-dropdown-menu button {
+      display: block; width: 100%; text-align: left; padding: 8px 14px; margin: 0; border: none; background: none;
+      cursor: pointer; font-size: 13px; font-weight: normal; font-family: var(--font); color: #333; border-radius: 0; white-space: nowrap;
+    }
+    .tb-dropdown-menu button:hover { background: #f0f0f0; }
+    .tb-dropdown-menu button:disabled, .tb-dropdown-menu button:disabled:hover { color: #999; background: none; cursor: not-allowed; }
+    .menu-titre { padding: 8px 14px 3px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #888; }
+    .tb-dropdown-menu button.choisi { font-weight: 700; color: var(--accent-fonce); }
+    .tb-dropdown-menu button.choisi::after { content: '  ✓'; }
+    #menu-affichage-panneau { left: 0; min-width: 190px; }
+    #menu-aide-panneau { left: auto; right: 0; min-width: 230px; }     /* Aide : tout a droite, s'ouvre vers la gauche */
+
+    /* Selecteur de carte (non disponible sur micro:bit : grise), pousse a droite */
+    #port-group {
+      margin-left: auto; display: flex; align-items: center; gap: 4px; padding: 3px 6px;
+      background: rgba(255,255,255,0.12); border-radius: 4px; color: #fff;
+    }
+    #port-select {
+      background: #fff; color: #333; border: none; border-radius: 3px; padding: 4px 6px;
+      font-family: var(--font); font-size: 12px; max-width: 90px; text-overflow: ellipsis; cursor: pointer;
+    }
+    #port-select:disabled, #port-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+    #port-refresh { display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: #fff;
+      cursor: pointer; padding: 3px; margin: 0; border-radius: 3px; }
+
+    #port-refresh.occupe svg { animation: tb-tourne 0.8s linear infinite; }
+    @keyframes tb-tourne { to { transform: rotate(360deg); } }
+    /* Televerser (= « Envoyer sur la carte ») : bouton plein bleu */
+    #btn-envoyer { margin-left: 4px; background: #1c7ed6; color: #fff; padding: 6px 14px; font-size: 14px; font-weight: 700; }
+    #btn-envoyer:hover { background: #1864ab; }
+    #btn-envoyer:disabled, #btn-envoyer:disabled:hover { background: #1c7ed6; }
+
+    /* Lancer la simulation : bouton plein vert, rouge « Arreter » pendant la simulation */
+    #tb-lancer {
+      margin-left: 4px; background: var(--btn-green); padding: 6px 16px; border-radius: 4px; font-weight: 600; font-size: 14px;
+      border: none; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s;
+    }
+    #tb-lancer:hover { background: var(--btn-green-h); }
+    #tb-lancer.running { background: #c0392b; }
+    #tb-lancer.running:hover { background: #a5322a; }
+
+    #copyright-toolbar { color: rgba(255,255,255,0.75); font-size: 11px; white-space: nowrap; margin: 0 6px; }
+
+    /* Voyant de connexion de la carte (bouton Console) : anneau vide = non connectee, disque plein vert = connectee.
+       La forme change en plus de la couleur (lisible sans distinguer les teintes). */
+    .voyant { display: inline-block; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%;
+              border: 2px solid rgba(255,255,255,0.75); background: transparent; flex-shrink: 0; }
+    .voyant.connecte { background: #4cd964; border-color: #fff; box-shadow: 0 0 0 2px #1a7a2e; }
+    /* Theme sombre / contraste eleve (regles du bandeau) */
+    :root:not([data-theme="light"]) .tb-dropdown-menu { background: #2a2c31; color: #e6e6e6; }
+    :root:not([data-theme="light"]) .tb-dropdown-menu button { color: #e6e6e6; }
+    :root:not([data-theme="light"]) .tb-dropdown-menu button:hover { background: #3a3d43; }
+    :root:not([data-theme="light"]) .tb-dropdown-menu button.choisi { color: #ff7a33; }
+    :root:not([data-theme="light"]) .tb-dropdown-menu button:disabled { color: #777; background: none; }
+    :root[data-contrast="high"] .tb-btn { font-weight: 600; }
+    :root[data-contrast="high"] .tb-btn:hover { background: #fff; color: #000; }
+    :root[data-contrast="high"] #tb-nomfichier { box-shadow: none; }
+    :root[data-contrast="high"] #btn-envoyer { background: #fff; color: #000; border: 2px solid #fff; }
+    :root[data-contrast="high"] #btn-envoyer:hover { background: #ddd; }
+    button { padding: 8px 16px; cursor: pointer; font-weight: bold; border-radius: 4px; border: none; background: #cf4400; color: white; transition: 0.2s; margin-right: 10px;}
+    button:hover { background: #b33a00; }
     /* Zone de message : on y lit la cause réelle d'un échec, plutôt qu'une
        alerte générique qui masquerait le vrai problème. */
     /* Replier un panneau rend sa largeur a la zone de blocs : c'est le remede
        le plus direct quand le tiroir de la boite a outils prend toute la place. */
-    .btn-vue { background: #34495e; font-weight: normal; font-size: 13px; padding: 7px 12px; }
-    .btn-vue:hover { background: #415b76; }
-    .btn-vue.inactif { background: #22303d; color: #7f8c8d; }
-    .btn-vue.actif { background: #e67e22; color: #fff; }
-    .btn-vue.actif:hover { background: #d35400; }
-    .btn-vue:disabled, .btn-vue:disabled:hover { background: #22303d; color: #7f8c8d; cursor: not-allowed; }
+    .btn-vue { background: #4a4a4a; font-weight: normal; font-size: 13px; padding: 7px 12px; }
+    .btn-vue:hover { background: #5e5e5e; }
+    .btn-vue.inactif { background: #2a2a2a; color: #8c8c8c; }
+    .btn-vue.actif { background: #cf4400; color: #fff; }
+    .btn-vue.actif:hover { background: #b33a00; }
+    .btn-vue:disabled, .btn-vue:disabled:hover { background: #2a2a2a; color: #8c8c8c; cursor: not-allowed; }
     /* Le bouton du panneau administrateur reste cache tant que le raccourci
        secret (Ctrl+Alt+Maj+A) n'a pas ete utilise : voir activerAdmin() dans
        un.js. Pas une vraie protection, juste evite qu'un eleve tombe dessus. */
@@ -185,9 +277,9 @@
     #panneau-options { background: var(--fond-code); color: var(--texte-chrome); border-radius: 8px;
                        padding: 18px 20px; min-width: 380px; max-width: 460px; max-height: 80vh;
                        overflow-y: auto; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
-    #panneau-options h3 { margin: 0 0 10px 0; color: #2ecc71; font-size: 14px;
+    #panneau-options h3 { margin: 0 0 10px 0; color: #ff7a33; font-size: 14px;
                           text-transform: uppercase; }
-    #panneau-options p { margin: 0 0 12px 0; font-size: 12px; color: #9fb3c8; max-width: 40ch; }
+    #panneau-options p { margin: 0 0 12px 0; font-size: 12px; color: #b8b8b8; max-width: 40ch; }
     #panneau-options .actions { display: flex; gap: 8px; }
     #panneau-options .actions button { margin: 0; font-size: 13px; padding: 7px 12px; }
     /* Fenetre d'envoi sur la carte : au-dessus de tout (le z-index de Blockly
@@ -199,11 +291,11 @@
     #fenetre-envoi { background: var(--fond-code); color: var(--texte-chrome); border-radius: 10px;
                      padding: 22px 26px; width: 360px; max-width: 90vw; text-align: center;
                      box-shadow: 0 8px 30px rgba(0,0,0,0.5); border: 1px solid var(--bordure-chrome); }
-    #fenetre-envoi h3 { margin: 0 0 6px 0; color: #2ecc71; font-size: 15px; text-transform: uppercase; }
+    #fenetre-envoi h3 { margin: 0 0 6px 0; color: #ff7a33; font-size: 15px; text-transform: uppercase; }
     #envoi-phase { margin: 0 0 14px 0; font-size: 13px; min-height: 1.3em; }
     #envoi-barre { height: 14px; background: var(--fond-saisie); border: 1px solid var(--bordure-chrome);
                    border-radius: 7px; overflow: hidden; }
-    #envoi-remplissage { height: 100%; width: 0%; background: #2ecc71; transition: width 0.12s linear; }
+    #envoi-remplissage { height: 100%; width: 0%; background: #ff5501; transition: width 0.12s linear; }
     #envoi-pourcent { margin: 10px 0 0 0; font-size: 22px; font-weight: bold; }
     /* Fenetre d'aide d'un bloc (clic droit > "Aide sur ce bloc"). Au-dessus
        du menu contextuel de Blockly. */
@@ -215,15 +307,15 @@
                     box-shadow: 0 8px 30px rgba(0,0,0,0.5); border: 1px solid var(--bordure-chrome); }
     #aide-entete { display: flex; align-items: center; gap: 10px; margin: 0 0 10px 0; }
     #aide-logo { height: 30px; width: auto; flex: 0 0 auto; }
-    #fenetre-aide h3 { margin: 0; color: #2ecc71; font-size: 12px; text-transform: uppercase; }
+    #fenetre-aide h3 { margin: 0; color: #ff7a33; font-size: 12px; text-transform: uppercase; }
     #aide-bloc-nom { margin: 0 0 12px 0; font-size: 16px; font-weight: bold; word-break: break-word; }
     #aide-bloc-texte { margin: 0 0 12px 0; font-size: 13px; line-height: 1.45; white-space: pre-wrap; }
-    #aide-bloc-code-titre { margin: 0 0 4px 0; font-size: 11px; color: #9fb3c8; text-transform: uppercase; }
+    #aide-bloc-code-titre { margin: 0 0 4px 0; font-size: 11px; color: #b8b8b8; text-transform: uppercase; }
     #aide-bloc-code { margin: 0 0 14px 0; padding: 8px 10px; font-size: 12px; background: var(--fond-saisie);
                       color: var(--texte-saisie); border-radius: 5px; overflow-x: auto; white-space: pre; }
     #aide-exemple { margin: 0 0 14px 0; padding: 10px 12px; border-radius: 6px;
                     border: 1px solid var(--bordure-chrome); }
-    #aide-exemple-titre { margin: 0 0 4px 0; font-size: 13px; font-weight: bold; color: #2ecc71; }
+    #aide-exemple-titre { margin: 0 0 4px 0; font-size: 13px; font-weight: bold; color: #ff7a33; }
     #aide-exemple-desc { margin: 0 0 8px 0; font-size: 12px; line-height: 1.4; }
     /* Petit espace Blockly en lecture seule : le programme d'exemple en blocs. */
     #aide-exemple-blocs { position: relative; height: 230px; margin: 0 0 10px 0; border-radius: 5px;
@@ -235,13 +327,13 @@
                          color: var(--texte-saisie); border-radius: 5px; overflow-x: auto; white-space: pre; }
     #aide-inserer { margin: 0; font-size: 12px; padding: 6px 12px; }
     #aide-fermer { margin: 0; font-size: 13px; padding: 7px 14px; }
-    #btn-ordre-defaut { background: #7f8c8d; }
-    #btn-ordre-defaut:hover { background: #616a6b; }
+    #btn-ordre-defaut { background: #8c8c8c; }
+    #btn-ordre-defaut:hover { background: #6e6e6e; }
 
     .onglets-admin { display: flex; gap: 6px; margin-bottom: 12px; }
-    .onglet-admin { background: #34495e; font-size: 12px; padding: 6px 10px; margin: 0; }
-    .onglet-admin:hover { background: #415b76; }
-    .onglet-admin.actif { background: #2ecc71; color: #12281e; }
+    .onglet-admin { background: #4a4a4a; font-size: 12px; padding: 6px 10px; margin: 0; }
+    .onglet-admin:hover { background: #5e5e5e; }
+    .onglet-admin.actif { background: #ff5501; color: #1b1b1b; }
     .vue-admin { display: none; }
     .vue-admin.active { display: block; }
 
@@ -250,10 +342,10 @@
                            padding: 7px 10px; margin-bottom: 4px; font-size: 13px;
                            display: flex; align-items: center; gap: 8px; user-select: none; }
     .panneau-admin-liste li[draggable="true"] { cursor: grab; }
-    .panneau-admin-liste li::before { content: '\2261'; color: #7f8c8d; }
+    .panneau-admin-liste li::before { content: '\2261'; color: #8c8c8c; }
     .panneau-admin-liste li.sans-poignee::before { content: ''; }
     .panneau-admin-liste li.attrape { opacity: 0.35; }
-    .panneau-admin-liste li.survol { border-color: #2ecc71; }
+    .panneau-admin-liste li.survol { border-color: #ff5501; }
     .panneau-admin-liste li.masquee { opacity: 0.45; }
     .panneau-admin-liste li .nom-ligne { flex: 1; }
     .panneau-admin-liste li input[type="text"] { flex: 1; background: var(--fond-saisie); border: 1px solid var(--bordure-chrome);
@@ -265,7 +357,7 @@
     .panneau-admin-liste li input.pastille-couleur::-webkit-color-swatch-wrapper { padding: 0; }
     .panneau-admin-liste li input.pastille-couleur::-webkit-color-swatch { border: none; border-radius: 3px; }
     .panneau-admin-liste li input.pastille-couleur::-moz-color-swatch { border: none; border-radius: 3px; }
-    .icone-admin { background: none; border: none; color: #9fb3c8; cursor: pointer; padding: 2px 5px;
+    .icone-admin { background: none; border: none; color: #b8b8b8; cursor: pointer; padding: 2px 5px;
                    font-size: 14px; margin: 0; border-radius: 3px; }
     .icone-admin:hover { background: var(--bordure-chrome); color: #fff; }
 
@@ -274,11 +366,11 @@
         background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome); font-size: 13px; }
     .bloc-libelle { background: var(--fond-chrome); border: 1px solid var(--bordure-chrome); border-radius: 4px; padding: 8px 10px;
         margin-bottom: 6px; }
-    .bloc-libelle .type-bloc { font-size: 11px; color: #7f8c8d; margin-bottom: 5px; font-family: monospace; }
+    .bloc-libelle .type-bloc { font-size: 11px; color: #8c8c8c; margin-bottom: 5px; font-family: monospace; }
     .bloc-libelle .champ-libelle { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 
-    #lien-readme { display: inline-block; margin-bottom: 10px; color: #5dade2; font-size: 12px; }
-    #lien-readme:hover { color: #85c1e9; }
+    #lien-readme { display: inline-block; margin-bottom: 10px; color: #ff7a33; font-size: 12px; }
+    #lien-readme:hover { color: #ffa066; }
     #zone-aide { white-space: pre-wrap; font-family: Consolas, monospace; font-size: 12px; line-height: 1.5;
         background: var(--fond-saisie); border: 1px solid var(--bordure-chrome); border-radius: 4px; padding: 10px 12px;
         max-height: 55vh; overflow-y: auto; margin: 0; color: var(--texte-saisie); }
@@ -291,14 +383,20 @@
     /* Le zoom vit dans la barre, pas dans le canevas : les controles internes de
        Blockly sont dessines a l'interieur de l'espace de travail, ou ils peuvent
        etre rognes par le bord ou recouverts par la corbeille. */
-    #zoom-groupe { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px;
-                   background: #22303d; border-radius: 4px; padding: 3px 6px; }
-    .btn-zoom { background: #34495e; font-weight: bold; font-size: 15px; line-height: 1;
-                padding: 5px 10px; margin: 0; min-width: 30px; }
-    .btn-zoom:hover { background: #415b76; }
-    .btn-zoom-large { font-size: 12px; font-weight: normal; padding: 6px 10px; }
+    #zoom-groupe { display: inline-flex; align-items: center; gap: 3px; margin-right: 2px;
+                   background: #2a2a2a; border-radius: 4px; padding: 3px 6px; }
+    .btn-zoom { background: #4a4a4a; font-weight: bold; font-size: 15px; line-height: 1;
+                padding: 5px 7px; margin: 0; min-width: 24px; }
+    .btn-zoom:hover { background: #5e5e5e; }
+    .btn-zoom-large { font-size: 12px; font-weight: normal; padding: 6px 8px; }
     #zoom-valeur { font-size: 12px; color: #bdc3c7; min-width: 5ch; text-align: center; }
-    #etat { font-size: 13px; opacity: 0.85; margin-left: auto; text-align: right; max-width: 70ch; }
+    /* Message d'etat : sous le bord droit de la barre, par-dessus le contenu (sans pointer-events), pour ne jamais
+       decaler les boutons ni se tronquer ; invisible quand il est vide. */
+    #toolbar { position: relative; }
+    #etat { position: absolute; top: 100%; right: 8px; z-index: 60; max-width: min(70ch, 60vw); pointer-events: none;
+            font-size: 13px; padding: 5px 12px; border-radius: 0 0 6px 6px; background: var(--fond-chrome); color: var(--texte-chrome);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.35); }
+    #etat:empty { display: none; }
     #etat.erreur { color: #ff8a80; opacity: 1; font-weight: bold; }
 
     /* min-height: 0 est indispensable : sans lui, un enfant flex ne peut pas
@@ -323,21 +421,167 @@
     #voile-blocs-figes { position: absolute; inset: 0; background: rgba(20, 30, 40, 0.55);
                           display: none; align-items: center; justify-content: center; z-index: 50; }
     #voile-blocs-figes.visible { display: flex; }
-    #voile-blocs-figes span { background: #22303d; color: #ffcc80; padding: 10px 18px; border-radius: 6px;
+    #voile-blocs-figes span { background: #2a2a2a; color: #ffcc80; padding: 10px 18px; border-radius: 6px;
                                font-size: 13px; font-weight: bold; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
 
     #code-container { flex: 0 0 24%; min-width: 240px; min-height: 0; height: 100%; background: var(--fond-code); color: var(--texte-code); padding: 15px; box-sizing: border-box; overflow-y: auto; border-left: 2px solid var(--fond-chrome); display: flex; flex-direction: column;}
-    #code-container h3 { margin-top: 0; color: #569cd6; font-size: 14px; text-transform: uppercase; }
+    #code-container h3 { margin-top: 0; color: #ff7a33; font-size: 14px; text-transform: uppercase; }
     .code-entete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .code-entete h3 { margin: 0; }
-    #btn-editer-code { font-size: 12px; padding: 5px 10px; margin: 0; background: #34495e; flex: 0 0 auto; }
-    #btn-editer-code:hover { background: #415b76; }
-    #btn-editer-code.actif { background: #e67e22; }
-    #btn-editer-code.actif:hover { background: #d35400; }
+    #btn-editer-code { font-size: 12px; padding: 5px 10px; margin: 0; background: #4a4a4a; flex: 0 0 auto; }
+    #btn-editer-code:hover { background: #5e5e5e; }
+    #btn-editer-code.actif { background: #cf4400; }
+    #btn-editer-code.actif:hover { background: #b33a00; }
     #code-display { white-space: pre-wrap; font-family: Consolas, monospace; font-size: 13px; line-height: 1.5; }
 
+    /* Console : barre en bas de l'application (frere de #main-container dans
+       le body en colonne). print() du simulateur et sortie serie de la carte.
+       Masquee par defaut : la classe .replie est posee dans le HTML. */
+    #console-panneau { flex: 0 0 auto; display: flex; flex-direction: column; box-sizing: border-box;
+        padding: 8px 12px 10px; background: var(--fond-code); color: var(--texte-code);
+        border-top: 2px solid var(--fond-chrome); }
+    :root[data-contrast="high"] #console-panneau { border-top-width: 2px; border-top-color: #ffffff; }
+    #console-entete { display: flex; align-items: center; gap: 12px; }
+    #console-entete h3 { margin: 0; color: #ff7a33; font-size: 13px; text-transform: uppercase; flex: 0 0 auto; }
+    #console-boutons { display: flex; gap: 6px; white-space: nowrap; flex: 0 0 auto; }
+    #console-boutons button { font-size: 12px; padding: 4px 10px; margin: 0; background: #4a4a4a; }
+    #console-boutons button:hover { background: #5e5e5e; }
+    #btn-console-carte.connecte { background: #27ae60; }
+    #console-etat { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 11px; color: #b8b8b8;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* resize: vertical = poignee en bas a droite pour agrandir la zone de sortie ;
+       la barre grandit alors et l'espace de blocs se reduit (voir ResizeObserver, un.js). */
+    #console-sortie { height: 130px; min-height: 50px; max-height: 60vh; overflow: auto; resize: vertical;
+        margin: 6px 0; padding: 8px;
+        background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome);
+        border-radius: 4px; font: 12px/1.45 Consolas, "DejaVu Sans Mono", monospace; white-space: pre-wrap;
+        word-break: break-all; }
+    #console-onglets { display: flex; gap: 4px; flex: 0 0 auto; }
+    #console-onglets button { font-size: 12px; padding: 4px 10px; margin: 0; background: #303030; }
+    #console-onglets button:hover { background: #5e5e5e; }
+    #console-onglets button.actif { background: #cf4400; }
+    /* Vue graphique : meme gabarit et meme poignee de redimensionnement que la sortie texte. */
+    #console-graphique { height: 130px; min-height: 50px; max-height: 60vh; resize: vertical; overflow: hidden;
+        margin: 6px 0; position: relative; background: var(--fond-saisie);
+        border: 1px solid var(--bordure-chrome); border-radius: 4px; }
+    #console-canevas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .console-ligne { display: block; min-height: 1.45em; }
+    .console-ligne[data-src="carte"] { color: #7ee787; }
+    .console-ligne[data-src="info"] { color: #b8b8b8; font-style: italic; }
+    #console-saisie { display: flex; gap: 6px; }
+    #console-entree { flex: 1 1 auto; min-width: 0; padding: 5px 8px; font-size: 12px; border-radius: 4px;
+        background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome); }
+    #console-entree:disabled { opacity: 0.5; }
+    #console-envoyer { font-size: 12px; padding: 5px 10px; margin: 0; background: #4a4a4a; }
+    #console-envoyer:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* IA : barre en bas, meme gabarit que la console (frere de #main-container). */
+    #ia-panneau { flex: 0 0 auto; display: flex; flex-direction: column; box-sizing: border-box;
+        padding: 8px 12px 10px; max-height: 42vh; overflow: auto;
+        background: var(--fond-code); color: var(--texte-code); border-top: 2px solid var(--fond-chrome); }
+    :root[data-contrast="high"] #ia-panneau { border-top-color: #ffffff; }
+    #ia-entete { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    #ia-entete h3 { margin: 0; color: #ff7a33; font-size: 13px; text-transform: uppercase; flex: 0 0 auto; }
+    #ia-seuil-groupe { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    #ia-seuil { width: 120px; }
+    #ia-carte-label { font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+    #ia-etat-carte { flex: 1 1 auto; min-width: 0; font-size: 11px; color: #b8b8b8; }
+    #ia-boutons { display: flex; gap: 6px; flex: 0 0 auto; }
+    #ia-boutons button { font-size: 12px; padding: 4px 10px; margin: 0; background: #4a4a4a; }
+    #ia-boutons button:hover { background: #5e5e5e; }
+    #ia-colonnes { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+    .ia-colonne { flex: 1 1 320px; min-width: 280px; }
+    .ia-colonne h4 { margin: 0 0 6px; font-size: 13px; color: #b8b8b8; }
+    .ia-modele, .ia-actions { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .ia-url { flex: 1 1 auto; min-width: 0; padding: 5px 8px; font-size: 12px; border-radius: 4px;
+        background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome); }
+    .ia-colonne button { font-size: 12px; padding: 4px 10px; margin: 0; background: #4a4a4a; }
+    .ia-colonne button:hover:not(:disabled) { background: #5e5e5e; }
+    .ia-colonne button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ia-colonne button.en-marche { background: #c0392b; }
+    .ia-statut { flex: 1 1 auto; min-width: 0; font-size: 11px; color: #b8b8b8; }
+    .ia-apercu { width: 160px; height: 120px; object-fit: cover; transform: scaleX(-1); border-radius: 4px;
+        background: #000; display: block; margin-bottom: 6px; }
+    .ia-classe { display: grid; grid-template-columns: minmax(80px, 30%) 1fr 42px; gap: 8px; align-items: center;
+        font-size: 12px; margin: 3px 0; }
+    .ia-classe-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ia-classe-barre { height: 10px; background: var(--fond-saisie); border: 1px solid var(--bordure-chrome);
+        border-radius: 5px; overflow: hidden; }
+    .ia-classe-barre > i { display: block; height: 100%; width: 0; background: #5d6d7e; }
+    .ia-classe.retenue .ia-classe-barre > i { background: #2ecc71; }
+    .ia-classe.retenue .ia-classe-nom { font-weight: bold; color: #2ecc71; }
+    .ia-classe-pct { text-align: right; color: #b8b8b8; }
+    .ia-creer { margin-top: 8px; font-size: 12px; }
+    .ia-creer > summary { cursor: pointer; color: #b8b8b8; user-select: none; }
+    .ia-creer-aide { margin: 6px 0; color: #b8b8b8; font-size: 11px; }
+    .ia-ex { display: grid; grid-template-columns: 1fr 34px auto auto; gap: 6px; align-items: center; margin: 4px 0; }
+    .ia-ex-nom { min-width: 0; padding: 4px 8px; font-size: 12px; border-radius: 4px;
+        background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome); }
+    .ia-ex-nom:disabled { opacity: 0.7; }
+    .ia-ex-n { text-align: right; color: #b8b8b8; }
+    .ia-ex-capt.enregistre { background: #c0392b; }
+    .ia-creer-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .ia-creer-statut { margin-top: 6px; font-size: 11px; color: #b8b8b8; min-height: 1.2em; }
+    .ia-colonne button.ia-camera-capture.en-marche { background: #c0392b; }
+    /* Boutons de zoom ronds et corbeille de Blockly : leurs icones sont gris fonce, quasi invisibles sur fond sombre.
+       On les inverse (clair sur sombre) dans les themes sombres ; le theme clair garde les icones d'origine. */
+    :root:not([data-theme="light"]) .blocklyZoom > image { filter: invert(1) brightness(1.15); opacity: 1; }
+    :root:not([data-theme="light"]) .blocklyTrash > image { filter: invert(1) brightness(1.1); opacity: 1; }
+    :root:not([data-theme="light"]) .blocklyZoom > image:hover, :root:not([data-theme="light"]) .blocklyTrash > image:hover { filter: invert(1) brightness(1.5); }
+    /* Bande de couleur de la colonne de categories : plus large, pour se voir d'un coup d'oeil. */
+    /* Police de la colonne de categories : meme famille que le reste de l'interface (Segoe UI, repli Arial). */
+    .blocklyToolboxDiv, .blocklyToolboxCategory, .blocklyTreeLabel { font-family: var(--font, 'Segoe UI', Arial, sans-serif) !important; }
+    /* Puces rondes (au lieu de la bande rectangulaire) : Blockly pose la couleur de la categorie en bordure gauche
+       de la ligne ; bandeau.js la copie dans --puce, la bordure est supprimee et la puce est dessinee en rond. */
+    .blocklyToolboxCategory .blocklyTreeRow { border-left-width: 0 !important; position: relative; padding-left: 33px !important; }
+    .blocklyToolboxCategory .blocklyTreeRow::before {
+        content: ''; position: absolute; left: 6px; top: 50%; width: 18px; height: 18px; margin-top: -9px; border-radius: 50%;
+        background: var(--puce, #888); box-shadow: 0 0 0 1.5px rgba(255,255,255,0.55); }
+    /* Zone de recherche de blocs (bandeau.js), collee en haut de la colonne de categories pendant son defilement. */
+    #recherche-blocs { position: sticky; top: 0; z-index: 5; padding: 8px 8px 6px; background: inherit; }
+    #recherche-blocs svg { position: absolute; left: 17px; top: 50%; margin-top: -4px; color: #9a9a9a; pointer-events: none; }
+    #recherche-blocs input { width: 100%; box-sizing: border-box; padding: 6px 8px 6px 28px; font-size: 13px; font-family: var(--font, sans-serif);
+        border-radius: 4px; border: 1px solid var(--bordure-chrome); background: var(--fond-saisie); color: var(--texte-saisie); }
+    #recherche-blocs input::placeholder { color: #8a8a8a; }
+    #recherche-blocs input:focus { outline: 2px solid #ff5501; outline-offset: 0; }
+    /* Sous-categories (Radio > Groupe..., Grove > LED..., Robots > Maqueen...) : puce et texte decales de 14 px vers la droite. */
+    .blocklyToolboxCategory .blocklyToolboxCategory .blocklyTreeRow { padding-left: 47px !important; }
+    .blocklyToolboxCategory .blocklyToolboxCategory .blocklyTreeRow::before { left: 20px; }
+    /* Visite guidee (tuto.js) : le voile ne bloque pas les clics, l'utilisateur manipule les vrais outils. */
+    #tuto-voile { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); z-index: 9000; pointer-events: none; }
+    #tuto-spot { display: none; position: fixed; z-index: 9001; pointer-events: none; border-radius: 6px;
+        border: 2px solid #ff5501; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); transition: all 0.2s ease; }
+    #tuto-bulle { display: none; position: fixed; z-index: 9002; width: 340px; max-width: calc(100vw - 16px); box-sizing: border-box;
+        padding: 14px 16px; background: #fffdf5; color: #1b2733; border: 2px solid #ff5501; border-radius: 10px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45); font-size: 13px; line-height: 1.45; }
+    #tuto-bulle h4 { margin: 0 0 6px; font-size: 15px; color: #1b2733; }
+    #tuto-bulle p { margin: 0 0 8px; }
+    #tuto-compteur { font-size: 11px; color: #8a3a10; margin-bottom: 2px; }
+    #tuto-consigne { font-weight: bold; color: #8a4b00; }
+    #tuto-fait { display: none; font-weight: bold; color: #1e8449; }
+    #tuto-boutons { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
+    #tuto-nav { display: flex; gap: 6px; }
+    #tuto-bulle button { font-size: 12px; padding: 5px 10px; margin: 0; background: #4a4a4a; color: #fff; }
+    #tuto-bulle button:hover { background: #5e5e5e; }
+    #tuto-bulle #tuto-suivant.pret { background: #27ae60; }
+    /* Message d'accueil de tuto.js : propose de visiter le menu Fichier (visites guidees). */
+    #tuto-accueil { position: fixed; z-index: 9003; width: 320px; max-width: calc(100vw - 16px); box-sizing: border-box;
+        padding: 14px 16px; background: #fffdf5; color: #1b2733; border: 2px solid #ff5501; border-radius: 10px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45); font-size: 13px; line-height: 1.45; }
+    #tuto-accueil h4 { margin: 0 0 6px; font-size: 15px; color: #1b2733; }
+    #tuto-accueil p { margin: 0 0 8px; }
+    #tuto-accueil-fleche { position: absolute; top: -9px; width: 14px; height: 14px; background: #fffdf5;
+        border-left: 2px solid #ff5501; border-top: 2px solid #ff5501; transform: rotate(45deg); }
+    #tuto-accueil-label { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; margin-bottom: 10px; }
+    #tuto-accueil-boutons { display: flex; justify-content: flex-end; gap: 8px; }
+    #tuto-accueil button { font-size: 12px; padding: 5px 10px; margin: 0; background: #4a4a4a; color: #fff; }
+    #tuto-accueil button:hover { background: #5e5e5e; }
+    #tuto-accueil button.pret { background: #27ae60; }
+    @keyframes tuto-clignote { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 85, 1, 0.9); } 50% { box-shadow: 0 0 0 6px rgba(255, 85, 1, 0); } }
+    .tuto-clignote { animation: tuto-clignote 1.2s ease-in-out infinite; outline: 2px solid #ff5501; }
+
     #banniere-edition-code { display: none; margin: 10px 0; padding: 8px 10px; background: #4a3418;
-        border-left: 3px solid #e67e22; color: #ffcc80; font-size: 12px; border-radius: 3px; }
+        border-left: 3px solid #cf4400; color: #ffcc80; font-size: 12px; border-radius: 3px; }
     #banniere-edition-code.visible { display: block; }
     #code-edit { display: none; width: 100%; box-sizing: border-box; flex: 1 1 auto; min-height: 200px;
         background: var(--fond-saisie); color: var(--texte-code); font-family: Consolas, monospace; font-size: 13px; line-height: 1.5;
@@ -363,7 +607,7 @@
        disparaitre la barre, ce qui elargit le cadre, ce qui reagrandit la
        carte, ce qui ramene la barre. */
     #simulator-container { flex: 0 0 24%; min-width: 250px; min-height: 0; height: 100%; background: var(--fond-chrome); display: flex; flex-direction: column; align-items: center; padding: 20px; box-sizing: border-box; border-left: 2px solid var(--fond-chrome-profond); overflow-y: auto; scrollbar-gutter: stable;}
-    #simulator-container h3 { margin-top: 0; color: #2ecc71; font-size: 14px; text-transform: uppercase; width: 100%; text-align: left;}
+    #simulator-container h3 { margin-top: 0; color: #ff7a33; font-size: 14px; text-transform: uppercase; width: 100%; text-align: left;}
 
     /* Repositionnement automatique selon la place disponible (demande de
        l'utilisateur, dans le prolongement de la mise a l'echelle fixe de la
@@ -401,7 +645,7 @@
        zone de blocs, sans le panneau de code entre les deux. */
     #simulateur-redimensionneur { display: none; flex: 0 0 6px; min-height: 0; height: 100%;
         cursor: col-resize; background: var(--fond-chrome-profond); }
-    #simulateur-redimensionneur:hover, #simulateur-redimensionneur.actif { background: #e67e22; }
+    #simulateur-redimensionneur:hover, #simulateur-redimensionneur.actif { background: #cf4400; }
     #simulateur-redimensionneur.visible { display: block; }
     
     /* Le cadre porte la place occupee, la carte porte l'echelle. Un transform
@@ -474,7 +718,7 @@
        simulateur — un rond blanc pose sur la coque suggerait a tort une
        impression qui n'y est pas. Deplace en etiquette d'interface a cote
        du titre, pas sur le dessin de la carte lui-meme. */
-    #mb-version-tag { display: inline-block; background: #e4c558; color: #191919; font-family: sans-serif;
+    #mb-version-tag { display: inline-block; background: #e4c558; color: #191919; font-family: var(--font, sans-serif);
                        font-weight: bold; font-size: 11px; padding: 2px 7px; border-radius: 10px; vertical-align: middle; }
     /* Accent en coin : deux triangles bleus separes (pas un seul zigzag),
        d'apres la photo officielle micro:bit V2 — un grand triangle et un
@@ -516,14 +760,14 @@
     .mb-edge-zone { cursor: pointer; fill: transparent; }
     .mb-edge-zone.mb-edge-zone-active { fill: rgba(0, 0, 0, 0.28); }
 
-    #run-sim { background: #2ecc71; width: 100%; font-size: 16px; padding: 12px; box-sizing: border-box; margin: 0; }
-    #run-sim:hover { background: #27ae60; }
+    #run-sim { background: #cf4400; width: 100%; font-size: 16px; padding: 12px; box-sizing: border-box; margin: 0; }
+    #run-sim:hover { background: #b33a00; }
 
     /* Le geste « secouer » n'a pas de zone cliquable sur la carte : il lui faut
        son propre bouton, sans quoi accelerometer.was_gesture() reste toujours
        faux et les blocs correspondants ne se declenchent jamais. */
-    #btn-shake { background: #e67e22; width: 100%; font-size: 15px; padding: 10px; box-sizing: border-box; margin: 0; }
-    #btn-shake:hover { background: #d35400; }
+    #btn-shake { background: #5e5e5e; width: 100%; font-size: 15px; padding: 10px; box-sizing: border-box; margin: 0; }
+    #btn-shake:hover { background: #747474; }
     @keyframes secousse {
         0%, 100% { transform: translateX(0) rotate(0deg); }
         20% { transform: translateX(-7px) rotate(-2deg); }
@@ -533,8 +777,8 @@
     }
     #microbit-board.secoue { animation: secousse 0.4s ease-in-out; }
 
-    #btn-reset { background: #7f8c8d; width: 100%; font-size: 14px; padding: 9px; box-sizing: border-box; margin: 0; }
-    #btn-reset:hover { background: #616a6b; }
+    #btn-reset { background: #8c8c8c; width: 100%; font-size: 14px; padding: 9px; box-sizing: border-box; margin: 0; }
+    #btn-reset:hover { background: #6e6e6e; }
 
     /* --- Peripheriques Grove --- */
     /* Chaque module Grove actif (.grove-bloc) est une carte independante des
@@ -546,7 +790,7 @@
         display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 18px; align-items: start; }
     #grove-panneau h4 { grid-column: 1 / -1; margin: 0 0 10px 0; color: #b39ddb; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
     .grove-bloc { margin-bottom: 12px; font-size: 12px; color: var(--texte-chrome); }
-    .grove-titre { display: block; margin-bottom: 4px; color: #9fb3c8; }
+    .grove-titre { display: block; margin-bottom: 4px; color: #b8b8b8; }
     .grove-bloc label { display: block; margin: 3px 0; }
     .grove-bloc input[type="range"] { width: 100%; vertical-align: middle; }
     .grove-case { display: flex !important; align-items: center; gap: 6px; }
@@ -564,11 +808,11 @@
 
     #maqueen-edition-barre { display: none; margin-bottom: 8px; }
     #maqueen-edition-barre.active { display: block; }
-    #maqueen-edition-barre p { font-size: 11px; color: #9fb3c8; margin: 0 0 6px 0; }
+    #maqueen-edition-barre p { font-size: 11px; color: #b8b8b8; margin: 0 0 6px 0; }
     .maqueen-edition-boutons { display: flex; gap: 6px; }
     .maqueen-edition-boutons button { flex: 1; font-size: 12px; padding: 6px; margin: 0; }
-    #maqueen-piste-annuler, #maqueen-piste-effacer { background: #7f8c8d; }
-    #maqueen-piste-annuler:hover, #maqueen-piste-effacer:hover { background: #616a6b; }
+    #maqueen-piste-annuler, #maqueen-piste-effacer { background: #8c8c8c; }
+    #maqueen-piste-annuler:hover, #maqueen-piste-effacer:hover { background: #6e6e6e; }
 
     /* Poignee jaune = point normal, verte = premier point (depart + cap de depart). */
     .mq-poignee { position: absolute; width: 12px; height: 12px; border-radius: 50%;
@@ -773,8 +1017,8 @@
                     background: radial-gradient(circle at 35% 30%, #fff6a8, #ffcf2e 45%, #d99400);
                     box-shadow: 0 0 7px rgba(255, 200, 40, 0.85);
                     transition: opacity 0.1s; }
-    .led-nom { color: #9fb3c8; }
-    .led-val { color: #7f8c8d; }
+    .led-nom { color: #b8b8b8; }
+    .led-val { color: #8c8c8c; }
 
     /* Ecran LCD 1602 : cadre noir, retro-eclairage bleu, caracteres clairs.
        Chaque caractere occupe sa propre cellule, comme sur le composant : le
@@ -830,53 +1074,255 @@
         animation: servo-tour var(--duree, 2s) linear infinite;
     }
     .servo-cadran.continu.inverse .servo-rotor { animation-direction: reverse; }
-    .servo-cadran.arret { border-color: #7f8c8d; }
-    .servo-cadran.arret .servo-bras { background: #7f8c8d; }
+    .servo-cadran.arret { border-color: #8c8c8c; }
+    .servo-cadran.arret .servo-bras { background: #8c8c8c; }
     @keyframes servo-tour { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    .servo-nom { font-size: 10px; color: #9fb3c8; }
+    .servo-nom { font-size: 10px; color: #b8b8b8; }
     .servo-etat { font-size: 10px; color: var(--texte-chrome); text-align: center; line-height: 1.2; }
 
     #grove-geste { width: 100%; padding: 4px; margin-bottom: 6px; font: inherit; font-size: 12px; }
-    #grove-geste-btn { width: 100%; background: #8e44ad; font-size: 13px; padding: 7px; margin: 0; }
+    #grove-geste-btn { width: 100%; background: #6e6e6e; font-size: 13px; padding: 7px; margin: 0; }
     #grove-geste-btn:hover { background: #7d3c98; }
+    /* ═══════════════════════════════════════════════════════════════════════
+       APPARENCE ALIGNEE SUR LA VERSION ARDUINO R4 (« Prompt police et couleurs »).
+       Purement esthetique : aucune categorie, aucun bloc, aucune fonction n'est modifie.
+       Mes modes d'affichage : sombre = defaut (aucun attribut), clair = :root[data-theme="light"],
+       contraste eleve = :root[data-contrast="high"] (sombre + eleve = les deux sans « light »).
+       Les valeurs de chaque mode sont des variables --ec-* ; les regles plus bas ne contiennent plus de couleur.
+       ═══════════════════════════════════════════════════════════════════════ */
+    :root {   /* SOMBRE, contraste normal */
+      --ec-page: #1b1c1f;
+      --ec-cat-txt: #ddd; --ec-cat-hover: #2a2c30; --ec-cat-sel: #34363b; --ec-cat-sel-txt: #fff; --ec-cat-lisere: #e8a020;
+      --ec-cat-fw: normal; --ec-cat-bord-droit: 0 solid transparent;
+      --ec-puce-lisere: rgba(255,255,255,0.55); --ec-puce-lisere-w: 1.5px;
+      --ec-grille: #34373d; --ec-flyout: #2a2c31; --ec-flyout-contour: none;
+      --ec-label: #b5b8bf; --ec-label-fw: normal;
+      --ec-sim: #1e1f23; --ec-bord: #3c3f45; --ec-bord-w: 2px; --ec-code: #222327; --ec-code-bord: #3c3f45;
+      --ec-pan: #2a2c31; --ec-pan-bord: #3c3f45; --ec-pan-w: 1px; --ec-pan-txt: #e6e6e6; --ec-sep: #3c3f45;
+    }
+    :root[data-theme="light"] {   /* CLAIR, contraste normal */
+      --ec-page: #e8e8e8;
+      --ec-cat-txt: #ddd; --ec-cat-hover: #444; --ec-cat-sel: #555;
+      --ec-grille: #e8e8e8; --ec-flyout: #d9d9d9;
+      --ec-label: #555;
+      --ec-sim: #f7f7f7; --ec-bord: #aaa; --ec-code: var(--fond-code); --ec-code-bord: var(--fond-chrome); --ec-sep: #ccc;
+    }
+    :root[data-contrast="high"] {   /* SOMBRE + CONTRASTE ELEVE : noir, bord et texte blancs */
+      --ec-page: #000;
+      --ec-cat-txt: #fff; --ec-cat-hover: #333; --ec-cat-sel: #fff; --ec-cat-sel-txt: #000; --ec-cat-lisere: transparent;
+      --ec-cat-fw: 600; --ec-cat-bord-droit: 3px solid #fff;
+      --ec-puce-lisere: #fff; --ec-puce-lisere-w: 2px;
+      --ec-grille: #444; --ec-flyout: #000; --ec-flyout-contour: 3px solid #fff;
+      --ec-label: #fff; --ec-label-fw: 700;
+      --ec-sim: #000; --ec-bord: #fff; --ec-bord-w: 3px; --ec-code: #000; --ec-code-bord: #fff;
+      --ec-pan: #000; --ec-pan-bord: #fff; --ec-pan-w: 2px; --ec-pan-txt: #fff; --ec-sep: #fff;
+    }
+    :root[data-theme="light"][data-contrast="high"] {   /* CLAIR + CONTRASTE ELEVE : blanc, bord et texte noirs */
+      --ec-page: #e8e8e8;
+      --ec-cat-txt: #000; --ec-cat-hover: #e6e6e6; --ec-cat-sel: #000; --ec-cat-sel-txt: #fff;
+      --ec-cat-bord-droit: 3px solid #000;
+      --ec-puce-lisere: #000;
+      --ec-grille: #bbb; --ec-flyout: #fff; --ec-flyout-contour: 3px solid #000;
+      --ec-label: #000;
+      --ec-sim: #fff; --ec-bord: #000; --ec-code: #fff; --ec-code-bord: #000;
+      --ec-pan: transparent; --ec-pan-bord: #000; --ec-pan-txt: #000; --ec-sep: #000;
+    }
+    body { background: var(--ec-page); }
+
+    /* Colonne des categories : fond et bord droit (le fond lui-meme vient du theme Blockly, voir un.js). */
+    .blocklyToolboxDiv { border-right: var(--ec-cat-bord-droit); box-sizing: border-box; }
+    .blocklyToolboxCategory > .blocklyTreeRow .blocklyTreeLabel {
+        font-size: 12.5px; font-weight: var(--ec-cat-fw); color: var(--ec-cat-txt) !important; }
+    .blocklyToolboxCategory .blocklyToolboxCategory > .blocklyTreeRow .blocklyTreeLabel { font-size: 11.5px; }
+    .blocklyToolboxCategory > .blocklyTreeRow:hover { background-color: var(--ec-cat-hover) !important; }
+    .blocklyToolboxCategory > .blocklyTreeRow.blocklyTreeSelected {
+        background-color: var(--ec-cat-sel) !important; box-shadow: inset 3px 0 0 var(--ec-cat-lisere); }
+    .blocklyToolboxCategory > .blocklyTreeRow.blocklyTreeSelected .blocklyTreeLabel { color: var(--ec-cat-sel-txt) !important; }
+    /* Pastille : couleur exacte de la version Arduino (posee dans --puce par bandeau.js), fin liseré (blanc, noir ou blanc epais selon le mode). */
+    .blocklyToolboxCategory .blocklyTreeRow::before {
+        background: var(--puce, #888);
+        box-shadow: 0 0 0 var(--ec-puce-lisere-w) var(--ec-puce-lisere); }
+
+    /* Fleche de depliage (Radio, Grove, Robots) : le sprite noir de Blockly est remplace par ▸ / ▾ a la couleur du texte (visible dans les 4 modes). */
+    .blocklyToolboxCategory > .blocklyTreeRow .blocklyTreeIcon { background-image: none !important; color: var(--ec-cat-txt); font-size: 14px; line-height: 16px; text-align: center; }
+    .blocklyToolboxCategory > .blocklyTreeRow .blocklyTreeIconClosed::before { content: '▸'; }
+    .blocklyToolboxCategory > .blocklyTreeRow .blocklyTreeIconOpen::before { content: '▾'; }
+    .blocklyToolboxCategory > .blocklyTreeRow.blocklyTreeSelected .blocklyTreeIcon { color: var(--ec-cat-sel-txt); }
+    /* Zone de programmation : grille (le fond vient du theme Blockly). */
+    pattern line { stroke: var(--ec-grille) !important; }
+
+    /* Colonne de blocs */
+    .blocklyFlyoutBackground { fill: var(--ec-flyout) !important; fill-opacity: 1 !important; }
+    .injectionDiv .blocklyFlyout { outline: var(--ec-flyout-contour); }
+    .injectionDiv .blocklyFlyout .blocklyFlyoutLabelText, .injectionDiv .blocklyFlyoutLabelText {
+        fill: var(--ec-label) !important; font-style: italic; font-weight: var(--ec-label-fw); }
+
+    /* Simulation, panneau de code, console : fond, bord et separateur (« :root » = specificite superieure aux regles d'origine). */
+    :root #simulator-container { background: var(--ec-sim); border-left: var(--ec-bord-w) solid var(--ec-bord); }
+    :root #code-container { background: var(--ec-code); border-left: var(--ec-bord-w) solid var(--ec-code-bord); }
+    :root #console-panneau, :root #ia-panneau { background: var(--ec-code); border-top: var(--ec-bord-w) solid var(--ec-code-bord); }
+    :root #simulateur-redimensionneur { background: var(--ec-sep); }
+    :root #simulateur-redimensionneur:hover, :root #simulateur-redimensionneur.actif { background: #cf4400; }
+    /* Panneaux de la simulation (Grove, Piste/robot, LiDAR) : encadres en sombre et en contraste eleve ; en clair, les tiens. */
+    :root:not([data-theme="light"]) #grove-panneau, :root:not([data-theme="light"]) #piste-panneau, :root:not([data-theme="light"]) #lidar-panneau,
+    :root[data-theme="light"][data-contrast="high"] #grove-panneau, :root[data-theme="light"][data-contrast="high"] #piste-panneau,
+    :root[data-theme="light"][data-contrast="high"] #lidar-panneau {
+        background: var(--ec-pan); border: var(--ec-pan-w) solid var(--ec-pan-bord); border-radius: 6px; padding: 12px; color: var(--ec-pan-txt); }
+
+    /* Boutons de la colonne de blocs (« Creer une variable... ») en contraste eleve : fond du tiroir, bord et texte de la couleur des libelles. */
+    :root[data-contrast="high"] .blocklyFlyoutButton .blocklyFlyoutButtonBackground { fill: var(--ec-flyout) !important; stroke: var(--ec-label) !important; stroke-width: 2px; }
+    :root[data-contrast="high"] .blocklyFlyoutButton .blocklyFlyoutButtonShadow { fill: none !important; }
+    /* Blocs en contraste eleve, CLAIR : blancs, bord noir 3 px, texte noir, champs blancs a bord noir (l'inverse en sombre, voir plus haut). */
+    :root[data-theme="light"][data-contrast="high"] .blocklyPath { fill: #fff !important; stroke: #000 !important; stroke-width: 3px !important; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyPathDark,
+    :root[data-theme="light"][data-contrast="high"] .blocklyPathLight { fill: none !important; stroke: none !important; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyBlock.blocklyDisabled > .blocklyPath,
+    :root[data-theme="light"][data-contrast="high"] .blocklyBlock.blocklyDisabledPattern > .blocklyPath { fill: #ddd !important; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyText,
+    :root[data-theme="light"][data-contrast="high"] .blocklyText tspan { fill: #000 !important; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyFieldRect { fill: #fff !important; fill-opacity: 1 !important; stroke: #000 !important; stroke-width: 1.5px; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyIconShape { fill: #fff !important; stroke: #000; stroke-width: 1.5px; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyIconSymbol { fill: #000 !important; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyBlock image { filter: grayscale(1) brightness(0.6); }
+    /* Blocs en contraste eleve, SOMBRE : complements (champs, icones, fleches des menus deroulants). */
+    :root[data-contrast="high"]:not([data-theme="light"]) .blocklyBlock.blocklyDisabled > .blocklyPath { fill: #333 !important; }
+    :root[data-contrast="high"]:not([data-theme="light"]) .blocklyFieldRect { fill: #000 !important; fill-opacity: 1 !important; stroke: #fff !important; stroke-width: 1.5px; }
+    :root[data-contrast="high"]:not([data-theme="light"]) .blocklyIconShape { fill: #000 !important; stroke: #fff; stroke-width: 1.5px; }
+    :root[data-contrast="high"]:not([data-theme="light"]) .blocklyIconSymbol { fill: #fff !important; }
+    :root[data-contrast="high"]:not([data-theme="light"]) .blocklyBlock image { filter: grayscale(1) brightness(1.6); }
   </style>
 </head>
 
 <body onload="brython()">
   
   <div id="toolbar">
-    <img src="logo.png" alt="Logo" style="height: 30px; margin-right: 15px; vertical-align: middle;">
-    <div id="menu-fichier-conteneur">
-      <button id="menu-fichier-btn"><span class="icone-bouton">📁</span> Fichier ▾</button>
-      <div id="menu-fichier-panneau">
-        <button id="nouveau-projet-btn"><span class="icone-bouton">🆕</span> Nouveau projet</button>
-        <div class="menu-fichier-separateur"></div>
-        <button id="download-btn"><span class="icone-bouton">⬇</span> Télécharger le fichier .hex</button>
-        <button id="download-py-btn"><span class="icone-bouton">⬇</span> Télécharger le script .py</button>
-        <div class="menu-fichier-separateur"></div>
-        <button id="import-hex-btn"><span class="icone-bouton">⬆</span> Importer un fichier .hex</button>
-        <button id="import-py-btn"><span class="icone-bouton">⬆</span> Importer un script .py</button>
-        <input type="file" id="import-hex-input" accept=".hex" style="display:none;">
-        <input type="file" id="import-py-input" accept=".py" style="display:none;">
+    <!-- 1. Logo (accessoire) -->
+    <div id="tb-logo" title="Technologie Services"><img src="logo.png" alt="Logo"></div>
+
+    <!-- 2. Affichage : theme clair / sombre, contraste normal / eleve (bandeau.js ; les boutons d'origine #btn-theme et #btn-contraste, caches, restent le moteur) -->
+    <div id="menu-affichage-conteneur" class="tb-dropdown menu-deroulant">
+      <button id="menu-affichage-btn" class="tb-btn menu-btn" title="Affichage : thème clair ou sombre, contraste normal ou élevé" aria-label="Affichage">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg>
+      </button>
+      <div id="menu-affichage-panneau" class="tb-dropdown-menu menu-panneau">
+        <div class="menu-titre">Thème</div>
+        <button id="aff-theme-clair">☀ Clair</button>
+        <button id="aff-theme-sombre">☾ Sombre</button>
+        <div class="menu-titre">Contraste</div>
+        <button id="aff-contraste-normal">◑ Normal</button>
+        <button id="aff-contraste-eleve">● Élevé</button>
+        <button id="btn-theme" class="btn-vue" style="display:none" title="Passer au thème clair">Thème</button>
+        <button id="btn-contraste" class="btn-vue" style="display:none" title="Passer en contraste élevé">Contraste élevé</button>
       </div>
     </div>
-    <button id="capture-ecran-btn" class="btn-logo" title="Capture d'écran des blocs (.png)" aria-label="Capture d'écran des blocs (.png)"><span class="icone-bouton">📷</span></button>
-    <button id="btn-envoyer" class="btn-logo" title="Envoyer sur la carte : écrire le programme sur le lecteur MICROBIT" aria-label="Envoyer sur la carte"><span class="icone-bouton">📤</span></button>
-    <button id="btn-annuler" class="btn-vue" title="Annuler (Ctrl+Z)"><span class="icone-bouton">↶</span> Annuler</button>
-    <button id="btn-refaire" class="btn-vue" title="Refaire (Ctrl+Maj+Z)"><span class="icone-bouton">↷</span> Refaire</button>
-    <button id="btn-options" class="btn-vue" title="Panneau administrateur"><span class="icone-bouton">⚙</span></button>
-    <button id="btn-vue-code" class="btn-vue btn-logo" title="Code : afficher ou masquer la transcription MicroPython" aria-label="Afficher ou masquer la transcription MicroPython"><span class="icone-bouton" style="font-family: Consolas, monospace; font-weight: bold;">&lt;/&gt;</span></button>
-    <button id="btn-vue-simu" class="btn-vue btn-logo" title="Simulateur : afficher ou masquer le simulateur" aria-label="Afficher ou masquer le simulateur"><span class="icone-bouton">🖥️</span></button>
-    <button id="btn-theme" class="btn-vue" title="Passer au thème clair"><span class="icone-bouton">🌙</span></button>
-    <button id="btn-contraste" class="btn-vue" title="Passer en contraste élevé"><span class="icone-bouton">◐</span></button>
-    <span id="copyright-toolbar">🄯 RAJ Editions</span>
-    <span id="zoom-groupe">
-      <button id="btn-zoom-moins" class="btn-zoom" title="Réduire les blocs">−</button>
-      <span id="zoom-valeur">100 %</span>
-      <button id="btn-zoom-plus" class="btn-zoom" title="Agrandir les blocs">+</button>
-      <button id="btn-zoom-ajuster" class="btn-zoom btn-zoom-large" title="Ajuster à la fenêtre">Ajuster</button>
-    </span>
+
+    <div class="tb-sep"></div>
+
+    <!-- 4. Fichier -->
+    <div id="menu-fichier-conteneur" class="tb-dropdown menu-deroulant">
+      <button id="menu-fichier-btn" class="tb-btn menu-btn">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="0" y="6" width="10" height="2" rx="1"/><rect x="0" y="12" width="12" height="2" rx="1"/></svg>
+        Fichier ▾
+      </button>
+      <div id="menu-fichier-panneau" class="tb-dropdown-menu menu-panneau">
+        <button id="nouveau-projet-btn">Nouveau projet</button>
+        <button id="import-hex-btn">Charger un fichier .hex</button>
+        <button id="import-py-btn">Charger un script .py</button>
+        <input type="file" id="import-hex-input" accept=".hex" style="display:none;">
+        <input type="file" id="import-py-input" accept=".py" style="display:none;">
+        <button id="tb-telecharger-xml" disabled title="Non disponible dans cette version">Télécharger .xml</button>
+        <button id="download-btn">Télécharger .hex</button>
+        <button id="download-py-btn">Télécharger .py</button>
+      </div>
+    </div>
+
+    <!-- 5. Nom du programme : encadre blanc (champ de saisie, un clic permet de le renommer) -->
+    <label class="tb-btn" id="tb-nomfichier" title="Nom de votre programme — cliquez pour le renommer. Laissez vide pour le nom par défaut.">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <input id="nom-fichier" type="text" maxlength="60" spellcheck="false" autocomplete="off" placeholder="programme" aria-label="Nom du fichier">
+    </label>
+
+    <div class="tb-sep"></div>
+
+    <!-- 7-8. Defaire / Refaire -->
+    <button id="btn-annuler" class="tb-btn" title="Défaire (Ctrl+Z)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+      Défaire
+    </button>
+    <button id="btn-refaire" class="tb-btn" title="Refaire (Ctrl+Maj+Z)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>
+      Refaire
+    </button>
+
+    <div class="tb-sep"></div>
+
+    <!-- 10. Capture -->
+    <button id="capture-ecran-btn" class="tb-btn" title="Capture d'écran des blocs (.png)" aria-label="Capture d'écran des blocs (.png)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Capture
+    </button>
+
+    <!-- 11-13. Afficher / masquer la console, la simulation, le code (libelles geres par bandeau.js) -->
+    <button id="btn-vue-console" class="tb-btn inactif" title="Afficher ou masquer la console, en bas (print du simulateur et de la carte). Le voyant indique si la carte est connectée : se connecte avec « Connecter » dans la console." aria-label="Afficher ou masquer la console">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+      <span id="lib-console">Afficher la console</span><span id="voyant-carte" class="voyant" role="img" aria-label="Carte non connectée" title="Carte non connectée"></span>
+    </button>
+    <button id="btn-vue-simu" class="tb-btn" title="Masquer ou afficher le panneau de simulation, à droite" aria-label="Afficher ou masquer le simulateur">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+      <span id="lib-simulation">Masquer la simulation</span>
+    </button>
+    <button id="btn-vue-code" class="tb-btn" title="Afficher ou masquer le code MicroPython, à gauche de la simulation" aria-label="Afficher ou masquer la transcription MicroPython">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      <span id="lib-code">Masquer le code</span>
+    </button>
+    <!-- Specifique a ce logiciel (absent du modele) : panneau IA, apres Code -->
+    <button id="btn-vue-ia" class="tb-btn inactif" title="IA : reconnaissance d'images et de sons (caméra, micro)" aria-label="Afficher ou masquer le panneau IA">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+      IA
+    </button>
+
+    <div class="tb-sep"></div>
+
+
+    <!-- 16. Selecteur de carte (non disponible : la micro:bit se choisit dans la fenetre du navigateur) -->
+    <div id="port-group" title="Carte micro:bit utilisée par le bouton « Connecter » de la console (Chrome ou Edge)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="14" rx="2"/><line x1="9" y1="16" x2="9" y2="22"/><line x1="15" y1="16" x2="15" y2="22"/><circle cx="9" cy="6" r="1" fill="currentColor"/><circle cx="15" cy="6" r="1" fill="currentColor"/></svg>
+      <select id="port-select" title="Choisissez la carte à connecter (appliqué au prochain « Connecter »)" aria-label="Carte micro:bit"><option value="">micro:bit</option></select>
+      <button id="port-refresh" title="Rechercher les cartes : autoriser une nouvelle micro:bit branchée en USB" aria-label="Rechercher les cartes">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
+    </div>
+
+    <!-- 17. Televerser = Envoyer sur la carte -->
+    <button id="btn-envoyer" class="tb-btn" title="Envoyer sur la carte : écrire le programme sur le lecteur MICROBIT" aria-label="Téléverser sur la carte">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V6"/><polyline points="5 12 12 5 19 12"/><line x1="5" y1="21" x2="19" y2="21"/></svg>
+      <span id="lib-televerser">Téléverser</span>
+    </button>
+
+    <!-- 18. Lancer la simulation / Arreter (bascule geree par bandeau.js : #run-sim / #btn-reset) -->
+    <button id="tb-lancer" title="Lancer la simulation (Arrêter pendant son exécution)">
+      <svg id="tb-lancer-icone" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+      <span id="tb-lancer-label">Lancer la simulation</span>
+    </button>
+
+    <button id="btn-options" class="btn-vue" title="Panneau administrateur">Options</button>
     <span id="etat"></span>
+    <span id="copyright-toolbar" title="RAJ Editions">🄯 V2.0D</span>
+
+    <!-- 19. Aide : tout a droite, s'ouvre vers la gauche -->
+    <div id="menu-aide-conteneur" class="tb-dropdown menu-deroulant">
+      <button id="menu-aide-btn" class="tb-btn menu-btn" title="Visites guidées">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Aide ▾
+      </button>
+      <div id="menu-aide-panneau" class="tb-dropdown-menu menu-panneau">
+        <button id="tuto-menu-btn">🧭 Visite guidée</button>
+        <button id="tuto-ia-menu-btn">🧠 Visite guidée IA</button>
+        <button id="tb-mission" disabled title="Non disponible dans cette version">🚀 Mon premier programme</button>
+        <button id="tuto-clicdroit-menu-btn">🖱 Visite guidée clic droit</button>
+        <button id="tuto-console-menu-btn">⌨ Visite guidée Console</button>
+      </div>
+    </div>
   </div>
   
   <div id="main-container">
@@ -1421,9 +1867,131 @@
     </div>
   </div>
 
+  <!-- Console : barre en bas de l'application, masquee par defaut (bouton >_
+       de la barre d'outils). print() du simulateur + sortie serie de la carte. -->
+  <section id="console-panneau" class="replie" aria-label="Console">
+    <div id="console-entete">
+      <h3>Console</h3>
+      <span id="console-onglets" role="tablist">
+        <button id="onglet-console-texte" class="btn-vue actif" role="tab" aria-selected="true" title="Afficher les lignes de texte">Texte</button>
+        <button id="onglet-console-graphique" class="btn-vue" role="tab" aria-selected="false" title="Tracer les valeurs numériques en courbes">Graphique</button>
+      </span>
+      <span id="console-etat">Simulateur : les « afficher dans la console » apparaissent ici.</span>
+      <span id="console-boutons">
+        <button id="btn-console-carte" class="btn-vue" title="Connecter la carte micro:bit branchée en USB pour lire ses print() (Chrome ou Edge)">🔌 Connecter</button>
+        <button id="btn-console-effacer" class="btn-vue" title="Effacer la console" aria-label="Effacer la console">🗑</button>
+        <button id="btn-console-exporter" class="btn-vue" title="Exporter la console dans un fichier Excel (.xlsx)" aria-label="Exporter la console en fichier Excel">📊</button>
+        <button id="btn-console-aide" class="btn-vue" title="Aide : comment utiliser la console" aria-label="Aide sur la console">?</button>
+        <button id="btn-console-fermer" class="btn-vue" title="Masquer la console" aria-label="Masquer la console">✕</button>
+      </span>
+    </div>
+    <pre id="console-sortie" role="log" aria-live="polite"></pre>
+    <div id="console-graphique" class="replie" role="img" aria-label="Courbes des valeurs numériques de la console">
+      <canvas id="console-canevas"></canvas>
+    </div>
+    <form id="console-saisie" autocomplete="off">
+      <input id="console-entree" type="text" placeholder="Envoyer du texte à la carte…" disabled>
+      <button id="console-envoyer" type="submit" class="btn-vue" disabled>Envoyer</button>
+    </form>
+  </section>
+
+  <!-- IA : reconnaissance d'images (camera) et de sons (micro) avec des modeles
+       Teachable Machine. Le moteur est dans ia.js ; les resultats pilotent les
+       blocs « IA » (simulateur et vraie carte, via le port serie de la console). -->
+  <section id="ia-panneau" class="replie" aria-label="Intelligence artificielle">
+    <div id="ia-entete">
+      <h3>IA</h3>
+      <span id="ia-seuil-groupe">
+        <label for="ia-seuil">Seuil de confiance : <b id="ia-seuil-val">80</b> %</label>
+        <input type="range" id="ia-seuil" min="30" max="99" value="80">
+      </span>
+      <label id="ia-carte-label" title="Envoyer aussi les résultats à la vraie carte (connectée par le bouton 🔌 de la console)">
+        <input type="checkbox" id="ia-vers-carte"> Envoyer à la carte
+      </label>
+      <span id="ia-etat-carte"></span>
+      <span id="ia-boutons">
+        <button id="btn-ia-aide" class="btn-vue" title="Aide : comment utiliser l'IA" aria-label="Aide sur l'IA">?</button>
+        <button id="btn-ia-fermer" class="btn-vue" title="Masquer le panneau IA" aria-label="Masquer le panneau IA">✕</button>
+      </span>
+    </div>
+    <div id="ia-colonnes">
+      <div class="ia-colonne" data-genre="vision">
+        <h4>📷 Vision (caméra)</h4>
+        <div class="ia-modele">
+          <input type="text" class="ia-url" placeholder="https://teachablemachine.withgoogle.com/models/…/" spellcheck="false">
+          <button class="btn-vue ia-charger-url" title="Charger le modèle depuis son adresse (nécessite Internet)">Charger</button>
+          <button class="btn-vue ia-charger-fichiers" title="Charger les 3 fichiers du modèle exporté : model.json, metadata.json, weights.bin (fonctionne hors connexion)">Fichiers…</button>
+          <input type="file" class="ia-fichiers" accept=".json,.bin" multiple style="display:none;">
+        </div>
+        <div class="ia-actions">
+          <button class="btn-vue ia-demarrer" disabled>▶ Démarrer</button>
+          <span class="ia-statut">Aucun modèle chargé.</span>
+        </div>
+        <video id="ia-video" class="ia-apercu replie" autoplay muted playsinline></video>
+        <div class="ia-classes"></div>
+        <details class="ia-creer">
+          <summary>✚ Créer un modèle (entraînement)</summary>
+          <p class="ia-creer-aide">Maintenir le bouton de chaque classe pour capturer des images (une vingtaine de plus par seconde).</p>
+          <div class="ia-creer-classes"></div>
+          <div class="ia-creer-actions">
+          <button class="btn-vue ia-camera-capture" title="Allumer la caméra pour capturer des exemples">📷 Caméra</button>
+            <button class="btn-vue ia-ajouter-classe">+ Classe</button>
+            <button class="btn-vue ia-entrainer">🏋 Entraîner</button>
+            <button class="btn-vue ia-enregistrer" disabled title="Télécharger model.json, metadata.json et weights.bin (à recharger avec « Fichiers… »)">💾 Enregistrer</button>
+            <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
+          </div>
+          <div class="ia-creer-statut"></div>
+        </details>
+      </div>
+      <div class="ia-colonne" data-genre="son">
+        <h4>🎤 Son (micro)</h4>
+        <div class="ia-modele">
+          <input type="text" class="ia-url" placeholder="https://teachablemachine.withgoogle.com/models/…/" spellcheck="false">
+          <button class="btn-vue ia-charger-url" title="Charger le modèle depuis son adresse (nécessite Internet)">Charger</button>
+          <button class="btn-vue ia-charger-fichiers" title="Charger les 3 fichiers du modèle exporté : model.json, metadata.json, weights.bin (fonctionne hors connexion)">Fichiers…</button>
+          <input type="file" class="ia-fichiers" accept=".json,.bin" multiple style="display:none;">
+        </div>
+        <div class="ia-actions">
+          <button class="btn-vue ia-demarrer" disabled>▶ Démarrer</button>
+          <span class="ia-statut">Aucun modèle chargé.</span>
+        </div>
+        <div class="ia-classes"></div>
+        <details class="ia-creer">
+          <summary>✚ Créer un modèle (entraînement)</summary>
+          <p class="ia-creer-aide">Cliquer le bouton de chaque classe : 1 seconde de son est enregistrée. Créez une classe « Bruit de fond » (silence).</p>
+          <div class="ia-creer-classes"></div>
+          <div class="ia-creer-actions">
+            <button class="btn-vue ia-ajouter-classe">+ Classe</button>
+            <button class="btn-vue ia-entrainer">🏋 Entraîner</button>
+            <button class="btn-vue ia-enregistrer" disabled title="Télécharger model.json, metadata.json et weights.bin (à recharger avec « Fichiers… »)">💾 Enregistrer</button>
+            <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
+          </div>
+          <div class="ia-creer-statut"></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Signe de vie envoye au serveur local (app.py) : l'exe, qui n'a pas de fenetre
+       console, s'arrete tout seul quand la derniere page est fermee. Sans effet
+       (simple 404) si l'application est servie autrement. -->
+  <script>
+    (function () {
+      const id = Math.random().toString(36).slice(2);
+      const signe = () => { fetch('/_vie?id=' + id, { cache: 'no-store' }).catch(() => {}); };
+      signe();
+      setInterval(signe, 5000);
+      addEventListener('pageshow', signe);
+      addEventListener('pagehide', () => { try { navigator.sendBeacon('/_ferme?id=' + id); } catch (e) { /* tant pis */ } });
+    })();
+  </script>
+
   <script type="module" src="trois.js"></script>
   <script type="module" src="deux.js"></script>
   <script type="module" src="un.js"></script>
+  <script type="module" src="ia.js"></script>
+  <script type="module" src="tuto.js"></script>
+  <script type="module" src="bandeau.js"></script>
   
   <!-- LOGIQUE DU SIMULATEUR EN PUR PYTHON (BRYTHON) -->
   <script type="text/python">
@@ -1585,6 +2153,33 @@
                 "« si ... alors » vérifié à chaque tour de la boucle."
             )
         window.simu_sleep(ms)
+    # print() du programme : sur la carte il part sur le port serie USB, ici
+    # dans la console du panneau code (file d'actions du simulateur, donc dans
+    # l'ordre du programme par rapport aux affichages et aux pauses).
+    def print_console(*args, sep=' ', end='\n'):
+        window.simu_console(str(' ' if sep is None else sep).join([str(a) for a in args]) +
+                            str('\n' if end is None else end))
+
+    # uart du simulateur : sur la carte c'est la liaison USB, ici une file de texte
+    # alimentee par le panneau IA (window.simu_uartPousser, un.js). Le MEME code
+    # genere par les blocs IA (_ia_traiter) tourne donc sur la carte et en simulation.
+    class _UartMock:
+        def init(self, *args, **kwargs): pass
+        def any(self): return bool(window.simu_uartDisponible())
+        def read(self, nbytes=None):
+            texte = str(window.simu_uartLire())
+            return texte.encode('utf-8') if texte else None
+        def readline(self):
+            texte = str(window.simu_uartLireLigne())
+            return texte.encode('utf-8') if texte else None
+        def write(self, donnees):
+            try:
+                texte = donnees.decode('utf-8') if isinstance(donnees, bytes) else str(donnees)
+            except Exception:
+                texte = str(donnees)
+            window.simu_console(texte)
+            return len(donnees)
+
     def temperature(): return 21
     # Vrai temps ecoule (voir simu_tempsEcoule, un.js), pas une valeur figee :
     # necessaire pour que "valeur du chronometre" et "temps d'execution"
@@ -2288,7 +2883,10 @@
         _SERVO_ETAT_SIMU.clear()
         # Les pilotes Grove pilotent de vraies broches : on les retire et ce sont
         # les classes ci-dessus, injectees dans env, qui prennent le relais.
-        code_nettoye = re.sub(r"# >>> pilote \S+.*?# <<< pilote \S+", "", code, flags=re.S)
+        # Exception : le pilote "ia" (lecture des resultats de l'IA sur l'uart) est du
+        # Python pur sans materiel — c'est lui qui doit tourner, avec le faux uart.
+        code_nettoye = re.sub(r"# >>> pilote (\S+).*?# <<< pilote \S+",
+                              lambda m: m.group(0) if m.group(1) == "ia" else "", code, flags=re.S)
         # replace() sans compte remplace TOUTES les occurrences en Python : un
         # programme a deux boucles infinies ne fige donc plus l'onglet.
         for ligne in ["from microbit import *", "import audio", "import music",
@@ -2298,7 +2896,7 @@
             code_nettoye = code_nettoye.replace(ligne, "")
 
         env = {
-            'display': Display(), 'Image': ImageMock(), 'sleep': sleep,
+            'display': Display(), 'Image': ImageMock(), 'sleep': sleep, 'print': print_console, 'uart': _UartMock(),
             'temperature': temperature, 'running_time': running_time,
             'set_volume': set_volume, 'time': TimeMock(), 'reset': reset,
             'button_a': ButtonMock('a'), 'button_b': ButtonMock('b'),
@@ -2516,6 +3114,9 @@
         code = getattr(window, 'currentPythonCode', '')
         if not code or "Glissez des blocs" in code:
             return alert("Aucun code à simuler !")
+        # Un nouveau "Lancer" repart d'une console de simulation vierge (les
+        # lignes venues de la vraie carte, elles, ne sont pas touchees).
+        window.simu_effacerConsole('sim')
         if _demarrer_session(code) == 'tours':
             window.simu_lancerTours(5)
 
@@ -2572,7 +3173,7 @@
     <div id="fenetre-aide">
       <div id="aide-entete">
         <img src="logo.png" alt="" id="aide-logo">
-        <h3>Aide sur ce bloc</h3>
+        <h3 id="aide-titre">Aide sur ce bloc</h3>
       </div>
       <p id="aide-bloc-nom"></p>
       <p id="aide-bloc-texte"></p>

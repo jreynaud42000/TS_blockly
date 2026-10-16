@@ -15,14 +15,19 @@ Tous ces fichiers doivent rester ensemble dans le meme dossier :
 - un.js             (Blocs, generateurs MicroPython, boite a outils)
 - deux.js           (Ecriture du programme dans le systeme de fichiers embarque)
 - trois.js          (Emballage au format Universal Hex)
+- ia.js             (Panneau IA : reconnaissance d'images et de sons, voir §19)
+- tuto.js           (Visite guidee de l'application, menu Aide, voir §20)
 - firmware.hex      (Image MicroPython officielle de la micro:bit)
 - readme.txt        (Ce fichier : affiche dans l'onglet Aide du panneau administrateur, §13)
 - lancer_projet.bat (Demarrage du serveur local)
 - app.py / app.spec (Version empaquetee en .exe avec PyInstaller)
 
-Il n'y a pas de bibliotheque locale a installer : Blockly, Brython, microbit-fs
-et microbit-universal-hex sont charges depuis Internet. Une connexion est donc
-necessaire au chargement de la page.
+- lib/              (Bibliotheques embarquees : Blockly, Brython, microbit-fs,
+                     microbit-universal-hex, TensorFlow.js et Teachable Machine
+                     dans lib/tm ; voir §12 et §19)
+
+Rien a installer et aucune connexion Internet necessaire : depuis la V1.2, toutes
+les bibliotheques sont dans lib/ (avant, elles etaient chargees depuis des CDN).
 
 ---------------------------------------------------------
 2. COMMENT LANCER LE SERVEUR WEB LOCAL
@@ -51,11 +56,16 @@ navigateur, c'est que le serveur a ete lance depuis un autre dossier.
 ---------------------------------------------------------
 3. UTILISATION
 ---------------------------------------------------------
-- Panneau de gauche : les blocs. Le zoom se commande depuis la barre du haut
-  (boutons - et +, pourcentage courant, bouton "Ajuster"), et non plus depuis le
-  canevas : les controles internes de Blockly y sont dessines, donc rognes par le
-  bord des que la place manque. Ctrl + molette agrandit aussi, la molette seule
-  fait defiler, le pincement fonctionne sur ecran tactile. Echelle de 0,3 a 3.
+- Panneau de gauche : les blocs. Le zoom se commande avec les trois boutons ronds de Blockly
+  (recentrer, +, -) dessines dans le coin bas-droit de la zone de blocs, au-dessus de la corbeille
+  (leurs icones, gris fonce, sont inversees en clair dans les themes sombres - regle CSS .blocklyZoom /
+  .blocklyTrash dans index.html ; ils sont dessines dans le canevas, donc rognes si la fenetre est
+  vraiment trop basse), et avec la molette. Le groupe "- 100 % + Ajuster" de la barre d'outils a ete
+  retire a la demande de l'utilisateur (le code qui le pilotait reste, inoffensif : il ne trouve plus
+  ses boutons ; l'ancienne fonction "Ajuster" = cadrer tous les blocs n'est donc plus accessible). La MOLETTE seule zoome (vers le haut = agrandir,
+  vers le bas = reduire, autour du curseur ; Ctrl + molette aussi) ; on fait defiler en
+  glissant le fond de l'espace ou avec les barres de defilement. Sur un pave tactile,
+  le defilement a deux doigts zoome donc aussi. Le pincement fonctionne sur ecran tactile. Echelle de 0,3 a 3.
   "Ajuster" cadre les blocs presents, ou revient a 100 % si l'espace est vide.
 
   Les boutons "Code" et "Simulateur" de la barre du haut replient les deux
@@ -574,6 +584,52 @@ couleur du fond et des caracteres adaptes a sa luminosite. Les blocs LCD ne
 sont pas reconstruits en blocs a l'import d'un .py (comme les autres blocs
 Grove) : ils deviennent des blocs "code".
 
+Console (barre en bas de l'application, sous les trois panneaux) : un seul
+espace pour deux sources. Elle est MASQUEE au depart ; le bouton >_ de la
+barre d'outils l'affiche ou la masque (la croix de sa barre aussi), et la
+zone de blocs se redimensionne en consequence. Elle s'ouvre toute seule a la
+premiere sortie (print du simulateur ou de la carte), sauf si l'utilisateur
+l'a fermee lui-meme. La poignee en bas a droite de la zone de sortie permet
+de l'agrandir. Le bouton "?" de sa barre ouvre l'aide d'utilisation de la
+console (meme fenetre que l'aide d'un bloc ; texte dans TEXTE_AIDE_CONSOLE,
+un.js : a tenir a jour si la console change). Le bouton 📊 exporte toutes les
+lignes affichees dans un fichier Excel .xlsx (console-microbit-AAAAMMJJ-
+HHMMSS.xlsx) : colonnes N°, Heure (hh:mm:ss.mmm de la reception), Source
+(Simulateur / Carte / Information), Texte et Valeur numerique (remplie quand
+la ligne est un nombre, pour tracer une courbe). Format .xlsx et non .xls (le
+.xls binaire est obsolete ; Excel et LibreOffice lisent le .xlsx). Le fichier
+est fabrique dans le navigateur sans bibliotheque (archive ZIP non compressee
+de cinq fichiers XML : creerZip / creerXlsxConsole dans un.js), donc il marche
+aussi hors ligne. Valide en relisant un export avec openpyxl et LibreOffice.
+Onglet "Graphique" (a cote de "Texte", dans l'en-tete de la console) : trace en
+courbes les valeurs NUMERIQUES des lignes deja affichees, au fil du temps (axe
+horizontal en secondes depuis la premiere mesure), sur un canevas dessine a la
+main (pas de bibliotheque, marche hors ligne). Formats reconnus, un par ligne :
+"21.5" (une courbe "Valeur"), "(12, 40, 7)" ou "12 40 7" (courbes "Serie 1",
+"Serie 2"... comme le traceur de Mu), "temp:21 lum:40" ou "nom=valeur" (une
+courbe par nom). Une virgule entre deux chiffres est decimale ("21,5") quand la
+ligne ne contient qu'un nombre ; "1,2,3" est une liste. Les lignes non
+numeriques sont ignorees. Si simulateur et carte envoient des valeurs, leurs
+courbes sont separees (prefixe "Simulateur ·" / "Carte ·"). 600 derniers points
+par courbe, echelle verticale automatique, couleurs du theme en cours (sombre,
+clair, contraste eleve), mise a jour automatique (regroupee par pas de 100 ms).
+Fonctions : extraireMesures, collecterSeries, dessinerGraphique (un.js).
+1) SIMULATEUR : le bloc "afficher dans la console" (categorie
+Affichage, genere print(x)) ecrit dans la console, dans l'ordre du programme
+par rapport aux affichages et aux pauses (file d'actions du simulateur, voir
+print_console dans index.html). "Lancer la simulation" et "Reinitialiser"
+effacent les lignes du simulateur ; 1000 lignes maximum sont gardees (une
+boucle sans pause inonderait la page). 2) VRAIE CARTE : bouton "Connecter" =
+Web Serial (Chrome ou Edge uniquement), port USB de la carte (constructeur
+0x0D28, DAPLink), 115200 bauds ; la sortie de la carte s'affiche en vert. Le
+champ du bas envoie du texte a la carte (termine par \r\n) et l'affiche en
+gris ("> texte"). Apres "Envoyer sur la carte", la carte redemarre, son port
+disparait puis revient : la console se reconnecte toute seule (sauf si on a
+clique "Deconnecter" soi-meme). Si la connexion echoue, un autre onglet ou
+programme (editeur de code, terminal serie) utilise probablement deja le port.
+Non teste avec une vraie carte : la logique (lecture en morceaux, envoi,
+debranchement, reconnexion) a ete validee avec un faux port serie.
+
 Aide sur un bloc : clic droit sur un bloc de l'espace de travail >
 "Aide sur ce bloc" ouvre une fenetre (avec le logo de l'application, logo.png,
 dans son en-tete) avec le nom du bloc, son texte d'aide et
@@ -648,10 +704,61 @@ annoncee dans le message avec celle du fichier sur le disque.
 ---------------------------------------------------------
 Apres toute modification des fichiers du projet :
 
-   pyinstaller app.spec
+   python -m PyInstaller app.spec --noconfirm
 
-Les dossiers build/ et dist/ sont regeneres. dist/app.exe embarque index.html,
-un.js, deux.js, trois.js, firmware.hex et readme.txt.
+Le fichier produit est dist/MicrobitBlockly_V2.0D.exe (un seul fichier, ~16 Mo,
+sans installation). NUMERO DE VERSION (actuellement V2.0D) : a changer aux
+QUATRE endroits suivants, sinon ils divergent : VERSION dans app.py (affichee
+dans la fenetre console de l'exe), version_info.txt (proprietes du fichier,
+onglet Details : filevers/prodvers en nombres + FileVersion/ProductVersion/
+OriginalFilename en texte), name= dans app.spec (nom du fichier .exe) et le
+texte de #copyright-toolbar dans index.html (barre d'outils de l'application).
+Supprimer ensuite l'ancien .exe de dist/ pour ne pas garder deux versions. Il embarque index.html, un.js, deux.js, trois.js, firmware.hex,
+logo.png et readme.txt : tout NOUVEAU fichier utilise par l'application doit
+etre ajoute a la liste datas de app.spec, sinon il manquera dans l'exe (logo.png
+avait ete oublie). Double-clic : AUCUNE fenetre ne s'ouvre (l'exe
+est construit sans console : console=False dans app.spec) ; le navigateur
+s'ouvre directement sur http://localhost:8000. Le serveur tourne cache et
+s'ARRETE TOUT SEUL quand la derniere page de l'application est fermee (voir
+"Cycle de vie" ci-dessous). Si le port 8000 est occupe par un autre programme,
+le suivant libre est pris (8001, 8002...). Si l'application tourne deja
+(double-clic repete), le navigateur est simplement rouvert dessus, sans lancer
+de seconde copie. Une erreur (aucun port libre) s'affiche dans une boite de
+dialogue Windows.
+Cycle de vie (app.py, exe uniquement ; `python app.py` garde sa console et ne
+s'arrete jamais seul) : chaque page ouverte envoie un signe de vie toutes les
+5 s (/_vie, script en bas de index.html) et un signal de fermeture quand le
+navigateur la quitte (/_ferme, navigator.sendBeacon sur l'evenement pagehide).
+Le serveur s'arrete 5 s apres la fermeture de la derniere page (delai de grace :
+un rechargement F5 ne l'arrete pas) ; 150 s apres le dernier signe de vie si le
+navigateur a plante ; 90 s apres le demarrage si aucune page ne s'est connectee.
+Les delais se surchargent pour les tests par les variables d'environnement
+MICROBIT_DELAI_GRACE, MICROBIT_DELAI_SILENCE et MICROBIT_DELAI_DEMARRAGE.
+Plusieurs onglets/fenetres : le serveur reste tant qu'il en reste un d'ouvert.
+Pour VOIR les messages du serveur (diagnostic), lancer `python app.py` dans un
+terminal ou lancer_projet.bat. HORS LIGNE (depuis
+V1.2) : plus aucune ressource n'est chargee depuis Internet, l'application et
+l'exe fonctionnent sans connexion. Toutes les bibliotheques sont dans lib/ (a
+embarquer dans app.spec : ('lib', 'lib')) :
+  lib/blockly/        Blockly 10.4.3 (blockly_compressed, blocks_compressed,
+                      python_compressed, msg/fr.js) + media/ (images et sons,
+                      option media: 'lib/blockly/media/' dans les deux inject)
+  lib/brython/        Brython 3.11.2 (brython.min.js, brython_stdlib.min.js)
+  lib/microbit/       microbit-fs 0.10.1 et microbit-universal-hex 0.2.2, fichiers
+                      autonomes tires d'esm.sh (?bundle), lus par deux.js et
+                      trois.js. Extension .js et non .mjs : le serveur Python
+                      de Windows sert .mjs en text/plain, que le navigateur
+                      refuse pour un module.
+Pour mettre a jour une bibliotheque : telecharger la nouvelle version au meme
+emplacement (unpkg.com/blockly@X/..., cdnjs brython X, esm.sh/@microbit/...?bundle)
+puis retester simulation, generation du .hex et envoi sur la carte. Ne pas
+remettre de lien vers un CDN : aucune requete externe ne doit rester (verifiable
+dans la console du navigateur, onglet Reseau). Licences d'origine conservees dans
+les en-tetes des fichiers (Blockly : Apache 2.0 ; Brython : BSD ; microbit-fs et
+microbit-universal-hex : MIT). Windows peut afficher un avertissement SmartScreen
+au premier lancement (executable non signe).
+Piege Windows corrige dans app.py : allow_reuse_address=True y laisse deux
+serveurs ecouter le meme port, la detection de port occupe ne marchait donc pas.
 
 ---------------------------------------------------------
 13. LE PANNEAU ADMINISTRATEUR
@@ -946,3 +1053,333 @@ du depot officiel MakeCode de DFRobot (pxt-maqueen), pas invente, mais
 rien ne remplace un test sur la vraie carte - en particulier le sens des
 capteurs de ligne (0 ou 1 = sur la ligne ?), qui depend du cablage reel.
 
+---------------------------------------------------------
+19. IA : VISION (CAMERA) ET SON (MICRO)
+---------------------------------------------------------
+Reconnaissance d'images et de sons avec des modeles crees sur Teachable
+Machine (teachablemachine.withgoogle.com, projet "Image" ou "Son"). Le
+resultat pilote le programme : simulateur ou vraie carte, avec les memes blocs.
+
+Principe : la reconnaissance tourne dans le NAVIGATEUR (la carte n'a ni
+camera ni micro, et le modele est bien trop gros pour elle). La carte recoit
+seulement le RESULTAT, une ligne de texte par le cable USB :
+    IA:<vision|son>:<classe>:<confiance 0-100>
+La classe y est ecrite sans accents ni majuscules ("Chat noir" -> chat_noir).
+La ligne part a chaque changement de classe (classe vide quand la confiance
+retombe sous le seuil), et un peu plus souvent pour mettre a jour la confiance
+quand elle varie d'au moins 10 points. Le navigateur doit donc rester ouvert.
+
+Blocs (categorie "IA", rose) :
+- lorsque l'IA [vision|son] reconnait [classe]  : gestionnaire, ne se redeclenche
+  pas tant que la classe reste la meme ;
+- l'IA [vision|son] reconnait [classe]          : condition (vrai/faux) ;
+- derniere classe reconnue par l'IA [type]      : texte (ex. "chat_noir") ;
+- confiance de l'IA [type] (%)                  : nombre de 0 a 100.
+Un programme qui en contient recoit un petit pilote (section "pilote ia",
+replie dans la transcription) qui lit le port serie de la carte (uart.init a
+115200 bauds, lecture dans la boucle d'evenements ; le tampon de reception de
+la carte ne contient que 64 octets : eviter les longues pauses dans la boucle).
+Ce pilote fait un uart.init(115200) : la liaison USB reste celle de print() et
+de la console.
+
+Panneau IA (bouton 🧠 de la barre d'outils, barre en bas) :
+1. Coller l'adresse du modele (lien de partage Teachable Machine, "Charger" -
+   necessite Internet) OU "Fichiers..." et selectionner d'un coup model.json,
+   metadata.json et weights.bin du modele exporte (fonctionne hors connexion).
+2. "Demarrer" : le navigateur demande la camera ou le micro. Les classes
+   s'affichent avec une barre de probabilite ; la classe retenue passe en vert.
+3. "Seuil de confiance" (30 a 99 %, 80 par defaut) : en dessous, aucune classe.
+4. Simulateur : lancer la simulation (sans elle, rien n'est transmis).
+   Vraie carte : la connecter par le bouton Connecter de la console, envoyer le
+   programme, cocher "Envoyer a la carte".
+L'image et le son restent dans le navigateur ; seuls les noms de classe sont
+transmis. Camera et micro sont coupes quand on arrete ou ferme la page.
+
+Creer son modele dans l'application (sans Internet, comme sur Teachable Machine) :
+dans chaque colonne, section "Creer un modele (entrainement)".
+- Vision : bouton "Camera", puis maintenir "Maintenir" en face de chaque classe
+  pour capturer des images en rafale. Son : "● 1 s" enregistre 1 seconde de son
+  (prevoir une classe "Bruit de fond" pour le silence).
+- Au moins 2 classes et 5 exemples par classe (30 ou plus, varies, est bien mieux).
+- "Entrainer" : apprentissage par transfert. Un reseau de base (MobileNet v2 pour
+  l'image, speech-commands pour le son, dans lib/tm/base/, ~7,5 Mo) extrait les
+  caracteristiques ; seule une petite couche finale est entrainee (50 epoques en
+  vision, 25 en son). Le modele devient aussitot le modele actif de la colonne.
+- "Enregistrer" telecharge model.json, metadata.json et weights.bin (meme format
+  que Teachable Machine : rechargeables avec "Fichiers..." ou sur leur site).
+- Les exemples restent dans le navigateur et sont perdus si la page est rechargee.
+- Sur un ordinateur sans accelerateur graphique (WebGL), la capture d'images et
+  l'entrainement sont nettement plus lents (environ 1 s par image mesuree en
+  CPU dans le navigateur integre ; beaucoup plus rapide avec WebGL).
+- Garder l'onglet visible pendant l'entrainement : le navigateur met en pause les
+  onglets caches et l'entrainement s'arrete avec eux.
+- La capture sonore est suspendue pendant que le micro de reconnaissance tourne.
+
+Hors connexion : TensorFlow.js 1.3.1 et les bibliotheques Teachable Machine
+sont dans lib/tm (embarquees dans l'exe), chargees au premier "Charger".
+Seule l'adresse en https:// d'un modele demande Internet.
+
+Verifie : generation des blocs, simulateur (classes, seuil, redeclenchement,
+ligne coupee en deux morceaux), chargement de modeles image ET son au format
+Teachable Machine depuis des fichiers (modeles synthetiques), prediction sur
+une image, boucle de reconnaissance avec une camera simulee, envoi sur un port
+serie simule, entrainement vision (2 classes de couleur) et son (silence/bip),
+enregistrement puis rechargement des 3 fichiers, avec les resultats justes.
+NON verifie : camera et micro reels, modeles Teachable Machine reels, vraie
+carte (reception par l'uart du pilote), chargement par adresse https://.
+Le micro de la reconnaissance sonore demande un modele "Son" de Teachable
+Machine (reconnaissance sur environ 1 seconde ; la classe "Background Noise"
+est le bruit de fond).
+
+---------------------------------------------------------
+20. VISITES GUIDEES (MENU AIDE)
+---------------------------------------------------------
+L'entree "Visite guidee (tuto)" du menu Aide (elle relance toujours depuis
+le debut) lance une visite en 12 etapes : une bulle
+explicative se place a cote de l'element presente (mis en evidence, le reste de
+l'ecran est assombri). Le voile ne bloque pas les clics : on manipule les vrais
+outils pendant la visite. Boutons Precedent / Suivant / Quitter, touche Echap
+pour arreter ; relancer la visite par le meme menu.
+Parcours : categories de blocs, premier programme, code MicroPython, simulateur,
+lancer la simulation, boutons/gestes/capteurs, console, menu Fichier, envoi sur
+la carte, panneau IA, blocs IA, aides.
+Certaines etapes attendent une action (ouvrir une categorie, poser "Au demarrage"
+avec "afficher icone" dedans, cliquer "Lancer la simulation", ouvrir la console) et
+affichent "Bien joue" ; "Suivant" reste toujours utilisable pour ne jamais coincer.
+Message d'accueil : au demarrage (1,2 s apres le chargement), une bulle sous le bouton
+Aide propose de "visiter" le menu Aide ou se trouvent les visites. "Ouvrir le menu
+Aide" l'ouvre et fait clignoter les deux entrees de visite ; "Plus tard" ferme le
+message (il reviendra au prochain demarrage) ; la case "Ne plus afficher ce message"
+le supprime definitivement (localStorage, cle tuto-accueil-masque, propre a chaque
+adresse/port : pour le reafficher, vider les donnees du site). Ouvrir soi-meme le menu
+ou appuyer sur Echap ferme aussi le message.
+Deuxieme visite, consacree a l'IA : menu Aide > "Visite guidee IA" (15 etapes) :
+ouvrir le panneau, les deux colonnes vision/son, creer un modele (camera, capture
+d'exemples, entrainement), le tester, le seuil de confiance, charger un modele
+Teachable Machine, le son et sa classe "Bruit de fond", enregistrer, les blocs IA,
+reagir a une classe, essai dans le simulateur, vraie carte, aide. Les etapes
+d'action attendent : camera allumee, 5 images par classe, "Modele entraine",
+reconnaissance demarree, categorie IA choisie, bloc pose, simulation lancee.
+Verifie dans le navigateur integre : positionnement des 15 etapes, detection de
+chaque action (camera, captures, entrainement et reconnaissance simules par un flux
+synthetique). Non verifie : avec une vraie camera.
+Troisieme et quatrieme visites : menu Aide > "Visite guidee Console" (11 etapes : ouvrir la console,
+le bloc "afficher dans la console", le poser, lancer la simulation, la zone de texte, l'onglet Graphique,
+effacer, exporter Excel, lire la vraie carte, envoyer du texte, aide et fermeture) et "Visite guidee
+clic droit" (8 etapes : menu d'un bloc, "Aide sur ce bloc", Dupliquer, Ajouter un commentaire, Reduire,
+Desactiver, menu du fond - Nettoyer / Reduire / Developper / Supprimer -, annuler). Les etapes d'action
+detectent un vrai clic droit (menu contextuel Blockly affiche), la fenetre d'aide ouverte, un bloc copie,
+un commentaire, un bloc replie ou desactive. Echap ferme d'abord le menu contextuel ou la fenetre d'aide
+(sans arreter la visite) ; un second Echap arrete la visite. Le message d'accueil cite les quatre visites.
+Le cadre orange de mise en evidence a une marge de 8 px, reduite a 3 px pour les elements de moins de 40 px de
+haut (lignes de categories, boutons) : sinon il debordait sur les lignes voisines et semblait les entourer aussi.
+La bulle ne doit jamais recouvrir l'element presente : si la cible est collee au bord droit de l'ecran (boutons de la
+console), elle s'aligne sur son bord droit, au-dessus ou en dessous. Verifie dans le navigateur integre : positionnement des etapes de chaque visite (1280x720), chaque detection
+d'action (clic droit reel sur un bloc et sur le fond, le reste simule), Echap. Pas verifie : vraie carte.
+Modifier ou ajouter une etape : une entree dans les tableaux ETAPES_GENERAL, ETAPES_IA, ETAPES_CONSOLE ou
+ETAPES_CLIC_DROIT de tuto.js
+(titre, texte, cible = selecteur CSS ou fonction, avant(), attendre() ou
+attendreClic, consigne). Si un identifiant du HTML change, adapter la cible.
+Verifie dans le navigateur integre : positionnement de la bulle sur les 12
+etapes (dans l'ecran 1280x720), detection des actions, navigation, Echap. Pas
+verifie : petits ecrans (bulle de 340 px de large) ni lecteurs d'ecran.
+Fichier a ajouter a la liste datas de app.spec (fait) pour l'exe.
+
+---------------------------------------------------------
+21. COULEURS DES CATEGORIES
+---------------------------------------------------------
+Une seule table, PALETTE_CATEGORIES (un.js, juste avant Blockly.inject), donne la
+couleur de chaque categorie : la bande de la colonne de categories (large de 16 px,
+regle CSS dans index.html) ET tous les blocs de la categorie la suivent
+(appliquerPaletteToolbox les recolore a leur creation). Les sous-categories
+(Communication, Grove) heritent de leur parent.
+Palette volontairement reduite a 7 couleurs TRANCHEES (orange, bleu, or, violet,
+turquoise, rouge, magenta), sans vert, choisies pour rester distinguables en cas de
+daltonisme. Une couleur sert a plusieurs categories mais jamais a deux categories
+voisines de la colonne ; les quatre robots (Maqueen Plus/Lite, Kitrobot, LiDAR)
+partagent le violet. Texte blanc des blocs lisible (contraste >= 3,9). Pour changer
+une couleur : modifier la ligne de la table (constantes C_ORANGE, C_BLEU...). Les
+couleurs choisies dans le panneau administrateur (§13) remplacent la bande
+seulement, pas les blocs. Non verifie avec une personne daltonienne ni un simulateur
+de daltonisme : choix fait d'apres la theorie (palette dite d'Okabe-Ito adaptee).
+
+---------------------------------------------------------
+22. CHARTE GRAPHIQUE (COULEURS TECHNOLOGIE SERVICES)
+---------------------------------------------------------
+Les couleurs de l'interface reprennent celles de Technologie Services
+(technologieservices.fr), relevees sur leur site et leur logo : ORANGE (accent du
+site #ff5501 ; le logo va du rouge #e02010 a l'orange #e87000), ANTHRACITE / NOIR
+(#303030 en pied de page, #0f171f) et BLANC. Il n'y avait plus de bleu-ardoise.
+- Fonds (variables CSS en tete de index.html, themes sombre / clair / contraste) :
+  anthracite #303030 (barre d'outils, colonne de categories, panneaux), #1c1c1c
+  (zones profondes), #202020 (champs de saisie) ; theme clair : gris neutres.
+- Boutons d'action principaux (Fichier, Envoyer, Lancer la simulation, .hex) : orange
+  fonce #cf4400, survol #b33a00 (texte blanc, contraste 4,8:1 ; le #ff5501 pur, trop clair
+  pour du texte blanc, est reserve aux bandes, titres et contours).
+- Boutons secondaires : gris anthracite #4a4a4a (survol #5e5e5e).
+- Titres de panneaux : orange clair #ff7a33 (lisible sur fond sombre).
+- Conserves : couleurs des categories de blocs (§21, hors charte, pour leur lisibilite),
+  vert des etats "ok" (carte connectee, classe reconnue), rouge des erreurs, couleurs
+  "d'appareil" (carte micro:bit, robots, DEL).
+- Le logo logo.png (barre d'outils) n'a PAS ete change.
+Pour modifier la charte : remplacer ces codes hexadecimaux dans le bloc <style> de
+index.html et dans les themes Blockly de un.js (THEME_SOMBRE_*).
+- Barre d'outils et menu Fichier : plus aucune icone, les boutons portent un libelle
+  texte (Fichier, Capture, Envoyer, Annuler, Refaire, Code, Simulateur, Console, IA,
+  Theme, Contraste). Les boutons ne se coupent jamais sur deux lignes ; la barre passe
+  a la ligne quand la fenetre est trop etroite (moins de ~1250 px). Les boutons a
+  l'interieur des panneaux Console et IA (Connecter, Camera, Entrainer...) gardent
+  pour l'instant leurs petits symboles.
+
+---------------------------------------------------------
+23. BARRE D'OUTILS : ORGANISATION
+---------------------------------------------------------
+De gauche a droite : logo | Affichage (menu : Theme, Contraste eleve) | Fichier (menu :
+Nouveau projet, telecharger .hex/.py, importer .hex/.py) | champ "Nom du fichier" |
+Annuler | Refaire | Capture | Envoyer | Console | Simulation | Code | IA | version |
+Aide (menu : Visite guidee, IA, Console, clic droit), tout a droite ; son menu s'ouvre vers la gauche.
+- Message d'etat (ex. "Fichier telecharge.", erreurs en rouge) : petit bandeau sous le bord droit de la
+  barre, par-dessus le contenu, sans effet sur les clics ; il ne decale plus aucun bouton et n'est plus tronque.
+- Champ "Nom du fichier" : nomme les fichiers telecharges (.hex, .py) et la capture
+  d'ecran (.png) ; vide = noms d'origine (programme-microbit.hex, script_microbit.py,
+  programme-microbit.png). Les caracteres interdits par Windows (\ / : * ? " < > |) et
+  l'extension saisie sont retires. Importer un .hex ou .py reprend le nom du fichier
+  dans le champ ; "Nouveau projet" le vide. Le nom n'est pas memorise au rechargement.
+  Le fichier ecrit directement sur la carte ("Envoyer") garde son nom (sans importance
+  pour la carte). Le fichier xlsx de la console garde son nom date.
+- Icones (SVG, couleur du texte, grisees avec le bouton quand il est inactif) : ◐ Affichage,
+  ☰ Fichier, fleches Annuler / Refaire, appareil photo Capture, fleche vers le haut Envoyer,
+  terminal Console, panneau a deux colonnes Simulation, chevrons < > Code, etincelles IA.
+  Seuls Aide et les menus Affichage / Fichier / Aide (hors leur bouton) n'ont pas d'autre icone.
+  Police des boutons ramenee a 12 px et marges resserrees (dont le groupe de zoom) pour que tout
+  tienne sur une ligne a 1280 px (marge restante faible : sous ~1280 px la barre passe a la ligne).
+- Couleur : tous les boutons de la barre sont du meme orange (#cf4400, survol #b33a00). Les boutons
+  qui ouvrent un panneau (Code, Simulation, Console, IA) montrent leur etat par un lisere BLANC sous
+  le bouton quand le panneau est ouvert. Annuler / Refaire sans rien a annuler sont attenues (opacite
+  45 %). Les boutons des menus deroulants et du groupe de zoom restent gris anthracite.
+- Les trois menus s'ouvrent au clic, un seul a la fois ; un clic ailleurs les ferme.
+- "Envoyer" (vers la carte) et "IA" ne figuraient pas dans la liste demandee : ils ont ete
+  conserves, Envoyer apres Capture et IA apres Code.
+
+---------------------------------------------------------
+24. BANDEAU IDENTIQUE A LA VERSION ARDUINO R4 (copie d'essai blockly_ts_adacraft_vilain)
+---------------------------------------------------------
+Le bandeau du haut reprend l'apparence de la version Arduino R4 (modele fourni par le collegue) : memes boutons,
+memes menus, meme ordre, memes couleurs. Seul l'habillage change (index.html + bandeau.js, nouveau) : les id et les
+fonctions de ce logiciel sont conserves. Ordre, de gauche a droite :
+ logo | Affichage (icone ronde : Theme Clair/Sombre, Contraste Normal/Eleve, avec ✓) | Fichier (Nouveau projet,
+ Charger .hex, Charger .py, Telecharger .xml [grise], Telecharger .hex, Telecharger .py) | nom du fichier (encadre
+ blanc, champ de saisie) | Defaire | Refaire | Capture | Afficher/Masquer la console | Masquer/Afficher la simulation |
+ Masquer/Afficher le code | IA | selecteur de carte [grise] | Televerser | Lancer la simulation /
+ Arreter | version | Aide (Visite guidee, IA, Mon premier programme [grise], clic droit, Console), tout a droite.
+Correspondances (modele -> ce logiciel) : Le "Moniteur serie" du modele est FUSIONNE dans "Console" (la console est le moniteur) : le bouton Console
+affiche / masque le panneau et porte un VOYANT de connexion de la carte (anneau vide = non connectee, disque
+vert plein = connectee ; la forme change en plus de la couleur) ; la connexion se fait avec "Connecter" dans
+l'en-tete de la console (#btn-console-carte, code existant ; le voyant suit sa classe .connecte) ; Televerser = "Envoyer sur la carte" (#btn-envoyer) ; Lancer = #run-sim, Arreter = #btn-reset ; Theme / Contraste =
+boutons d'origine #btn-theme / #btn-contraste, caches dans le menu et pilotes par les nouvelles entrees ; Telecharger
+.ino = .hex et .py. Absents de ce logiciel, donc GRISES : Telecharger .xml, Mon premier programme.
+Selecteur de carte ACTIF : le menu liste les micro:bit deja autorisees (Web Serial, navigator.serial.getPorts, filtre
+fabricant 0x0D28 ; nommees micro:bit 1, 2... car le navigateur ne donne pas leur nom) ; ⟳ ouvre la fenetre de choix du
+navigateur pour en autoriser une nouvelle ; le bouton Connecter de la console utilise la carte choisie SANS rouvrir la
+fenetre (bandeau.js enveloppe navigator.serial.requestPort, un.js n'est pas modifie). Sans carte autorisee, ou hors
+Chrome/Edge, comportement d'origine. Ne concerne que la connexion serie : Televerser garde son choix de lecteur.
+Specifiques a ce logiciel (absents du modele) : bouton IA (apres Code), Charger .hex / .py, visite Console, version.
+Couleurs (charte Technologie Services, qui remplace le turquoise du modele Arduino) : fond ANTHRACITE #303030 (theme
+clair) / #262626 (sombre) / noir (contraste eleve), filet ORANGE #ff5501 de 3 px sous le bandeau, coche des menus orange ; Televerser bleu #1c7ed6, Lancer vert
+#4caa3c, Arreter rouge. Tient sur une ligne a 1920 px, passe sur deux lignes en dessous (verifie a 1366 px).
+bandeau.js (ne modifie aucune fonction existante) : relais des nouveaux boutons, libelles Afficher/Masquer, coches ✓,
+bascule Lancer/Arreter. A embarquer dans app.spec (fait).
+
+---------------------------------------------------------
+25. PUCES RONDES DE LA COLONNE DE CATEGORIES (copie d'essai)
+---------------------------------------------------------
+Les bandes rectangulaires de couleur sont remplacees par des puces rondes (12 px, cerclees de blanc ; de noir en
+theme clair, pour rester visibles sur la ligne selectionnee qui prend la couleur de la categorie). Blockly pose la
+couleur de la categorie en bordure gauche de la ligne : bandeau.js la recopie dans la variable CSS --puce
+(colorerPuces, relancee quand la boite a outils est reconstruite), et index.html supprime la bordure et dessine la
+puce (.blocklyTreeRow::before). Les couleurs elles-memes (§21) ne changent pas.
+
+---------------------------------------------------------
+26. ORDRE DES CATEGORIES (copie d'essai)
+---------------------------------------------------------
+Ordre par defaut de la colonne (table ORDRE_CATEGORIES, un.js, appliquee par reordonnerToolbox avant la couleur) :
+Boucles, Temps, Affichage, Entrees/Sorties, Capteurs, Actionneurs (Audio), Servos, Radio, IA, Grove, Logique, Variables, Maths, Texte, Fonctions, Listes, puis
+"Robots", categorie parente dont les sous-menus sont
+Maqueen Plus, Maqueen Lite, Kitrobot v2 et LiDAR (liste NOMS_ROBOTS ; construite par reordonnerToolbox, meme principe
+que Grove et Radio : leurs blocs, couleurs et noms sont inchanges ; verifie : les 4 sous-menus affichent leurs blocs).
+- "Communication" est renommee "Radio" (le nom est change dans la boite a outils ; le panneau administrateur la
+  designe donc "Radio" ; une configuration administrateur deja enregistree dans le navigateur prime sur cet ordre :
+  la reinitialiser dans le panneau administrateur pour retrouver l'ordre par defaut).
+- "Listes" (nouvelle) : blocs de listes standards de Blockly - creer une liste (3 elements, vide), repeter, longueur, est
+  vide, position de, obtenir / definir un element, sous-liste. Le code MicroPython genere (listes, len, tranches, une
+  fonction first_index) a ete execute dans le simulateur (resultats justes) ; PAS verifie sur une vraie carte.
+- "Graphique" (demandee) n'existe pas : non creee, contenu a definir.
+- Couleurs (§21) : Maths passe au rouge, Listes au turquoise, pour que deux categories voisines restent differentes.
+Sous-categories (Radio, Grove, Robots) : leur puce et leur texte sont decales de 14 px vers la droite par rapport aux
+categories de premier niveau (regle .blocklyToolboxCategory .blocklyToolboxCategory, index.html).
+
+---------------------------------------------------------
+27. RECHERCHE DE BLOCS (copie d'essai)
+---------------------------------------------------------
+Une zone « Rechercher un bloc… » est collee en haut de la colonne de categories (au-dessus de Boucles ; elle reste
+visible quand la colonne defile). Taper un ou plusieurs mots affiche les blocs correspondants dans le tiroir, comme une
+categorie : ils se prennent et se deposent normalement. Le tiroir de resultats RESTE OUVERT apres un depot (flyout.autoClose = false pendant la
+recherche : on peut prendre plusieurs blocs d'affilee) ; Echap ou effacer le texte le ferme ; choisir une categorie vide la
+recherche et rend aux categories leur comportement normal (le tiroir se referme apres un depot).
+- Texte cherche : ce qui s'affiche sur le bloc (« attendre ... secondes »), le nom de sa categorie (Radio, Robots...) puis,
+  en second rang, son texte d'aide. Sans accents ni majuscules ; tous les mots doivent etre presents ; 40 resultats au plus.
+- Portee : les 211 blocs de la boite a outils d'origine, sous-categories comprises (meme ceux d'une categorie masquee par le
+  panneau administrateur) + les tiroirs VARIABLES et FONCTIONS, generes a la volee par Blockly et donc interroges a chaque
+  recherche (blocsDynamiques) : le bouton « Creer une variable… », les blocs mettre / changer / valeur d'une variable, les
+  definitions de fonctions et l'appel de chaque fonction deja creee. Comme dans le tiroir normal, les blocs de variable
+  n'existent qu'apres la creation d'une premiere variable. Des synonymes sont ajoutes a ces blocs (mettre, definir, changer,
+  ajouter, appeler, lancer, creer, retourner...) car leur libelle francais ne les contient pas.
+- Code : bandeau.js (index construit au premier usage, ~50 ms ; utilise toolbox.getFlyout().show) et style #recherche-blocs
+  dans index.html. Aucune fonction existante n'est modifiee.
+Puces « pechues » : la puce n'a plus la couleur sombre des blocs mais une variante plus vive (meme teinte ; saturation +25 points,
+luminosite relevee a 52-62 %), de 18 px, avec un reflet (degrade radial), un cercle blanc et une legere lueur coloree, pour
+ressortir sur le fond anthracite. Calcul dans bandeau.js (variantePuce -> variables --puce et --puce-reflet) ; les couleurs
+des BLOCS (§21) ne changent pas.
+Police de la colonne de categories : 'Segoe UI', Arial, sans-serif (variable --font), comme le reste de l'interface ; elle etait auparavant la police sans empattement par defaut du navigateur (16 px, inchange).
+
+---------------------------------------------------------
+28. POLICES (copie d'essai)
+---------------------------------------------------------
+Segoe UI (repli Arial) partout : page (body), bandeau, colonne de categories, recherche, titres de panneaux, console (etat),
+boutons / champs / listes (font-family: inherit), bandeau d'etat, visites guidees, aide, panneau administrateur, et TEXTE DES
+BLOCS (reglee dans les themes Blockly : constante POLICE_BLOCS, 11 pt, un.js ; Blockly mesure le texte avec cette police pour
+dimensionner les blocs, d'ou le reglage par le theme et non par le CSS). Le theme « clair normal » est maintenant derive de
+Classic (THEME_CLAIR_NORMAL) pour porter cette police.
+Gardent leur police propre : le CODE (Consolas, repli monospace : transcription, editeur de code, aide technique) et la CONSOLE
+(Consolas, DejaVu Sans Mono), ainsi que les dessins de la carte micro:bit et des robots. Les petits espaces de travail d'exemple
+de la fenetre d'aide gardent la police par defaut de Blockly.
+
+---------------------------------------------------------
+29. COULEURS : UNE PAR CATEGORIE (copie d'essai ; remplace la palette a 7 couleurs du §21)
+---------------------------------------------------------
+Demande : aucune couleur identique entre deux categories. PALETTE_CATEGORIES (un.js) contient maintenant 17 couleurs toutes
+differentes (une par categorie de premier niveau), choisies par echantillonnage du point le plus eloigne dans l'espace CIE Lab :
+ecart minimal de 26 entre deux couleurs, mesure sur les blocs ET sur les puces vives ; assez sombres pour le texte blanc des blocs ;
+attribuees pour que deux categories voisines dans la colonne soient tres differentes (ecart >= 97). Les sous-categories (Radio,
+Grove, Robots) heritent de leur parent (les entrees propres aux 4 robots ont ete retirees de la table). La puce vive (bandeau.js,
+variantePuce) conserve desormais l'ecart de luminosite entre categories (L = 0,36 + 0,62 x L du bloc) pour que les puces restent
+distinctes. Valeurs : Boucles #1f5c52, Temps #d50bd5, Affichage #5c521f, Entrees/Sorties #0909b3, Capteurs #915808, Actionneurs
+(Audio) #2270bf, Servos #910808, Radio #1c8aa0, IA #d50b70, Grove #178255, Logique #a83896, Variables #678217, Maths #6738a8, Texte
+#d53e0b, Fonctions #123668, Listes #089108, Robots #74062b. Limite : l'ecart Lab ne garantit pas la distinction pour un daltonisme.
+
+30. APPARENCE ALIGNEE SUR LA VERSION ARDUINO R4 (copie d'essai ; « Prompt police et couleurs pour un collegue »)
+Purement esthetique : aucun nom/ordre de categorie, aucun bloc, aucune fonction modifie. Fichiers touches : index.html (bloc CSS
+« APPARENCE ALIGNEE SUR LA VERSION ARDUINO R4 » en fin de <style> ; chaque mode est un jeu de variables --ec-* : sombre = :root,
+clair = [data-theme="light"], contraste eleve = [data-contrast="high"] (= sombre + eleve), clair + eleve = les deux), un.js (themes
+Blockly : fonds de la zone de programmation / colonne de categories / tiroir, police des blocs = sans-serif par defaut de Blockly,
+grille 20/3 #e8e8e8 avec aimantation snap:true) et bandeau.js (table PASTILLES : couleur EXACTE de chaque pastille).
+Pastilles (les sous-categories prennent la couleur de leur categorie) : Boucles #FD7E14, Temps #15AABF, Affichage #F03E3E,
+Entrees/Sorties #343A40, Radio #1864AB, IA #9C6644, Grove #2B8A3E, Logique #FCC419, Variables #E64980, Maths #82C91E, Texte #7048E8,
+Fonctions #CC5DE8, Listes #A61E4D ; sans equivalent Arduino (couleurs proposees) : Capteurs #D2CC79, Actionneurs (Audio) #622D86,
+Servos #25F478, Robots #25F4CA. Les COULEURS DES BLOCS ne changent pas (PALETTE_CATEGORIES du §29 les pilote encore seule) : les puces
+ne leur sont plus liees. Categories : 12,5 px (sous-categories 11,5 px), gras 600 en contraste eleve, fleche ▸/▾ a la couleur du texte
+(le sprite noir de Blockly n'etait pas visible sur fond noir), categorie choisie avec filet gauche #e8a020 (sauf contraste eleve).
+Blocs en contraste eleve : clair = fond blanc, bord noir 3 px, texte noir ; sombre = l'inverse. Non aligne : barre d'onglets et
+#carte-pane (absents) ; l'accent turquoise du modele n'est pas repris (charte orange du bandeau conservee, survol du separateur compris).
+
+Bandeau du haut : fond ORANGE (clair #ff5501 = charte Technologie Services, sombre #d94700 un peu plus profond), filet bas orange fonce #b33a00 ; en contraste eleve il reste noir. Variables --bandeau / --bandeau-sombre / --accent-fonce (index.html).
