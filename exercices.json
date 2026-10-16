@@ -1,0 +1,284 @@
+{
+  "titre": "Exercices pas à pas",
+  "aide_enseignant": "Ce fichier se modifie avec un éditeur de texte. Chaque exercice a : id (unique, ne plus le changer une fois utilisé : la progression des élèves s'y rattache), titre, consigne, indices (3, du plus vague au plus précis), regle (voir ci-dessous), solution (blocs au format Blockly, facultatif) et points (facultatif, 1 par défaut). Règle = un bloc à trouver : bloc (type ou liste de types), champ {NOM: valeur}, dans [types du bloc racine], ancetre (type d'un bloc parent), contient (bloc ou liste de blocs à trouver à l'intérieur), min (nombre minimal, 1 par défaut), entrees {ENTREE: nombre}, leds_min, texte_sauf. Plusieurs règles se combinent avec tous: [...] ou ou: [...].",
+  "niveaux": [
+    {
+      "id": "n1",
+      "titre": "Niveau 1 — Premiers pas",
+      "notion": "Afficher quelque chose sur la carte",
+      "exercices": [
+        {
+          "id": "1.1",
+          "titre": "Un cœur au démarrage",
+          "consigne": "Fais apparaître un cœur sur la matrice de LED dès que le programme démarre.",
+          "indices": [
+            "Les blocs d'affichage sont rangés dans la catégorie « Affichage ».",
+            "Il faut le bloc « afficher l'icône », à glisser à l'intérieur du bloc « Au démarrage ».",
+            "Dans « Au démarrage », pose « afficher l'icône » et choisis « Cœur » dans la liste. Lance ensuite la simulation."
+          ],
+          "regle": { "bloc": "afficher_icone", "champ": { "ICONE": "HEART" }, "dans": ["au_demarrage"] },
+          "solution": { "blocks": [ { "type": "au_demarrage", "x": 40, "y": 40, "inputs": { "DO": { "block": { "type": "afficher_icone", "fields": { "ICONE": "HEART" } } } }, "next": { "block": { "type": "boucle_infinie" } } } ] }
+        },
+        {
+          "id": "1.2",
+          "titre": "Mon prénom défile",
+          "consigne": "Fais défiler ton prénom sur la carte (change le texte « Bonjour ! »).",
+          "indices": [
+            "Pour écrire du texte, regarde encore dans la catégorie « Affichage ».",
+            "Le bloc « faire défiler » contient un texte : clique dessus pour le modifier.",
+            "Pose « faire défiler » dans « Au démarrage », puis remplace « Bonjour ! » par ton prénom."
+          ],
+          "regle": { "bloc": "faire_defiler", "dans": ["au_demarrage"], "texte_sauf": "Bonjour !" },
+          "solution": { "blocks": [ { "type": "au_demarrage", "x": 40, "y": 40, "inputs": { "DO": { "block": { "type": "faire_defiler", "inputs": { "VALEUR": { "block": { "type": "text", "fields": { "TEXT": "Léa" } } } } } } }, "next": { "block": { "type": "boucle_infinie" } } } ] }
+        },
+        {
+          "id": "1.3",
+          "titre": "Mon propre dessin",
+          "consigne": "Dessine ta propre image sur la matrice : allume au moins 3 LED.",
+          "indices": [
+            "Cherche encore dans « Affichage », mais pas l'icône cette fois.",
+            "Le bloc « afficher l'image » a une grille de 25 cases à cocher.",
+            "Pose « afficher l'image » dans « Au démarrage » et coche les cases des LED que tu veux allumer (au moins trois)."
+          ],
+          "regle": { "bloc": "afficher_image_matrice", "dans": ["au_demarrage"], "leds_min": 3 },
+          "solution": { "blocks": [ { "type": "au_demarrage", "x": 40, "y": 40, "inputs": { "DO": { "block": { "type": "afficher_image_matrice", "fields": { "LED_2_0": "TRUE", "LED_2_1": "TRUE", "LED_2_2": "TRUE", "LED_2_3": "TRUE", "LED_2_4": "TRUE" } } } }, "next": { "block": { "type": "boucle_infinie" } } } ] }
+        }
+      ]
+    },
+    {
+      "id": "n2",
+      "titre": "Niveau 2 — Le temps",
+      "notion": "Attendre et répéter",
+      "exercices": [
+        {
+          "id": "2.1",
+          "titre": "Le cœur qui clignote",
+          "consigne": "Fais clignoter un cœur sans arrêt : il s'allume, attend, s'éteint, attend.",
+          "indices": [
+            "Ce qui se répète doit être dans le bloc « Répéter indéfiniment ».",
+            "Il faut : afficher l'icône, attendre, effacer l'écran, attendre.",
+            "Dans « Répéter indéfiniment », empile « afficher l'icône » (cœur), « attendre 1 seconde », « effacer l'écran », « attendre 1 seconde »."
+          ],
+          "regle": { "tous": [
+            { "bloc": "afficher_icone", "ancetre": "boucle_infinie" },
+            { "bloc": "effacer_ecran", "ancetre": "boucle_infinie" },
+            { "bloc": "attendre_temps", "ancetre": "boucle_infinie", "min": 2 }
+          ] },
+          "solution": { "blocks": [ { "type": "au_demarrage", "x": 40, "y": 40, "next": { "block": { "type": "boucle_infinie", "inputs": { "DO": { "block": { "type": "afficher_icone", "fields": { "ICONE": "HEART" }, "next": { "block": { "type": "attendre_temps", "fields": { "UNITE": "s" }, "inputs": { "TEMPS": { "block": { "type": "math_number", "fields": { "NUM": 1 } } } }, "next": { "block": { "type": "effacer_ecran", "next": { "block": { "type": "attendre_temps", "fields": { "UNITE": "s" }, "inputs": { "TEMPS": { "block": { "type": "math_number", "fields": { "NUM": 1 } } } } } } } } } } } } } } } } ] }
+        },
+        {
+          "id": "2.2",
+          "titre": "Une petite animation",
+          "consigne": "Alterne deux images différentes (par exemple « Heureux » puis « Triste »), avec une pause entre chaque.",
+          "indices": [
+            "Une animation, c'est plusieurs images qui se suivent.",
+            "Il te faut deux blocs d'affichage et deux attentes, dans « Répéter indéfiniment ».",
+            "Empile : afficher l'icône « Heureux », attendre 1 s, afficher l'icône « Triste », attendre 1 s."
+          ],
+          "regle": { "tous": [
+            { "bloc": ["afficher_icone", "afficher_image_matrice"], "ancetre": "boucle_infinie", "min": 2 },
+            { "bloc": "attendre_temps", "ancetre": "boucle_infinie", "min": 2 }
+          ] },
+          "solution": {"blocks": [{"type": "au_demarrage", "x": 40, "y": 40, "next": {"block": {"type": "boucle_infinie", "inputs": {"DO": {"block": {"type": "afficher_icone", "fields": {"ICONE": "HAPPY"}, "next": {"block": {"type": "attendre_temps", "fields": {"UNITE": "s"}, "inputs": {"TEMPS": {"block": {"type": "math_number", "fields": {"NUM": 1}}}}, "next": {"block": {"type": "afficher_icone", "fields": {"ICONE": "SAD"}, "next": {"block": {"type": "attendre_temps", "fields": {"UNITE": "s"}, "inputs": {"TEMPS": {"block": {"type": "math_number", "fields": {"NUM": 1}}}}}}}}}}}}}}}}]}
+        },
+        {
+          "id": "2.3",
+          "titre": "Compter de 1 à 5",
+          "consigne": "Affiche les nombres de 1 à 5, un par seconde, avec une boucle « compter avec ».",
+          "indices": [
+            "La boucle « compter avec i » est dans la catégorie « Boucles ».",
+            "Règle-la de 1 à 5, puis mets dedans « afficher » avec la variable i, et « attendre ».",
+            "Dans « compter avec i de 1 à 5 par 1 » : « afficher » (glisse la variable « i » dans la case) puis « attendre 1 seconde »."
+          ],
+          "regle": { "bloc": "controls_for", "entrees": { "FROM": 1, "TO": 5 }, "contient": [ { "bloc": ["afficher_valeur", "faire_defiler"] }, "attendre_temps" ] },
+          "solution": { "variables": [ { "name": "i", "id": "vi" } ], "blocks": [ { "type": "au_demarrage", "x": 40, "y": 40, "inputs": { "DO": { "block": { "type": "controls_for", "fields": { "VAR": { "id": "vi" } }, "inputs": { "FROM": { "block": { "type": "math_number", "fields": { "NUM": 1 } } }, "TO": { "block": { "type": "math_number", "fields": { "NUM": 5 } } }, "BY": { "block": { "type": "math_number", "fields": { "NUM": 1 } } }, "DO": { "block": { "type": "afficher_valeur", "inputs": { "VALEUR": { "block": { "type": "variables_get", "fields": { "VAR": { "id": "vi" } } } } }, "next": { "block": { "type": "attendre_temps", "fields": { "UNITE": "s" }, "inputs": { "TEMPS": { "block": { "type": "math_number", "fields": { "NUM": 1 } } } } } } } } } } } }, "next": { "block": { "type": "boucle_infinie" } } } ] }
+        }
+      ]
+    },
+    {
+      "id": "n3",
+      "titre": "Niveau 3 — Les boutons et la carte",
+      "notion": "Réagir à une action",
+      "exercices": [
+        {
+          "id": "3.1",
+          "titre": "Bouton A, bouton B",
+          "consigne": "Quand on appuie sur le bouton A, un cœur s'affiche ; sur le bouton B, un visage triste.",
+          "indices": [
+            "Les blocs « lorsque le bouton … est pressé » sont dans la catégorie « Capteurs ».",
+            "Il en faut deux : un pour A, un pour B. Chacun contient un « afficher l'icône ».",
+            "Pose deux blocs « lorsque le bouton » (A et B), puis « afficher l'icône » Cœur dans le premier et Triste dans le second."
+          ],
+          "regle": { "tous": [
+            { "bloc": "lorsque_bouton", "champ": { "BOUTON": "a" }, "contient": { "bloc": "afficher_icone", "champ": { "ICONE": "HEART" } } },
+            { "bloc": "lorsque_bouton", "champ": { "BOUTON": "b" }, "contient": { "bloc": "afficher_icone", "champ": { "ICONE": "SAD" } } }
+          ] },
+          "solution": { "blocks": [
+            { "type": "au_demarrage", "x": 40, "y": 40, "next": { "block": { "type": "boucle_infinie" } } },
+            { "type": "lorsque_bouton", "x": 40, "y": 200, "fields": { "BOUTON": "a" }, "inputs": { "DO": { "block": { "type": "afficher_icone", "fields": { "ICONE": "HEART" } } } } },
+            { "type": "lorsque_bouton", "x": 40, "y": 330, "fields": { "BOUTON": "b" }, "inputs": { "DO": { "block": { "type": "afficher_icone", "fields": { "ICONE": "SAD" } } } } }
+          ] }
+        },
+        {
+          "id": "3.2",
+          "titre": "Secoue-moi !",
+          "consigne": "Quand on secoue la carte, affiche un message ou une icône de ton choix.",
+          "indices": [
+            "Pense aux gestes de la carte, dans la catégorie « Capteurs ».",
+            "Le bloc « lorsque secouer » déclenche ce qu'il contient quand la carte est secouée.",
+            "Pose « lorsque secouer » puis, dedans, un bloc d'affichage. Dans la simulation, utilise le bouton « Secouer la carte »."
+          ],
+          "regle": { "bloc": "lorsque_geste", "champ": { "GESTE": "shake" }, "contient": { "bloc": ["afficher_icone", "afficher_valeur", "faire_defiler", "afficher_image_matrice"] } },
+          "solution": { "blocks": [
+            { "type": "au_demarrage", "x": 40, "y": 40, "next": { "block": { "type": "boucle_infinie" } } },
+            { "type": "lorsque_geste", "x": 40, "y": 200, "fields": { "GESTE": "shake" }, "inputs": { "DO": { "block": { "type": "afficher_icone", "fields": { "ICONE": "GHOST" } } } } }
+          ] }
+        },
+        {
+          "id": "3.3",
+          "titre": "Touche le logo",
+          "consigne": "Quand on touche le logo de la carte, un cœur s'affiche.",
+          "indices": [
+            "Le logo de la carte micro:bit V2 est tactile.",
+            "Cherche un bloc « sur le logo » dans la catégorie « Capteurs ».",
+            "Pose « sur le logo appuyé » puis « afficher l'icône » Cœur à l'intérieur. En simulation, clique sur le logo de la carte."
+          ],
+          "regle": { "bloc": "lorsque_logo", "contient": { "bloc": ["afficher_icone", "afficher_valeur", "faire_defiler", "afficher_image_matrice"] } },
+          "solution": { "blocks": [
+            { "type": "au_demarrage", "x": 40, "y": 40, "next": { "block": { "type": "boucle_infinie" } } },
+            { "type": "lorsque_logo", "x": 40, "y": 200, "fields": { "ACTION": "touched" }, "inputs": { "DO": { "block": { "type": "afficher_icone", "fields": { "ICONE": "HEART" } } } } }
+          ] }
+        }
+      ]
+    },
+    {
+      "id": "n4",
+      "titre": "Niveau 4 — Décider et mémoriser",
+      "notion": "Variables, conditions et hasard",
+      "exercices": [
+        {
+          "id": "4.1",
+          "titre": "Compteur de points",
+          "consigne": "À chaque appui sur le bouton A, ajoute 1 à une variable « points » puis affiche sa valeur.",
+          "indices": [
+            "Une variable garde une valeur en mémoire. Elle se crée dans la catégorie « Variables ».",
+            "Crée la variable « points », puis utilise « changer points de 1 » dans « lorsque le bouton A ».",
+            "Dans « lorsque le bouton A est pressé » : « changer points de 1 », puis « afficher » avec la variable « points »."
+          ],
+          "regle": { "tous": [
+            { "bloc": "lorsque_bouton", "champ": { "BOUTON": "a" }, "contient": "math_change" },
+            { "bloc": "afficher_valeur", "contient": "variables_get" }
+          ] },
+          "solution": { "variables": [ { "name": "points", "id": "vp" } ], "blocks": [
+            { "type": "au_demarrage", "x": 40, "y": 40, "inputs": { "DO": { "block": { "type": "variables_set", "fields": { "VAR": { "id": "vp" } }, "inputs": { "VALUE": { "block": { "type": "math_number", "fields": { "NUM": 0 } } } } } } }, "next": { "block": { "type": "boucle_infinie" } } },
+            { "type": "lorsque_bouton", "x": 40, "y": 220, "fields": { "BOUTON": "a" }, "inputs": { "DO": { "block": { "type": "math_change", "fields": { "VAR": { "id": "vp" } }, "inputs": { "DELTA": { "block": { "type": "math_number", "fields": { "NUM": 1 } } } }, "next": { "block": { "type": "afficher_valeur", "inputs": { "VALEUR": { "block": { "type": "variables_get", "fields": { "VAR": { "id": "vp" } } } } } } } } } } }
+          ] }
+        },
+        {
+          "id": "4.2",
+          "titre": "Si le bouton est appuyé",
+          "consigne": "Dans la boucle principale, SI le bouton A est appuyé ALORS affiche un cœur.",
+          "indices": [
+            "Une condition se teste avec un bloc « si … alors ».",
+            "Tu peux utiliser « si le bouton A est appuyé alors » (Entrées/Sorties) ou « si » avec une condition.",
+            "Dans « Répéter indéfiniment », pose « si le bouton A est appuyé alors » et, dedans, « afficher l'icône » Cœur."
+          ],
+          "regle": { "ou": [
+            { "bloc": "si_bouton_appuye", "ancetre": "boucle_infinie", "contient": { "bloc": ["afficher_icone", "afficher_valeur", "faire_defiler", "afficher_image_matrice"] } },
+            { "bloc": "controls_if", "ancetre": "boucle_infinie", "contient": [ "bouton_est_appuye", { "bloc": ["afficher_icone", "afficher_valeur", "faire_defiler", "afficher_image_matrice"] } ] }
+          ] },
+          "solution": { "blocks": [ { "type": "au_demarrage", "x": 40, "y": 40, "next": { "block": { "type": "boucle_infinie", "inputs": { "DO": { "block": { "type": "si_bouton_appuye", "fields": { "BOUTON": "a" }, "inputs": { "DO": { "block": { "type": "afficher_icone", "fields": { "ICONE": "HEART" } } } } } } } } } } ] }
+        },
+        {
+          "id": "4.3",
+          "titre": "Le dé électronique",
+          "consigne": "Quand on secoue la carte, affiche un nombre au hasard entre 1 et 6.",
+          "indices": [
+            "Le hasard se trouve dans la catégorie « Maths ».",
+            "Le bloc « nombre aléatoire entre … et … » se règle de 1 à 6 et se place dans « afficher ».",
+            "« lorsque secouer » contient « afficher » avec « nombre aléatoire entre 1 et 6 »."
+          ],
+          "regle": { "bloc": "afficher_valeur", "contient": { "bloc": "math_random_int", "entrees": { "FROM": 1, "TO": 6 } } },
+          "solution": { "blocks": [
+            { "type": "au_demarrage", "x": 40, "y": 40, "next": { "block": { "type": "boucle_infinie" } } },
+            { "type": "lorsque_geste", "x": 40, "y": 200, "fields": { "GESTE": "shake" }, "inputs": { "DO": { "block": { "type": "afficher_valeur", "inputs": { "VALEUR": { "block": { "type": "math_random_int", "inputs": { "FROM": { "block": { "type": "math_number", "fields": { "NUM": 1 } } }, "TO": { "block": { "type": "math_number", "fields": { "NUM": 6 } } } } } } } } } } }
+          ] }
+        }
+      ]
+    },
+    {
+      "id": "n5",
+      "titre": "Niveau 5 — Capteurs et projets",
+      "notion": "Mesurer, communiquer, créer",
+      "exercices": [
+        {
+          "id": "5.1",
+          "titre": "Le thermomètre",
+          "consigne": "Affiche en continu la température mesurée par la carte, avec une pause entre deux mesures.",
+          "indices": [
+            "La carte possède un capteur de température, dans la catégorie « Capteurs ».",
+            "Mets le bloc « température » dans un bloc « afficher », à l'intérieur de « Répéter indéfiniment ».",
+            "« Répéter indéfiniment » : « afficher » (température) puis « attendre 1 seconde »."
+          ],
+          "regle": { "tous": [
+            { "bloc": "afficher_valeur", "ancetre": "boucle_infinie", "contient": "capteur_temperature" },
+            { "bloc": "attendre_temps", "ancetre": "boucle_infinie" }
+          ] },
+          "solution": { "blocks": [ { "type": "au_demarrage", "x": 40, "y": 40, "next": { "block": { "type": "boucle_infinie", "inputs": { "DO": { "block": { "type": "afficher_valeur", "inputs": { "VALEUR": { "block": { "type": "capteur_temperature" } } }, "next": { "block": { "type": "attendre_temps", "fields": { "UNITE": "s" }, "inputs": { "TEMPS": { "block": { "type": "math_number", "fields": { "NUM": 1 } } } } } } } } } } } } ] }
+        },
+        {
+          "id": "5.2",
+          "titre": "Le niveau à bulle",
+          "consigne": "Selon l'inclinaison de la carte (accéléromètre ou rotation), affiche une icône différente.",
+          "indices": [
+            "Utilise un capteur d'inclinaison de la catégorie « Capteurs » (accélération ou rotation).",
+            "Compare sa valeur avec un nombre dans un bloc « si … alors ».",
+            "Dans « Répéter indéfiniment » : « si accélération x > 200 alors afficher Heureux, sinon afficher Triste » (tu peux choisir d'autres valeurs)."
+          ],
+          "regle": { "bloc": "boucle_infinie", "contient": [
+            { "bloc": ["capteur_acceleration", "capteur_rotation"] },
+            { "bloc": "controls_if" },
+            { "bloc": ["afficher_icone", "afficher_valeur", "faire_defiler", "afficher_image_matrice"] }
+          ] },
+          "solution": { "blocks": [ { "type": "au_demarrage", "x": 40, "y": 40, "next": { "block": { "type": "boucle_infinie", "inputs": { "DO": { "block": { "type": "controls_if", "extraState": { "hasElse": true }, "inputs": { "IF0": { "block": { "type": "logic_compare", "fields": { "OP": "GT" }, "inputs": { "A": { "block": { "type": "capteur_acceleration", "fields": { "AXIS": "x" } } }, "B": { "block": { "type": "math_number", "fields": { "NUM": 200 } } } } } }, "DO0": { "block": { "type": "afficher_icone", "fields": { "ICONE": "HAPPY" } } }, "ELSE": { "block": { "type": "afficher_icone", "fields": { "ICONE": "SAD" } } } } } } } } } } ] }
+        },
+        {
+          "id": "5.3",
+          "titre": "L'alarme radio",
+          "consigne": "Une carte envoie un message radio quand on appuie sur le bouton A ; l'autre carte joue un son quand elle le reçoit.",
+          "indices": [
+            "Les blocs de communication sont dans la catégorie « Radio ». Il faut d'abord allumer la radio.",
+            "Il te faut : « allumer la radio », un bloc d'envoi, un bloc « quand la radio reçoit » et un bloc de son (« Actionneurs »).",
+            "« Au démarrage » : « allumer la radio ». « lorsque le bouton A » : « envoyer msg radio ». « quand la radio reçoit » : « jouer la musique »."
+          ],
+          "regle": { "tous": [
+            { "bloc": "radio_activer" },
+            { "bloc": ["radio_envoyer_texte", "radio_envoyer_nombre", "radio_envoyer_valeur"] },
+            { "bloc": "radio_quand_recu", "contient": { "bloc": ["audio_jouer", "music_jouer_melodie"] } }
+          ] },
+          "solution": { "blocks": [
+            { "type": "au_demarrage", "x": 40, "y": 40, "inputs": { "DO": { "block": { "type": "radio_activer" } } }, "next": { "block": { "type": "boucle_infinie" } } },
+            { "type": "lorsque_bouton", "x": 40, "y": 220, "fields": { "BOUTON": "a" }, "inputs": { "DO": { "block": { "type": "radio_envoyer_texte", "inputs": { "MESSAGE": { "block": { "type": "text", "fields": { "TEXT": "alarme" } } } } } } } },
+            { "type": "radio_quand_recu", "x": 40, "y": 360, "fields": { "TYPE": "texte" }, "inputs": { "DO": { "block": { "type": "audio_jouer", "fields": { "SON": "HELLO" } } } } }
+          ] }
+        },
+        {
+          "id": "5.4",
+          "titre": "Mini-jeu : pierre, feuille, ciseaux",
+          "consigne": "Quand on secoue la carte, tire un nombre au hasard entre 1 et 3 et affiche une icône différente selon le résultat (au moins 2 conditions « si »).",
+          "indices": [
+            "Combine ce que tu as appris : un geste, le hasard, des conditions et un affichage.",
+            "Utilise « nombre aléatoire entre 1 et 3 » et plusieurs « si … alors » qui comparent ce nombre. Garde-le dans une variable.",
+            "« lorsque secouer » : mets le nombre aléatoire dans une variable, puis « si variable = 1 afficher … », « si variable = 2 afficher … », sinon une troisième icône."
+          ],
+          "regle": { "tous": [
+            { "bloc": "math_random_int", "entrees": { "FROM": 1, "TO": 3 } },
+            { "bloc": "controls_if", "min": 2 },
+            { "bloc": ["afficher_icone", "afficher_valeur", "faire_defiler", "afficher_image_matrice"], "min": 3 }
+          ] },
+          "points": 2
+        }
+      ]
+    }
+  ]
+}

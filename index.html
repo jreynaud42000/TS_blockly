@@ -1197,8 +1197,6 @@
   
   <div id="toolbar">
     <!-- 1. Logo (accessoire) -->
-    <div id="tb-logo" title="Technologie Services"><img src="logo.png" alt="Logo"></div>
-
     <!-- 2. Affichage : theme clair / sombre, contraste normal / eleve (bandeau.js ; les boutons d'origine #btn-theme et #btn-contraste, caches, restent le moteur) -->
     <div id="menu-affichage-conteneur" class="tb-dropdown menu-deroulant">
       <button id="menu-affichage-btn" class="tb-btn menu-btn" title="Affichage : thème clair ou sombre, contraste normal ou élevé" aria-label="Affichage">
@@ -1307,7 +1305,7 @@
 
     <button id="btn-options" class="btn-vue" title="Panneau administrateur">Options</button>
     <span id="etat"></span>
-    <span id="copyright-toolbar" title="RAJ Editions">🄯 V2.0D</span>
+    <span id="copyright-toolbar">V2.0E</span>
 
     <!-- 19. Aide : tout a droite, s'ouvre vers la gauche -->
     <div id="menu-aide-conteneur" class="tb-dropdown menu-deroulant">
@@ -1316,6 +1314,8 @@
         Aide ▾
       </button>
       <div id="menu-aide-panneau" class="tb-dropdown-menu menu-panneau">
+        <button id="ex-menu-btn" title="Exercices progressifs avec indices, étoiles et progression enregistrée">🎓 Exercices pas à pas</button>
+        <button id="ex-eval-menu-btn" title="Évaluation chronométrée, sans indice, avec note et rapport">📝 Mode évaluation</button>
         <button id="tuto-menu-btn">🧭 Visite guidée</button>
         <button id="tuto-ia-menu-btn">🧠 Visite guidée IA</button>
         <button id="tb-mission" disabled title="Non disponible dans cette version">🚀 Mon premier programme</button>
@@ -1992,6 +1992,7 @@
   <script type="module" src="ia.js"></script>
   <script type="module" src="tuto.js"></script>
   <script type="module" src="bandeau.js"></script>
+  <script type="module" src="exercices.js"></script>
   
   <!-- LOGIQUE DU SIMULATEUR EN PUR PYTHON (BRYTHON) -->
   <script type="text/python">
@@ -3172,7 +3173,6 @@
   <div id="voile-aide" role="dialog" aria-modal="true" aria-labelledby="aide-bloc-nom">
     <div id="fenetre-aide">
       <div id="aide-entete">
-        <img src="logo.png" alt="" id="aide-logo">
         <h3 id="aide-titre">Aide sur ce bloc</h3>
       </div>
       <p id="aide-bloc-nom"></p>

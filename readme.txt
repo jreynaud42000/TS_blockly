@@ -706,8 +706,8 @@ Apres toute modification des fichiers du projet :
 
    python -m PyInstaller app.spec --noconfirm
 
-Le fichier produit est dist/MicrobitBlockly_V2.0D.exe (un seul fichier, ~16 Mo,
-sans installation). NUMERO DE VERSION (actuellement V2.0D) : a changer aux
+Le fichier produit est dist/MicrobitBlockly_V2.0E.exe (un seul fichier, ~16 Mo,
+sans installation). NUMERO DE VERSION (actuellement V2.0E) : a changer aux
 QUATRE endroits suivants, sinon ils divergent : VERSION dans app.py (affichee
 dans la fenetre console de l'exe), version_info.txt (proprietes du fichier,
 onglet Details : filevers/prodvers en nombres + FileVersion/ProductVersion/
@@ -1383,3 +1383,14 @@ Blocs en contraste eleve : clair = fond blanc, bord noir 3 px, texte noir ; somb
 #carte-pane (absents) ; l'accent turquoise du modele n'est pas repris (charte orange du bandeau conservee, survol du separateur compris).
 
 Bandeau du haut : fond ORANGE (clair #ff5501 = charte Technologie Services, sombre #d94700 un peu plus profond), filet bas orange fonce #b33a00 ; en contraste eleve il reste noir. Variables --bandeau / --bandeau-sombre / --accent-fonce (index.html).
+
+Logo (barre d'outils et fenetre d'aide des blocs) et mention « RAJ Editions » retires de index.html ; le bandeau affiche seulement le numero de version. logo.png n'est plus utilise par la page (il reste dans app.spec, sans effet). Les proprietes du fichier .exe (version_info.txt, CompanyName) gardent « RAJ Editions » : a changer separement si besoin.
+
+31. EXERCICES PAS A PAS ET MODE EVALUATION (copie d'essai)
+Fichiers : exercices.js (moteur, charge apres bandeau.js) et exercices.json (les 16 exercices en 5 niveaux, modifiable a la main : voir le champ « aide_enseignant »).
+Entrees : menu Aide > « Exercices pas a pas » et « Mode evaluation ». Entrainement : panneau « Mission » deplacable, 3 indices progressifs, solution, validation AUTOMATIQUE
+(les blocs sont lus, rien n'est execute), 1 a 3 etoiles (3 = sans indice), exercice suivant verrouille tant que le precedent n'est pas fait ou passe (case « Acces libre »
+pour tout deverrouiller). Evaluation : sans indice ni solution, bouton Valider, 3 essais (100 % / 75 % / 50 % des points), duree maximale facultative, note sur 20,
+rapport imprimable + export CSV / JSON. Progression : localStorage du navigateur (cle exercices_progression_v1), un profil par nom d'eleve ; export / import JSON
+pour regrouper une classe, tableau de classe imprimable et export CSV. Les ids d'exercice (1.1, 2.3...) ne doivent plus changer une fois utilises (la progression s'y rattache).
+app.spec embarque exercices.js et exercices.json ; l'exe V2.0E les embarque.
