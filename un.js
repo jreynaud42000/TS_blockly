@@ -9489,9 +9489,19 @@ try {
         if (cadransServos[nom]) return cadransServos[nom];
         const bloc = document.createElement('div');
         bloc.className = 'servo';
+        // Servo « realiste » vu de dessus (choix de l'utilisateur parmi 4 modeles) : boitier bleu
+        // type SG90 a deux oreilles, palonnier blanc a un bras qui tourne autour de l'axe (42, 52).
         bloc.innerHTML =
-            '<div class="servo-cadran"><div class="servo-rotor"><div class="servo-bras"></div></div>' +
-            '<div class="servo-axe"></div></div>' +
+            '<svg class="servo-cadran" viewBox="0 0 120 96" width="60" height="48" aria-hidden="true">' +
+            '<rect class="servo-corps" x="14" y="30" width="92" height="44" rx="5"/>' +
+            '<rect class="servo-corps" x="4" y="44" width="112" height="14" rx="3"/>' +
+            '<circle class="servo-trou" cx="9" cy="51" r="3"/><circle class="servo-trou" cx="111" cy="51" r="3"/>' +
+            '<rect class="servo-dessus" x="20" y="36" width="80" height="32" rx="3"/>' +
+            '<g class="servo-rotor"><path class="servo-bras" d="M42 52 L42 18"/>' +
+            '<circle class="servo-trou-bras" cx="42" cy="24" r="1.5"/><circle class="servo-trou-bras" cx="42" cy="31" r="1.5"/>' +
+            '<circle class="servo-trou-bras" cx="42" cy="38" r="1.5"/></g>' +
+            '<circle class="servo-moyeu" cx="42" cy="52" r="7"/><circle class="servo-trou-bras" cx="42" cy="52" r="2.5"/>' +
+            '</svg>' +
             '<div class="servo-nom"></div><div class="servo-etat"></div>';
         bloc.querySelector('.servo-nom').textContent = nom;
         zoneServos.appendChild(bloc);

@@ -1097,21 +1097,26 @@
        transition. Un servo a rotation continue tourne sans fin : rotation
        animee par des images cles, dont la duree vient de la vitesse. */
     .servo { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px; }
-    .servo-cadran { width: 44px; height: 44px; border-radius: 50%; background: #0f1c26;
-                    border: 2px solid #46617d; position: relative; box-sizing: border-box; }
-    .servo-rotor { position: absolute; inset: 0; transform: rotate(0deg);
+    /* Servo vu de dessus (SVG cree par cadranServo, un.js) : boitier bleu, palonnier blanc. Le rotor
+       tourne autour de l'axe (42, 52) du dessin : transform-box: view-box rend l'origine en unites du viewBox. */
+    .servo-cadran { display: block; overflow: visible; }
+    .servo-corps { fill: #1f6fb2; }
+    .servo-dessus { fill: #2a82c9; }
+    .servo-trou { fill: var(--fond-saisie); }
+    .servo-bras { stroke: #f4f4f4; stroke-width: 9; stroke-linecap: round; fill: none; }
+    .servo-moyeu { fill: #f4f4f4; }
+    .servo-trou-bras { fill: #9aa4ad; }
+    .servo-rotor { transform-box: view-box; transform-origin: 42px 52px; transform: rotate(0deg);
                    transition: transform 0.35s ease-out; }
-    .servo-bras { position: absolute; left: 50%; top: 4px; width: 3px; height: 16px;
-                  margin-left: -1.5px; background: #2ecc71; border-radius: 2px; }
-    .servo-axe { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px;
-                 margin: -3.5px 0 0 -3.5px; background: #46617d; border-radius: 50%; }
     .servo-cadran.continu .servo-rotor {
         transition: none;
         animation: servo-tour var(--duree, 2s) linear infinite;
     }
     .servo-cadran.continu.inverse .servo-rotor { animation-direction: reverse; }
-    .servo-cadran.arret { border-color: #8c8c8c; }
-    .servo-cadran.arret .servo-bras { background: #8c8c8c; }
+    /* Servo arrete (signal coupe) : boitier et palonnier gris. */
+    .servo-cadran.arret .servo-corps, .servo-cadran.arret .servo-dessus { fill: #6b7480; }
+    .servo-cadran.arret .servo-bras { stroke: #b4b9bf; }
+    .servo-cadran.arret .servo-moyeu { fill: #b4b9bf; }
     @keyframes servo-tour { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .servo-nom { font-size: 10px; color: #b8b8b8; }
     .servo-etat { font-size: 10px; color: var(--texte-chrome); text-align: center; line-height: 1.2; }

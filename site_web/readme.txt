@@ -1457,3 +1457,10 @@ masquees. Code masque, le simulateur occupe 37 % de la largeur (au lieu de 24 %)
 « Reinitialiser la simulation » se placent a droite de la carte, et la poignee de redimensionnement est active d'emblee.
 Reglage : classes inactif / replie dans index.html (#btn-vue-code, #code-container), regle CSS
 #code-container.replie ~ #simulator-container, et synchroniserResizerSimulateur() appele au demarrage (un.js).
+
+37. DESSIN DES SERVOMOTEURS (oct. 2026)
+Le cadran rond du panneau « Servomoteurs » est remplace par un servo vu de dessus (modele A, choisi parmi 4 propositions) :
+boitier bleu type SG90 a deux oreilles, palonnier blanc qui tourne autour de l'axe (90 deg = palonnier vers le haut,
+0 deg a gauche, 180 deg a droite). Rotation continue : le palonnier tourne sans fin (sens et vitesse selon la vitesse).
+Arret : boitier et palonnier gris. Dessin SVG cree par cadranServo() (un.js), styles .servo-* (index.html) ; le rotor
+tourne avec transform-box: view-box et transform-origin: 42px 52px (unites du dessin).
