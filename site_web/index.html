@@ -166,8 +166,9 @@
     .tb-sep { width: 1px; height: 24px; background: rgba(255,255,255,0.25); margin: 0 2px; }
 
     /* Logo (accessoire : le fichier logo.png actuel est conserve) */
-    #tb-logo { display: flex; align-items: center; padding: 0 6px 0 2px; margin-right: 2px; flex-shrink: 0; }
-    #tb-logo img { height: 30px; width: auto; display: block; }
+    #tb-logo { display: flex; align-items: center; padding: 3px 6px; margin-right: 2px; flex-shrink: 0;
+      background: #fff; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+    #tb-logo img { height: 24px; width: auto; display: block; }
 
     /* Nom du fichier : encadre blanc, texte de la couleur du bandeau (champ de saisie : un clic permet de le renommer) */
     #tb-nomfichier {
@@ -1226,7 +1227,9 @@
 <body onload="brython()">
   
   <div id="toolbar">
-    <!-- 1. Logo (accessoire) -->
+    <!-- 1. Logo Technologie Services (logo_ts.png, telecharge de technologieservices.fr), sur une pastille blanche :
+         texte noir et icone orange, illisibles directement sur le bandeau orange. -->
+    <div id="tb-logo"><img src="logo_ts.png" alt="Technologie Services" title="Technologie Services"></div>
     <!-- 2. Affichage : theme clair / sombre, contraste normal / eleve (bandeau.js ; les boutons d'origine #btn-theme et #btn-contraste, caches, restent le moteur) -->
     <div id="menu-affichage-conteneur" class="tb-dropdown menu-deroulant">
       <button id="menu-affichage-btn" class="tb-btn menu-btn" title="Affichage : thème clair ou sombre, contraste normal ou élevé" aria-label="Affichage">
@@ -1273,13 +1276,13 @@
     <div class="tb-sep"></div>
 
     <!-- 7-8. Defaire / Refaire -->
-    <button id="btn-annuler" class="tb-btn" title="Défaire (Ctrl+Z)">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
-      Défaire
+    <!-- Defaire / Refaire : icones seules (info-bulle et lecteur d'ecran gardent le libelle), pour laisser
+         la place au logo sans faire passer le bandeau sur deux lignes. -->
+    <button id="btn-annuler" class="tb-btn tb-icone" title="Défaire (Ctrl+Z)" aria-label="Défaire (Ctrl+Z)">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
     </button>
-    <button id="btn-refaire" class="tb-btn" title="Refaire (Ctrl+Maj+Z)">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>
-      Refaire
+    <button id="btn-refaire" class="tb-btn tb-icone" title="Refaire (Ctrl+Maj+Z)" aria-label="Refaire (Ctrl+Maj+Z)">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>
     </button>
 
     <div class="tb-sep"></div>
