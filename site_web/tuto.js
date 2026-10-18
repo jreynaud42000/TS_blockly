@@ -79,10 +79,10 @@ const ETAPES_GENERAL = [
     {
         titre: '5. Lancer la simulation',
         texte: 'Ce bouton démarre le programme sur la carte virtuelle. « Réinitialiser » la remet à zéro.',
-        cible: '#run-sim',
+        cible: '#tb-lancer',
         avant: () => ouvrir('btn-vue-simu'),
         consigne: 'Cliquez sur « ▶ Lancer la simulation » : le cœur doit s\'afficher sur les LED.',
-        attendreClic: '#run-sim',          // le programme d'exemple se termine tout de suite : on attend le clic, pas l'etat
+        attendreClic: '#tb-lancer',          // le programme d'exemple se termine tout de suite : on attend le clic, pas l'etat
     },
     {
         titre: '6. Boutons, gestes et capteurs',
@@ -273,10 +273,10 @@ const ETAPES_IA = [
         titre: '13. Essayer dans le simulateur',
         texte: 'Lancez la simulation, puis démarrez la reconnaissance (« ⚡ Apprentissage immédiat » ou « Vision ») : quand la classe est reconnue, vos blocs s\'exécutent ' +
             'sur la carte virtuelle. Le simulateur doit être en marche, sinon les résultats ne lui sont pas transmis.',
-        cible: '#run-sim',
+        cible: '#tb-lancer',
         avant: () => ouvrir('btn-vue-simu'),
         consigne: 'Cliquez sur « ▶ Lancer la simulation ».',
-        attendreClic: '#run-sim',
+        attendreClic: '#tb-lancer',
     },
     {
         titre: '14. Avec la vraie carte',
@@ -346,10 +346,10 @@ const ETAPES_CONSOLE = [
         titre: '4. Lancer la simulation',
         texte: 'Les lignes apparaissent dans la console, dans l\'ordre où le programme les écrit. « Lancer la simulation » et ' +
             '« Réinitialiser » effacent d\'abord la console. Seules les 1000 dernières lignes sont conservées.',
-        cible: '#run-sim',
+        cible: '#tb-lancer',
         avant: () => { ouvrir('btn-vue-simu'); ouvrirConsole(); },
         consigne: 'Cliquez sur « ▶ Lancer la simulation ».',
-        attendreClic: '#run-sim',
+        attendreClic: '#tb-lancer',
     },
     {
         titre: '5. La zone de texte',

@@ -791,7 +791,9 @@
     .mb-edge-zone { cursor: pointer; fill: transparent; }
     .mb-edge-zone.mb-edge-zone-active { fill: rgba(0, 0, 0, 0.28); }
 
-    #run-sim { background: #cf4400; width: 100%; font-size: 16px; padding: 12px; box-sizing: border-box; margin: 0; }
+    /* Masque : doublon du bouton vert « Lancer la simulation » du bandeau (#tb-lancer). Il reste dans la page car
+       c'est lui que le bandeau clique (bandeau.js) et que le simulateur Brython ecoute (lancer_simulation). */
+    #run-sim { display: none; background: #cf4400; width: 100%; font-size: 16px; padding: 12px; box-sizing: border-box; margin: 0; }
     #run-sim:hover { background: #b33a00; }
 
     /* Le geste « secouer » n'a pas de zone cliquable sur la carte : il lui faut
