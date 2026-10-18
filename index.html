@@ -1928,6 +1928,41 @@
       </span>
     </div>
     <div id="ia-colonnes">
+      <!-- Apprentissage immediat (sans entrainement) et QR codes : moteur dans ia-immediat.js.
+           Resultats envoyes comme ceux de la colonne Vision (genre "vision") et en "qr". -->
+      <div class="ia-colonne" data-genre="immediat">
+        <h4>⚡ Apprentissage immédiat (caméra)</h4>
+        <div class="ia-modele">
+          <label class="ia-imm-type-label">Reconnaître :
+            <select class="ia-imm-type" title="Ce que l'IA apprend à reconnaître">
+              <option value="images">objets et images</option>
+              <option value="mains">gestes de la main</option>
+              <option value="bras">positions des bras</option>
+            </select>
+          </label>
+          <button class="btn-vue ia-imm-camera" title="Allumer la caméra pour ajouter des exemples">📷 Caméra</button>
+        </div>
+        <div class="ia-actions">
+          <button class="btn-vue ia-demarrer" disabled>▶ Démarrer</button>
+          <span class="ia-statut">Ajoutez des exemples à au moins 2 classes.</span>
+        </div>
+        <div class="ia-imm-cadre replie"><video class="ia-imm-video" autoplay muted playsinline></video><canvas class="ia-imm-calque"></canvas></div>
+        <div class="ia-classes"></div>
+        <details class="ia-creer" open>
+          <summary>✚ Exemples (aucun entraînement : chaque exemple compte aussitôt)</summary>
+          <p class="ia-creer-aide">Maintenir le bouton d'une classe pour ajouter des exemples pris par la caméra, ou 🖼 pour des images. Gestes et positions : seul le squelette est gardé, jamais la photo.</p>
+          <div class="ia-creer-classes"></div>
+          <div class="ia-creer-actions">
+            <button class="btn-vue ia-ajouter-classe">+ Classe</button>
+            <button class="btn-vue ia-imm-exporter" title="Télécharger l'apprentissage dans un fichier .json (il est aussi rangé dans le .py téléchargé)">💾 Exporter</button>
+            <button class="btn-vue ia-imm-importer" title="Ouvrir un apprentissage enregistré (.json)">📂 Importer</button>
+            <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
+          </div>
+          <input type="file" class="ia-imm-fichiers" accept="image/png,image/jpeg,image/webp" multiple style="display:none;">
+          <input type="file" class="ia-imm-import-fichier" accept=".json,application/json" style="display:none;">
+          <div class="ia-creer-statut"></div>
+        </details>
+      </div>
       <div class="ia-colonne" data-genre="vision">
         <h4>📷 Vision : modèle Teachable Machine (caméra)</h4>
         <div class="ia-modele">
@@ -1967,41 +2002,6 @@
             <button class="btn-vue ia-enregistrer" disabled title="Télécharger model.json, metadata.json et weights.bin (à recharger avec « Fichiers… »)">💾 Enregistrer</button>
             <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
           </div>
-          <div class="ia-creer-statut"></div>
-        </details>
-      </div>
-      <!-- Apprentissage immediat (sans entrainement) et QR codes : moteur dans ia-immediat.js.
-           Resultats envoyes comme ceux de la colonne Vision (genre "vision") et en "qr". -->
-      <div class="ia-colonne" data-genre="immediat">
-        <h4>⚡ Apprentissage immédiat (caméra)</h4>
-        <div class="ia-modele">
-          <label class="ia-imm-type-label">Reconnaître :
-            <select class="ia-imm-type" title="Ce que l'IA apprend à reconnaître">
-              <option value="images">objets et images</option>
-              <option value="mains">gestes de la main</option>
-              <option value="bras">positions des bras</option>
-            </select>
-          </label>
-          <button class="btn-vue ia-imm-camera" title="Allumer la caméra pour ajouter des exemples">📷 Caméra</button>
-        </div>
-        <div class="ia-actions">
-          <button class="btn-vue ia-demarrer" disabled>▶ Démarrer</button>
-          <span class="ia-statut">Ajoutez des exemples à au moins 2 classes.</span>
-        </div>
-        <div class="ia-imm-cadre replie"><video class="ia-imm-video" autoplay muted playsinline></video><canvas class="ia-imm-calque"></canvas></div>
-        <div class="ia-classes"></div>
-        <details class="ia-creer" open>
-          <summary>✚ Exemples (aucun entraînement : chaque exemple compte aussitôt)</summary>
-          <p class="ia-creer-aide">Maintenir le bouton d'une classe pour ajouter des exemples pris par la caméra, ou 🖼 pour des images. Gestes et positions : seul le squelette est gardé, jamais la photo.</p>
-          <div class="ia-creer-classes"></div>
-          <div class="ia-creer-actions">
-            <button class="btn-vue ia-ajouter-classe">+ Classe</button>
-            <button class="btn-vue ia-imm-exporter" title="Télécharger l'apprentissage dans un fichier .json (il est aussi rangé dans le .py téléchargé)">💾 Exporter</button>
-            <button class="btn-vue ia-imm-importer" title="Ouvrir un apprentissage enregistré (.json)">📂 Importer</button>
-            <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
-          </div>
-          <input type="file" class="ia-imm-fichiers" accept="image/png,image/jpeg,image/webp" multiple style="display:none;">
-          <input type="file" class="ia-imm-import-fichier" accept=".json,application/json" style="display:none;">
           <div class="ia-creer-statut"></div>
         </details>
       </div>
