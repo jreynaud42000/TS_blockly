@@ -145,7 +145,6 @@ const ETAPES_GENERAL = [
 
 // ---------- visite guidee de la partie IA (menu Aide > Visite guidee IA) ----------
 const colVision = '.ia-colonne[data-genre="vision"]';
-const colSon = '.ia-colonne[data-genre="son"]';
 const colImm = '.ia-colonne[data-genre="immediat"]';
 const colQR = '.ia-colonne[data-genre="qr"]';
 const ouvrirCreation = genre => { const d = $('.ia-colonne[data-genre="' + genre + '"] .ia-creer'); if (d) d.open = true; };
@@ -168,28 +167,30 @@ const ETAPES_IA = [
     },
     {
         titre: '2. Quatre colonnes',
-        texte: '« ⚡ Apprentissage immédiat » crée vos propres classes avec la caméra (objets, gestes de la main, positions des bras). ' +
-            '« Vision » charge un modèle déjà fait sur Teachable Machine. « Son » crée ou charge un modèle pour le micro. ' +
+        texte: '« ⚡ Apprentissage immédiat » crée vos propres classes avec la caméra (objets, gestes de la main, positions des bras) ' +
+            'ou le micro (sons et mots). « Vision » et « Son » chargent un modèle déjà fait sur Teachable Machine. ' +
             '« QR codes » lit les QR codes et codes-barres. Toutes envoient leur résultat aux blocs de la catégorie « IA ».',
         cible: '#ia-colonnes',
         avant: panneauIA,
     },
     {
-        titre: '3. Créer ses classes : la caméra',
+        titre: '3. Créer ses classes : caméra ou micro',
         texte: 'L\'apprentissage immédiat n\'a pas besoin d\'entraînement : chaque exemple compte aussitôt. Choisissez d\'abord ' +
-            'ce que l\'IA doit reconnaître (« objets et images », « gestes de la main » ou « positions des bras »), puis allumez ' +
-            'la caméra : le navigateur demande l\'autorisation.',
+            'ce que l\'IA doit reconnaître (« objets et images », « gestes de la main », « positions des bras » avec la caméra, ' +
+            'ou « sons et mots » avec le micro), puis allumez la caméra ou le micro : le navigateur demande l\'autorisation.',
         cible: colImm + ' .ia-imm-camera',
         avant: () => { panneauIA(); ouvrirCreation('immediat'); },
-        consigne: 'Cliquez sur « 📷 Caméra » et autorisez-la.',
-        attendre: () => { const c = $(colImm + ' .ia-imm-cadre'); return !!c && !c.classList.contains('replie'); },
+        consigne: 'Cliquez sur « 📷 Caméra » (ou « 🎤 Micro ») et autorisez-la.',
+        attendre: () => [colImm + ' .ia-imm-cadre', colImm + ' .ia-imm-niveau'].some(sel => { const c = $(sel); return !!c && !c.classList.contains('replie'); }),
     },
     {
         titre: '4. Ajouter des exemples',
         texte: 'Chaque ligne est une classe. Renommez-la (par exemple « main », puis « fond ») : les blocs qui l\'utilisent suivent. ' +
             'Placez ce que la caméra doit reconnaître devant elle et MAINTENEZ le bouton « Maintenir » de la classe : des exemples ' +
-            'sont ajoutés en rafale. Variez l\'angle, la distance, la lumière. 🖼 ajoute des exemples depuis des images. ' +
-            '« + Classe » en ajoute une (8 au plus). Pour les gestes et les positions, seul le squelette est gardé, jamais la photo.',
+            'sont ajoutés en rafale. Variez l\'angle, la distance, la lumière. 🖼 ajoute des exemples depuis des images. Pour les ' +
+            'sons : maintenez le bouton et faites le son plusieurs fois, avec un court silence entre deux. Chaque exemple apparaît ' +
+            'en vignette sous sa classe : cliquer sur une vignette supprime cet exemple seulement. « + Classe » en ajoute une ' +
+            '(8 au plus). Pour les gestes et les positions, seul le squelette est gardé, jamais la photo.',
         cible: colImm + ' .ia-creer-classes',
         avant: () => { panneauIA(); ouvrirCreation('immediat'); },
         consigne: 'Ajoutez au moins 5 exemples à chacune des deux classes.',
@@ -198,7 +199,7 @@ const ETAPES_IA = [
     {
         titre: '5. Tester',
         texte: '« Démarrer » lance la reconnaissance en continu : une barre par classe montre la confiance en direct, et la classe ' +
-            'retenue passe en vert. Montrez vos objets ou vos gestes à la caméra pour vérifier. Si deux classes se confondent, ' +
+            'retenue passe en vert. Montrez vos objets ou vos gestes à la caméra (ou faites vos sons) pour vérifier. Si deux classes se confondent, ' +
             'ajoutez-leur des exemples : c\'est pris en compte immédiatement, sans rien relancer.',
         cible: colImm + ' .ia-demarrer',
         avant: panneauIA,
@@ -223,20 +224,21 @@ const ETAPES_IA = [
     },
     {
         titre: '8. Ou charger un modèle Teachable Machine',
-        texte: 'La colonne « Vision » utilise un modèle fait sur Teachable Machine (teachablemachine.withgoogle.com). Collez son ' +
-            'adresse puis « Charger » (nécessite Internet), ou cliquez « Fichiers… » et sélectionnez ses trois fichiers ' +
-            '(model.json, metadata.json, weights.bin) à la fois : cela fonctionne sans Internet. Démarrer l\'une des deux ' +
-            'colonnes caméra arrête l\'autre.',
+        texte: 'Les colonnes « Vision » (caméra) et « Son » (micro) utilisent un modèle fait sur Teachable Machine ' +
+            '(teachablemachine.withgoogle.com). Collez son adresse puis « Charger » (nécessite Internet), ou cliquez « Fichiers… » ' +
+            'et sélectionnez ses trois fichiers (model.json, metadata.json, weights.bin) à la fois : cela fonctionne sans Internet. ' +
+            'Démarrer une colonne arrête l\'apprentissage immédiat du même genre, et inversement.',
         cible: colVision + ' .ia-modele',
         avant: panneauIA,
     },
     {
-        titre: '9. Le son, avec le micro',
-        texte: 'Pour le son, ouvrez « ✚ Créer un modèle » dans la colonne Son. Cliquez « ● 1 s » pour enregistrer 1 seconde de son dans ' +
-            'une classe (au moins 5 par classe), puis « 🏋 Entraîner ». Créez toujours une classe « Bruit de fond » avec le silence ou ' +
-            'l\'ambiance de la pièce. « 💾 Enregistrer » télécharge le modèle (3 fichiers), sinon il est perdu au rechargement.',
-        cible: colSon,
-        avant: () => { panneauIA(); ouvrirCreation('son'); },
+        titre: '9. Les sons',
+        texte: 'Les sons et les mots s\'apprennent aussi dans « ⚡ Apprentissage immédiat » : choisissez « sons et mots », allumez ' +
+            'le micro, puis maintenez le bouton d\'une classe et faites le son plusieurs fois. Pas besoin de classe « bruit de fond » : ' +
+            'le silence ne déclenche rien. Un son reconnu le reste 1 seconde ; il pilote les blocs « son ». Rien n\'est enregistré, ' +
+            'seul un dessin du timbre est gardé.',
+        cible: colImm + ' .ia-imm-type',
+        avant: () => { panneauIA(); ouvrirCreation('immediat'); },
     },
     {
         titre: '10. Les QR codes',

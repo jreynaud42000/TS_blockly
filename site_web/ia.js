@@ -336,8 +336,8 @@ async function basculer(genre) {
     const m = moteurs[genre];
     if (m.enMarche) { arreter(genre); dire(genre, 'Arrêté.'); return; }
     if (!m.classes.length) return;
-    // Un seul moteur a la fois pour le genre vision : l'apprentissage immediat s'arrete.
-    if (genre === 'vision' && window.iaImmediat) window.iaImmediat.arreter();
+    // Un seul moteur a la fois par genre : l'apprentissage immediat du meme genre s'arrete.
+    if (window.iaImmediat) window.iaImmediat.arreter(genre);
     dire(genre, genre === 'vision' ? 'Démarrage de la caméra…' : 'Démarrage du micro…');
     try {
         if (genre === 'vision') await demarrerVision(); else await demarrerSon();
@@ -353,217 +353,10 @@ async function basculer(genre) {
     majBouton(genre);
 }
 
-// ---------- creation d'un modele de SON (entrainement dans le navigateur) ----------
-// Apprentissage par transfert, comme Teachable Machine : le reseau de base
-// speech-commands (lib/tm/base/son, donc hors connexion) extrait des
-// caracteristiques ; seule une petite couche finale est entrainee sur les
-// exemples enregistres. Les exemples ne quittent pas le navigateur et sont
-// perdus au rechargement de la page : "Enregistrer" garde le modele (3 fichiers,
-// a recharger avec « Fichiers… »).
-// Pour les IMAGES, la creation se fait dans « Apprentissage immediat »
-// (ia-immediat.js) : la colonne Vision ne fait plus que charger un modele
-// Teachable Machine (une seule facon de creer, plus de doublon).
-const absolu = chemin => new URL(chemin, location.href).href;
-const attente = ms => new Promise(r => setTimeout(r, ms));
-
-const creation = {
-    son: { classes: [{ nom: 'Bruit de fond', n: 0 }, { nom: 'Classe 1', n: 0 }], base: null, transfer: null, compteur: 0,
-           motsEntraines: null, occupe: false },
-};
-const colCreer = genre => $('.ia-creer', colonne(genre));
-function direCreer(genre, texte) { const e = $('.ia-creer-statut', colonne(genre)); if (e) e.textContent = texte; }
-const messageErreur = e => (e && e.message ? e.message : String(e));
-
-function telecharger(nom, contenu, type) {
-    const lien = document.createElement('a');
-    lien.href = URL.createObjectURL(new Blob([contenu], { type }));
-    lien.download = nom;
-    document.body.appendChild(lien);
-    lien.click();
-    lien.remove();
-    setTimeout(() => URL.revokeObjectURL(lien.href), 10000);
-}
-
-// Sauvegarde au format Teachable Machine (model.json + weights.bin + metadata.json).
-async function enregistrerModele(modele, metadata) {
-    await modele.save(window.tf.io.withSaveHandler(async artefacts => {
-        const json = {
-            modelTopology: artefacts.modelTopology,
-            format: 'layers-model',
-            generatedBy: 'Programmation Micro:bit V2',
-            convertedBy: null,
-            weightsManifest: [{ paths: ['weights.bin'], weights: artefacts.weightSpecs }],
-        };
-        telecharger('model.json', JSON.stringify(json), 'application/json');
-        telecharger('weights.bin', artefacts.weightData, 'application/octet-stream');
-        return { modelArtifactsInfo: { dateSaved: new Date(), modelTopologyType: 'JSON' } };
-    }));
-    telecharger('metadata.json', JSON.stringify(metadata), 'application/json');
-}
-
-function majLignesClasses(genre) {
-    const conteneur = $('.ia-creer-classes', colCreer(genre));
-    const etat = creation[genre];
-    conteneur.textContent = '';
-    etat.classes.forEach((c, i) => {
-        const nb = c.n;
-        const l = document.createElement('div');
-        l.className = 'ia-ex';
-        const nom = document.createElement('input');
-        nom.className = 'ia-ex-nom'; nom.value = c.nom; nom.spellcheck = false;
-        nom.disabled = nb > 0;                         // le nom est inscrit dans chaque exemple sonore
-        nom.addEventListener('input', () => { c.nom = nom.value; });
-        const n = document.createElement('span'); n.className = 'ia-ex-n'; n.textContent = String(nb);
-        const capt = document.createElement('button');
-        capt.className = 'btn-vue ia-ex-capt';
-        capt.textContent = '● 1 s';
-        capt.title = 'Enregistrer 1 seconde de son';
-        const sup = document.createElement('button');
-        sup.className = 'btn-vue ia-ex-sup'; sup.textContent = '🗑'; sup.title = 'Supprimer cette classe et ses exemples';
-        sup.addEventListener('click', () => supprimerClasse(genre, i));
-        capt.addEventListener('click', () => capturerSon(i, capt));
-        l.append(nom, n, capt, sup);
-        conteneur.appendChild(l);
-    });
-}
-
-function ajouterClasse(genre) {
-    const etat = creation[genre];
-    const nom = 'Classe ' + (etat.classes.length + 1);
-    etat.classes.push({ nom, n: 0 });
-    majLignesClasses(genre);
-}
-
-function supprimerClasse(genre, i) {
-    const etat = creation[genre];
-    const c = etat.classes[i];
-    if (c.n > 0 && etat.transfer) {
-        try { for (const e of etat.transfer.getExamples(c.nom)) etat.transfer.removeExample(e.uid); } catch (erreur) { /* rien a retirer */ }
-    }
-    etat.classes.splice(i, 1);
-    majLignesClasses(genre);
-}
-
-function toutEffacer(genre) {
-    const etat = creation[genre];
-    try { if (etat.transfer) etat.transfer.clearExamples(); } catch (erreur) { /* deja vide */ }
-    etat.classes = [{ nom: 'Bruit de fond', n: 0 }, { nom: 'Classe 1', n: 0 }];
-    majLignesClasses(genre);
-    direCreer(genre, 'Exemples effacés.');
-}
-
-// Le modele entraine devient le modele actif de la colonne.
-function installerModele(genre, modele, noms) {
-    arreter(genre);
-    const m = moteurs[genre];
-    m.reconnaisseur = modele;
-    m.classes = noms;
-    afficherClasses(genre, noms);
-    $('.ia-demarrer', colonne(genre)).disabled = false;
-    $('.ia-enregistrer', colonne(genre)).disabled = false;
-    dire(genre, 'Modèle entraîné : ' + noms.length + ' classes. Cliquez « Démarrer ».');
-}
-
-// ----- son -----
-async function baseSon() {
-    const etat = creation.son;
-    if (!etat.base) {
-        await chargerBibliotheque('son');
-        // metadataURL doit etre en http(s) pour la bibliotheque : adresse absolue.
-        etat.base = window.speechCommands.create('BROWSER_FFT', undefined,
-            absolu('lib/tm/base/son/model.json'), absolu('lib/tm/base/son/metadata.json'));
-        await etat.base.ensureModelLoaded();
-    }
-    if (!etat.transfer) etat.transfer = etat.base.createTransfer('projet' + (++etat.compteur));
-    return etat.transfer;
-}
-
-async function capturerSon(i, bouton) {
-    const etat = creation.son;
-    if (etat.occupe) return;
-    if (moteurs.son.enMarche) { direCreer('son', 'Arrêtez d\'abord le micro (bouton « Arrêter » du haut).'); return; }
-    const c = etat.classes[i];
-    const nom = c.nom.trim();
-    if (!nom) { direCreer('son', 'Donnez d\'abord un nom à la classe.'); return; }
-    if (etat.classes.some((x, j) => j !== i && x.nom.trim().toLowerCase() === nom.toLowerCase())) {
-        direCreer('son', 'Deux classes portent le même nom.'); return;
-    }
-    etat.occupe = true;
-    bouton.classList.add('enregistre'); bouton.textContent = '● …';
-    direCreer('son', 'Enregistrement de « ' + nom + ' » (1 seconde)…');
-    try {
-        const transfer = await baseSon();
-        c.nom = nom;
-        await transfer.collectExample(nom);
-        c.n = (transfer.countExamples()[nom]) || c.n + 1;
-        direCreer('son', 'Exemple ajouté à « ' + nom + ' » (' + c.n + ').');
-    } catch (erreur) {
-        direCreer('son', erreur && erreur.name === 'NotAllowedError'
-            ? 'Accès refusé : autorisez le micro dans le navigateur.' : 'Enregistrement impossible : ' + messageErreur(erreur));
-    } finally {
-        etat.occupe = false;
-        majLignesClasses('son');
-    }
-}
-
-async function entrainerSon() {
-    const etat = creation.son;
-    if (etat.occupe) return;
-    etat.occupe = true;
-    const bouton = $('.ia-entrainer', colonne('son'));
-    bouton.disabled = true;
-    try {
-        if (moteurs.son.enMarche) throw new Error('Arrêtez d\'abord le micro.');
-        let transfer = await baseSon();
-        const comptes = transfer.countExamples();
-        const mots = Object.keys(comptes).filter(k => comptes[k] > 0).sort();
-        if (mots.length < 2) throw new Error('Au moins 2 classes avec des exemples sont nécessaires.');
-        const faibles = mots.filter(k => comptes[k] < 5);
-        if (faibles.length) throw new Error('Au moins 5 exemples par classe (il en manque pour : ' + faibles.join(', ') + ').');
-        // Les classes ont change depuis le dernier entrainement : la couche finale n'a plus la bonne taille.
-        if (transfer.model && etat.motsEntraines && etat.motsEntraines !== mots.join('|')) {
-            const exemples = transfer.serializeExamples();
-            transfer = etat.base.createTransfer('projet' + (++etat.compteur));
-            transfer.loadExamples(exemples, true);
-            etat.transfer = transfer;
-        }
-        const EPOQUES = 25;
-        direCreer('son', 'Entraînement…');
-        await transfer.train({
-            epochs: EPOQUES,
-            batchSize: 16,
-            callback: {
-                onEpochEnd: async (epoque, logs) => {
-                    const precision = logs.acc != null ? logs.acc : logs.accuracy;
-                    direCreer('son', 'Entraînement : époque ' + (epoque + 1) + '/' + EPOQUES +
-                        (precision != null ? ' — précision ' + Math.round(precision * 100) + ' %' : ''));
-                    await attente(0);
-                },
-            },
-        });
-        etat.motsEntraines = mots.join('|');
-        installerModele('son', transfer, transfer.wordLabels());
-        direCreer('son', 'Entraînement terminé. Cliquez « Démarrer » (colonne du haut) pour tester.');
-    } catch (erreur) {
-        direCreer('son', 'Entraînement impossible : ' + messageErreur(erreur));
-    } finally {
-        etat.occupe = false;
-        bouton.disabled = false;
-    }
-}
-
-async function enregistrerGenre(genre) {
-    try {
-        const m = moteurs[genre];
-        await enregistrerModele(m.reconnaisseur, {
-            tfjsVersion: window.tf.version.tfjs, tfjsSpeechCommandsVersion: '0.4.0',
-            modelName: 'modele-microbit', timeStamp: new Date().toISOString(), wordLabels: m.classes,
-        });
-        direCreer(genre, 'Fichiers téléchargés : model.json, weights.bin, metadata.json (rechargez-les avec « Fichiers… »).');
-    } catch (erreur) {
-        direCreer(genre, 'Enregistrement impossible : ' + messageErreur(erreur));
-    }
-}
+// ---------- creation de classes ----------
+// Il n'y a plus d'entrainement ici : images, gestes, positions ET sons se creent dans
+// « Apprentissage immediat » (ia-immediat.js, sans entrainement). Les colonnes Vision et
+// Son ne font que CHARGER un modele Teachable Machine (une seule facon de creer).
 
 // ---------- memoire des adresses (confort uniquement) ----------
 function memoriser(genre, adresse) {
@@ -589,14 +382,6 @@ for (const genre of ['vision', 'son']) {
     });
     $('.ia-demarrer', col).addEventListener('click', () => basculer(genre));
 }
-if (colonne('son') && colCreer('son')) {
-    const col = colonne('son');
-    majLignesClasses('son');
-    $('.ia-ajouter-classe', col).addEventListener('click', () => ajouterClasse('son'));
-    $('.ia-tout-effacer', col).addEventListener('click', () => toutEffacer('son'));
-    $('.ia-entrainer', col).addEventListener('click', entrainerSon);
-    $('.ia-enregistrer', col).addEventListener('click', () => enregistrerGenre('son'));
-}
 if (curseurSeuil) curseurSeuil.addEventListener('input', () => { valeurSeuil.textContent = curseurSeuil.value; });
 if (caseCarte) caseCarte.addEventListener('change', majEtatCarte);
 setInterval(() => { if (caseCarte && caseCarte.checked) majEtatCarte(); }, 2000);
@@ -604,18 +389,16 @@ setInterval(() => { if (caseCarte && caseCarte.checked) majEtatCarte(); }, 2000)
 // Camera et micro ne doivent pas rester allumes en cachette : on coupe a la fermeture de la page.
 window.addEventListener('pagehide', () => { arreterVision(); arreterSon(); fermerCamera(); });
 
-// Noms de classes connus pour un genre (menus des blocs IA, un.js) : modele charge,
-// classes en cours de creation, et apprentissage immediat pour la vision.
+// Noms de classes connus pour un genre (menus des blocs IA, un.js) : modele Teachable
+// Machine charge et apprentissage immediat du meme genre.
 window.iaClassesConnues = function (genre) {
     const noms = [];
     if (moteurs[genre]) noms.push(...moteurs[genre].classes);
-    // Classes en creation : seulement celles qui ont des exemples (pas les « Classe 1 » par defaut).
-    if (creation[genre]) noms.push(...creation[genre].classes.filter(c => c.n > 0).map(c => c.nom));
-    if (genre === 'vision' && window.iaImmediat) noms.push(...window.iaImmediat.classes());
+    if (window.iaImmediat) noms.push(...window.iaImmediat.classes(genre));
     const vus = new Set();
     return noms.map(n => String(n).trim()).filter(n => n && !vus.has(slug(n)) && vus.add(slug(n)));
 };
 
 window.iaNoyau = { traiterResultat, liberer, envoyer, ouvrirCamera, fermerCamera, camera, dernierEnvoi, moteurs, arreter, seuil };
 
-window.iaTest = { liberer, creation, camera, ouvrirCamera, fermerCamera, entrainerSon, capturerSon, enregistrerGenre, ajouterClasse, chargerBibliotheque, traiterResultat, chargerModele, basculer, arreter, moteurs, envoyer, trierFichiers, racineModele, dernierEnvoi };
+window.iaTest = { liberer, camera, ouvrirCamera, fermerCamera, chargerBibliotheque, traiterResultat, chargerModele, basculer, arreter, moteurs, envoyer, trierFichiers, racineModele, dernierEnvoi };

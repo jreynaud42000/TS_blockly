@@ -1,9 +1,9 @@
 // ia-immediat.js — apprentissage IMMEDIAT (sans entrainement) et lecture des QR codes.
 //
-// Complete ia.js (Teachable Machine) sans le modifier en profondeur : les resultats
-// passent par les memes fonctions (window.iaNoyau), donc par les memes blocs IA
-// (genre "vision") et la meme ligne envoyee au programme :
-//     IA:vision:<classe>:<confiance>\n      IA:qr:<texte>:100\n
+// Complete ia.js (modeles Teachable Machine, chargement seulement) : les resultats passent
+// par les memes fonctions (window.iaNoyau), donc par les memes blocs IA et la meme ligne
+// envoyee au programme :
+//     IA:vision:<classe>:<confiance>\n   IA:son:<classe>:<confiance>\n   IA:qr:<texte>:100\n
 //
 // 1. Apprentissage immediat (colonne « ⚡ Apprentissage immédiat »)
 //    Chaque exemple est resume en une EMPREINTE (des nombres) :
@@ -11,26 +11,30 @@
 //      - gestes de la main : les 21 points de la main (MediaPipe Hands), ramenes au
 //        poignet et a la taille de la main, main gauche retournee : 63 nombres ;
 //      - positions des bras : epaules, coudes, poignets (MediaPipe Pose), ramenes au
-//        milieu des epaules et a leur largeur : 12 nombres.
+//        milieu des epaules et a leur largeur : 12 nombres ;
+//      - sons et mots : le micro, timbre (MFCC) de 30 instants, 360 nombres
+//        (ia-son-immediat.js). Les sons pilotent les blocs « son », le reste « vision ».
 //    Reconnaitre = chercher les K exemples les plus proches : chacun vote pour sa
 //    classe (k plus proches voisins). Aucun entrainement : un exemple ajoute compte
-//    aussitot. Les votes des LISSAGE dernieres images sont moyennes (confiance moins
-//    saccadee qu'un vote sur 5).
-//    Exemples : camera (bouton « Maintenir ») ou fichiers .png / .jpg.
+//    aussitot. Camera : les votes des LISSAGE dernieres images sont moyennes. Son : un
+//    son reconnu le reste DUREE_SON ms, puis plus rien n'est reconnu.
+//    Exemples : camera ou micro (bouton « Maintenir »), ou fichiers .png / .jpg.
+//    Chaque exemple a sa VIGNETTE (cliquer dessus le supprime) : petite photo pour les
+//    objets et images (en memoire seulement, jamais enregistree), squelette dessine pour
+//    les gestes et positions, dessin du timbre pour les sons.
 //
 // 2. QR codes et codes-barres (colonne « 🔳 QR codes ») : ZXing lit l'image de la
 //    camera ; le texte (sans accents) part vers le programme. Un code qui n'est plus
 //    vu depuis 700 ms n'est plus « visible ». La meme colonne cree un QR code a imprimer.
 //
-// Sauvegarde : l'apprentissage (les empreintes, JAMAIS les images) est range dans le
-// .py telecharge (lignes de commentaire « # >>> apprentissage-ia » a la fin, ignorees
-// par MicroPython) et relu a son ouverture ; « 💾 Exporter » / « 📂 Importer » font la
-// meme chose dans un fichier .json a part. Il n'est pas mis dans le .hex : la place y
-// est comptee et la carte n'en a pas besoin.
+// Sauvegarde : l'apprentissage (les empreintes, JAMAIS les images ni les sons) est range
+// dans le .py telecharge (lignes de commentaire « # >>> apprentissage-ia » a la fin,
+// ignorees par MicroPython) et relu a son ouverture ; « 💾 Exporter » / « 📂 Importer »
+// font la meme chose dans un fichier .json a part. Il n'est pas mis dans le .hex : la
+// place y est comptee et la carte n'en a pas besoin.
 //
-// Donnees personnelles : l'image reste dans le navigateur ; pour les gestes et les
-// positions, seul le squelette est dessine. Aucune requete hors de l'application :
-// MediaPipe (lib/mediapipe) et ZXing (lib/zxing) sont embarques.
+// Donnees personnelles : l'image et le son restent dans le navigateur. Aucune requete
+// hors de l'application : MediaPipe (lib/mediapipe) et ZXing (lib/zxing) sont embarques.
 
 const MP = 'lib/mediapipe/';
 const MAX_CLASSES = 8;
@@ -39,29 +43,36 @@ const K = 5;
 const LISSAGE = 3;
 const INTERVALLE_RECO_MS = 150;
 const INTERVALLE_CAPTURE_MS = 120;
+const DUREE_SON = 1000;            // ms : un son reconnu le reste ce temps
 const INTERVALLE_QR_MS = 200;
 const QR_VISIBLE_MS = 700;
 const QR_LONGUEUR_MAX = 60;        // un texte plus long est coupe (affichage sur la carte)
+const VIGNETTE_L = 48, VIGNETTE_H = 36;
 
 const TYPES = {
-    images: { nom: 'objets et images', fichier: 'mobilenet_v3_small.tflite' },
-    mains: { nom: 'gestes de la main', fichier: 'hand_landmarker.task' },
-    bras: { nom: 'positions des bras', fichier: 'pose_landmarker_lite.task' },
+    images: { nom: 'objets et images', fichier: 'mobilenet_v3_small.tflite', genre: 'vision' },
+    mains: { nom: 'gestes de la main', fichier: 'hand_landmarker.task', genre: 'vision' },
+    bras: { nom: 'positions des bras', fichier: 'pose_landmarker_lite.task', genre: 'vision' },
+    sons: { nom: 'sons et mots', fichier: null, genre: 'son' },
 };
 
 const $ = (sel, racine = document) => racine.querySelector(sel);
 const col = $('.ia-colonne[data-genre="immediat"]');
 const colQR = $('.ia-colonne[data-genre="qr"]');
 const noyau = () => window.iaNoyau;
+const son = () => window.iaSonImmediat;
 const attente = ms => new Promise(r => setTimeout(r, ms));
 const messageErreur = e => (e && e.message ? e.message : String(e));
 
 // ---------- etat ----------
+// classes : [{ nom, ex: [{ v: Float32Array, vignette: dataURL | null }] }]
 const etat = {
     type: 'images',
     classes: [{ nom: 'Classe 1', ex: [] }, { nom: 'Classe 2', ex: [] }],
-    enMarche: false, minuteur: null, occupe: false, historique: [],
+    enMarche: false, minuteur: null, occupe: false, historique: [], finSon: null,
 };
+const estSon = () => etat.type === 'sons';
+const genre = () => TYPES[etat.type].genre;
 
 function dire(texte) { const e = $('.ia-statut', col); if (e) e.textContent = texte; }
 function direCreer(texte) { const e = $('.ia-creer-statut', col); if (e) e.textContent = texte; }
@@ -96,7 +107,9 @@ function chargerMediapipe() {
     return mediapipe;
 }
 
+// Les sons n'ont pas de modele a charger (calcul fait dans ia-son-immediat.js).
 function modele(type) {
+    if (type === 'sons') return Promise.resolve(null);
     if (!modeles[type]) {
         const base = new URL(MP, location.href).href;
         modeles[type] = chargerMediapipe().then(({ mp, fichiers }) => {
@@ -115,6 +128,8 @@ const LIAISONS_MAIN = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [
     [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]];
 const POINTS_BRAS = [11, 12, 13, 14, 15, 16];                    // epaules, coudes, poignets
 const LIAISONS_BRAS = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24]];
+// Les memes liaisons, numerotees dans l'empreinte des bras (0 a 5 = points 11 a 16).
+const LIAISONS_EMPREINTE_BRAS = [[0, 1], [0, 2], [2, 4], [1, 3], [3, 5]];
 
 // Les points de MediaPipe sont en fractions de la largeur et de la hauteur : multiplier x
 // par le rapport largeur / hauteur rend les distances comparables dans les deux sens.
@@ -155,8 +170,10 @@ async function empreinte(source, largeur, hauteur) {
 }
 
 // Plus grand = plus ressemblant. Images : empreintes de longueur 1, le produit scalaire
-// est le cosinus. Squelettes : moins le carre de la distance.
+// est le cosinus. Squelettes : moins le carre de la distance. Sons : moins la distance
+// apres alignement dans le temps (DTW).
 function proximite(a, b) {
+    if (etat.type === 'sons') return -son().distance(a, b);
     let s = 0;
     if (etat.type === 'images') { for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
     for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; }
@@ -167,7 +184,7 @@ function proximite(a, b) {
 function voter(v) {
     if (etat.classes.filter(c => c.ex.length).length < 2) return null;
     const voisins = [];
-    etat.classes.forEach((c, i) => c.ex.forEach(e => voisins.push([proximite(v, e), i])));
+    etat.classes.forEach((c, i) => c.ex.forEach(e => voisins.push([proximite(v, e.v), i])));
     voisins.sort((a, b) => b[0] - a[0]);
     const k = Math.min(K, voisins.length);
     const voix = etat.classes.map(() => 0);
@@ -175,9 +192,77 @@ function voter(v) {
     return voix;
 }
 
-// ---------- camera et apercu ----------
+// ---------- vignettes ----------
+// Gestes et positions : le squelette est redessine a partir de l'EMPREINTE (jamais la photo),
+// en miroir comme l'apercu de la camera. Il se redessine donc aussi apres une ouverture de fichier.
+function vignetteSquelette(v, type) {
+    const pts = [], liaisons = type === 'mains' ? LIAISONS_MAIN : LIAISONS_EMPREINTE_BRAS;
+    const pas = type === 'mains' ? 3 : 2;
+    for (let i = 0; i + 1 < v.length; i += pas) pts.push([-v[i], v[i + 1]]);
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const echelle = Math.min((VIGNETTE_L - 8) / ((x1 - x0) || 1), (VIGNETTE_H - 8) / ((y1 - y0) || 1));
+    const ox = (VIGNETTE_L - (x1 - x0) * echelle) / 2 - x0 * echelle, oy = (VIGNETTE_H - (y1 - y0) * echelle) / 2 - y0 * echelle;
+    const toile = document.createElement('canvas');
+    toile.width = VIGNETTE_L; toile.height = VIGNETTE_H;
+    const ctx = toile.getContext('2d');
+    ctx.fillStyle = '#1b1d21'; ctx.fillRect(0, 0, VIGNETTE_L, VIGNETTE_H);
+    ctx.strokeStyle = '#2ecc71'; ctx.lineWidth = 1.5;
+    for (const [a, b] of liaisons) {
+        ctx.beginPath(); ctx.moveTo(ox + pts[a][0] * echelle, oy + pts[a][1] * echelle);
+        ctx.lineTo(ox + pts[b][0] * echelle, oy + pts[b][1] * echelle); ctx.stroke();
+    }
+    ctx.fillStyle = '#ffffff';
+    for (const [x, y] of pts) { ctx.beginPath(); ctx.arc(ox + x * echelle, oy + y * echelle, 1.3, 0, 2 * Math.PI); ctx.fill(); }
+    return toile.toDataURL('image/png');
+}
+
+// Objets et images : petite photo du carre central, en memoire seulement (pas dans le .py).
+const toileVignette = document.createElement('canvas');
+toileVignette.width = VIGNETTE_L; toileVignette.height = VIGNETTE_H;
+function vignettePhoto(source, largeur, hauteur, miroir) {
+    const ctx = toileVignette.getContext('2d');
+    const rapport = VIGNETTE_L / VIGNETTE_H;
+    const l = Math.min(largeur, hauteur * rapport), h = l / rapport;
+    ctx.save();
+    if (miroir) { ctx.translate(VIGNETTE_L, 0); ctx.scale(-1, 1); }
+    ctx.drawImage(source, (largeur - l) / 2, (hauteur - h) / 2, l, h, 0, 0, VIGNETTE_L, VIGNETTE_H);
+    ctx.restore();
+    return toileVignette.toDataURL('image/jpeg', 0.7);
+}
+
+// Vignette d'un exemple : calculee a la demande si elle manque (exemple relu d'un fichier).
+function vignetteDe(e) {
+    if (e.vignette === undefined) {
+        e.vignette = etat.type === 'sons' ? son().vignette(e.v, VIGNETTE_L, VIGNETTE_H)
+            : etat.type === 'images' ? null : vignetteSquelette(e.v, etat.type);
+    }
+    return e.vignette;
+}
+
+function elementVignette(c, e, compteur) {
+    const b = document.createElement('button');
+    b.className = 'ia-imm-vignette';
+    b.title = 'Exemple de « ' + c.nom + ' » — cliquer pour le supprimer';
+    const src = vignetteDe(e);
+    if (src) { const img = document.createElement('img'); img.src = src; img.alt = ''; b.appendChild(img); }
+    else b.textContent = '▣';                         // photo non conservee (exemple relu d'un fichier)
+    b.addEventListener('click', () => {
+        const i = c.ex.indexOf(e);
+        if (i >= 0) c.ex.splice(i, 1);
+        b.remove();
+        if (compteur) compteur.textContent = String(c.ex.length);
+        etat.historique = [];
+        majDemarrer();
+        direCreer('Exemple supprimé de « ' + c.nom + ' » (' + c.ex.length + ' restant' + (c.ex.length > 1 ? 's' : '') + ').');
+    });
+    return b;
+}
+
+// ---------- camera, micro et apercu ----------
 const video = $('.ia-imm-video', col);
 const calque = $('.ia-imm-calque', col);
+const niveau = $('.ia-imm-niveau', col);
 
 function brancherApercu(element, allumer) {
     const flux = noyau().camera.flux;
@@ -193,16 +278,39 @@ function ajusterCadre(element) {
     cadre.style.height = Math.round(cadre.clientWidth * element.videoHeight / element.videoWidth) + 'px';
 }
 
-async function allumerCamera(raison) {
+// Jauge du micro : volume au-dessus du bruit de fond ; verte pendant un son detecte.
+function afficherNiveau(db, fond, enSon) {
+    const i = niveau.firstElementChild;
+    i.style.width = Math.max(0, Math.min(100, (db - fond) * 3)) + '%';
+    niveau.classList.toggle('son', enSon);
+}
+
+// Les rappels du micro vont a la capture (bouton « Maintenir » enfonce) ou a la reconnaissance.
+let captureSon = null;
+function surSon(v) {
+    if (captureSon) { captureSon(v); return; }
+    if (etat.enMarche && estSon()) reconnaitreSon(v);
+}
+
+async function allumerCapteur(raison) {
+    if (estSon()) {
+        await son().allumer(raison, { surSon, surNiveau: afficherNiveau });
+        niveau.classList.remove('replie');
+        return;
+    }
     await noyau().ouvrirCamera(raison);
     brancherApercu(video, true);
 }
 
-function eteindreCamera(raison) {
+function eteindreCapteur(raison) {
+    son().eteindre(raison);
+    if (!son().allume()) { niveau.classList.add('replie'); afficherNiveau(-100, 0, false); }
     noyau().fermerCamera(raison);
     const encore = noyau().camera.raisons;
     if (!encore.has('imm-capture') && !encore.has('imm-reco')) { brancherApercu(video, false); effacerCalque(); }
 }
+
+const capteurAllume = raison => (estSon() ? son().allume(raison) : noyau().camera.raisons.has(raison));
 
 function effacerCalque() { calque.getContext('2d').clearRect(0, 0, calque.width, calque.height); }
 
@@ -224,7 +332,7 @@ function dessinerSquelette(resultat) {
 // ---------- classes (interface) ----------
 function nomsClasses() { return etat.classes.map(c => c.nom.trim()).filter(Boolean); }
 
-// Renommer une classe met a jour les blocs IA (vision) qui l'utilisaient.
+// Renommer une classe met a jour les blocs IA (du genre de l'apprentissage) qui l'utilisaient.
 function renommerDansLesBlocs(ancien, nouveau) {
     const ws = window.workspace;
     if (!ws || !window.slugIA || !ancien || !nouveau || window.slugIA(ancien) === window.slugIA(nouveau)) return;
@@ -233,7 +341,7 @@ function renommerDansLesBlocs(ancien, nouveau) {
     try {
         for (const b of ws.getAllBlocks(false)) {
             if ((b.type === 'ia_lorsque_reconnu' || b.type === 'ia_classe_est') &&
-                b.getFieldValue('TYPE') === 'vision' && window.slugIA(b.getFieldValue('CLASSE')) === cle) {
+                b.getFieldValue('TYPE') === genre() && window.slugIA(b.getFieldValue('CLASSE')) === cle) {
                 b.setFieldValue(nouveau, 'CLASSE');
             }
         }
@@ -242,12 +350,28 @@ function renommerDansLesBlocs(ancien, nouveau) {
     }
 }
 
+// Textes qui changent selon que l'on apprend des images (camera) ou des sons (micro).
+function majTextesType() {
+    const bouton = $('.ia-imm-camera', col);
+    const allume = capteurAllume('imm-capture');
+    bouton.textContent = estSon() ? (allume ? '🎤 Éteindre' : '🎤 Micro') : (allume ? '📷 Éteindre' : '📷 Caméra');
+    bouton.title = estSon() ? 'Allumer le micro pour ajouter des exemples' : 'Allumer la caméra pour ajouter des exemples';
+    bouton.classList.toggle('en-marche', allume);
+    $('h4', col).textContent = estSon() ? '⚡ Apprentissage immédiat (micro)' : '⚡ Apprentissage immédiat (caméra)';
+    $('.ia-creer-aide', col).textContent = estSon()
+        ? 'Allumez le micro, puis maintenez le bouton d\'une classe et faites le son (ou dites le mot) plusieurs fois : ' +
+          'chaque son détecté devient un exemple. Rien n\'est enregistré, seul le dessin du timbre est gardé. ' +
+          'Cliquer sur une vignette supprime cet exemple.'
+        : 'Maintenir le bouton d\'une classe pour ajouter des exemples pris par la caméra, ou 🖼 pour des images. ' +
+          'Gestes et positions : seul le squelette est gardé, jamais la photo. Cliquer sur une vignette supprime cet exemple.';
+}
+
 function majLignes() {
     const conteneur = $('.ia-creer-classes', col);
     conteneur.textContent = '';
     etat.classes.forEach((c, i) => {
         const l = document.createElement('div');
-        l.className = 'ia-ex ia-imm-ex';
+        l.className = 'ia-ex ia-imm-ex' + (estSon() ? ' sans-images' : '');
         const nom = document.createElement('input');
         nom.className = 'ia-ex-nom'; nom.value = c.nom; nom.spellcheck = false; nom.maxLength = 30;
         let avant = c.nom;
@@ -265,17 +389,25 @@ function majLignes() {
             majBarres();
         });
         const n = document.createElement('span'); n.className = 'ia-ex-n'; n.textContent = String(c.ex.length);
+        const vignettes = document.createElement('div');
+        vignettes.className = 'ia-imm-vignettes';
+        c.ex.forEach(e => vignettes.appendChild(elementVignette(c, e, n)));
         const capt = document.createElement('button');
         capt.className = 'btn-vue ia-ex-capt'; capt.textContent = 'Maintenir';
-        capt.title = 'Maintenir enfoncé pour ajouter des exemples pris par la caméra';
-        brancherCapture(capt, c, n);
-        const fichiers = document.createElement('button');
-        fichiers.className = 'btn-vue ia-imm-images'; fichiers.textContent = '🖼'; fichiers.title = 'Ajouter des exemples depuis des images (.png, .jpg)';
-        fichiers.addEventListener('click', () => { entreeImages.dataset.classe = String(i); entreeImages.click(); });
+        capt.title = estSon() ? 'Maintenir enfoncé, puis faire le son : chaque son détecté devient un exemple'
+            : 'Maintenir enfoncé pour ajouter des exemples pris par la caméra';
+        brancherCapture(capt, c, n, vignettes);
         const sup = document.createElement('button');
         sup.className = 'btn-vue ia-ex-sup'; sup.textContent = '🗑'; sup.title = 'Supprimer cette classe et ses exemples';
         sup.addEventListener('click', () => { etat.classes.splice(i, 1); apresModification(); });
-        l.append(nom, n, capt, fichiers, sup);
+        l.append(nom, n, capt);
+        if (!estSon()) {
+            const fichiers = document.createElement('button');
+            fichiers.className = 'btn-vue ia-imm-images'; fichiers.textContent = '🖼'; fichiers.title = 'Ajouter des exemples depuis des images (.png, .jpg)';
+            fichiers.addEventListener('click', () => { entreeImages.dataset.classe = String(i); entreeImages.click(); });
+            l.append(fichiers);
+        }
+        l.append(sup, vignettes);
         conteneur.appendChild(l);
     });
     $('.ia-ajouter-classe', col).disabled = etat.classes.length >= MAX_CLASSES;
@@ -305,15 +437,18 @@ function majDemarrer() {
 
 function apresModification() {
     etat.historique = [];
+    majTextesType();
     majLignes();
     majBarres();
     majDemarrer();
 }
 
 // ---------- ajout d'exemples ----------
-function ajouterExemple(c, v) {
+function ajouterExemple(c, v, vignette, vignettes, compteur) {
     if (c.ex.length >= MAX_EXEMPLES) return false;
-    c.ex.push(v);
+    const e = { v, vignette };
+    c.ex.push(e);
+    if (vignettes) vignettes.appendChild(elementVignette(c, e, compteur));
     return true;
 }
 
@@ -321,27 +456,48 @@ const MESSAGE_RIEN = {
     mains: 'Aucune main détectée : montrez une seule main, bien éclairée.',
     bras: 'Épaules non visibles : reculez pour que le haut du corps soit dans l\'image.',
     images: '',
+    sons: '',
 };
 
-function brancherCapture(bouton, c, compteur) {
+function brancherCapture(bouton, c, compteur, vignettes) {
     let appuye = false;
-    const arret = () => { appuye = false; bouton.classList.remove('enregistre'); majDemarrer(); };
+    const arret = () => {
+        appuye = false; captureSon = null;
+        bouton.classList.remove('enregistre'); majDemarrer();
+    };
     bouton.addEventListener('pointerdown', async evenement => {
         evenement.preventDefault();
         if (appuye) return;
-        if (!noyau().camera.flux || video.readyState < 2) { direCreer('Allumez d\'abord la caméra (bouton 📷 Caméra).'); return; }
+        if (estSon() ? !son().allume() : (!noyau().camera.flux || video.readyState < 2)) {
+            direCreer(estSon() ? 'Allumez d\'abord le micro (bouton 🎤 Micro).' : 'Allumez d\'abord la caméra (bouton 📷 Caméra).');
+            return;
+        }
         appuye = true;
         bouton.classList.add('enregistre');
         try { bouton.setPointerCapture(evenement.pointerId); } catch (erreur) { /* pas grave */ }
+        if (estSon()) {
+            // Le micro ecoute deja : chaque son detecte pendant l'appui devient un exemple.
+            direCreer('Faites le son « ' + c.nom + ' » (plusieurs fois, avec un court silence entre deux).');
+            captureSon = v => {
+                if (!ajouterExemple(c, v, son().vignette(v, VIGNETTE_L, VIGNETTE_H), vignettes, compteur)) {
+                    direCreer('Maximum atteint : ' + MAX_EXEMPLES + ' exemples par classe.'); return;
+                }
+                compteur.textContent = String(c.ex.length);
+                direCreer('Son ajouté à « ' + c.nom + ' » (' + c.ex.length + ').');
+            };
+            return;
+        }
         direCreer('Chargement du modèle « ' + TYPES[etat.type].nom + ' »…');
         try {
             await modele(etat.type);
             direCreer('Capture en cours…');
             while (appuye) {
-                const r = await empreinte(video, video.videoWidth, video.videoHeight);
+                const l = video.videoWidth, h = video.videoHeight;
+                const r = await empreinte(video, l, h);
                 dessinerSquelette(r);
+                const vignette = r && (etat.type === 'images' ? vignettePhoto(video, l, h, true) : vignetteSquelette(r.v, etat.type));
                 if (!r) direCreer(MESSAGE_RIEN[etat.type] || 'Image inutilisable.');
-                else if (!ajouterExemple(c, r.v)) { direCreer('Maximum atteint : ' + MAX_EXEMPLES + ' exemples par classe.'); break; }
+                else if (!ajouterExemple(c, r.v, vignette, vignettes, compteur)) { direCreer('Maximum atteint : ' + MAX_EXEMPLES + ' exemples par classe.'); break; }
                 else direCreer('Exemple ajouté à « ' + c.nom + ' » (' + c.ex.length + ').');
                 compteur.textContent = String(c.ex.length);
                 await attente(INTERVALLE_CAPTURE_MS);
@@ -371,7 +527,8 @@ async function ajouterImages(c, fichiers) {
                 toileImage.width = image.width; toileImage.height = image.height;
                 toileImage.getContext('2d').drawImage(image, 0, 0);
                 const r = await empreinte(toileImage, image.width, image.height);
-                if (r && ajouterExemple(c, r.v)) ajoutes++; else rejetes++;
+                const vignette = r && (etat.type === 'images' ? vignettePhoto(toileImage, image.width, image.height, false) : vignetteSquelette(r.v, etat.type));
+                if (r && ajouterExemple(c, r.v, vignette)) ajoutes++; else rejetes++;
             } catch (erreur) {
                 rejetes++;
             } finally {
@@ -402,22 +559,29 @@ async function demarrer() {
     if (noms.length !== etat.classes.length || new Set(noms.map(n => window.slugIA(n))).size !== noms.length) {
         dire('Chaque classe doit avoir un nom différent.'); return;
     }
-    // Un seul moteur a la fois pour le genre vision : Teachable Machine s'arrete.
-    if (noyau().moteurs.vision.enMarche) noyau().arreter('vision');
-    dire('Chargement du modèle « ' + TYPES[etat.type].nom + ' »…');
+    // Un seul moteur a la fois par genre : le modele Teachable Machine du meme genre s'arrete.
+    if (noyau().moteurs[genre()].enMarche) noyau().arreter(genre());
+    dire(estSon() ? 'Démarrage du micro…' : 'Chargement du modèle « ' + TYPES[etat.type].nom + ' »…');
     try {
         await modele(etat.type);
-        await allumerCamera('imm-reco');
+        await allumerCapteur('imm-reco');
     } catch (erreur) {
         const refus = erreur && (erreur.name === 'NotAllowedError' || erreur.name === 'SecurityError');
-        dire(refus ? 'Accès refusé : autorisez la caméra dans le navigateur.'
-            : erreur && erreur.name === 'NotFoundError' ? 'Aucune caméra détectée.' : 'Démarrage impossible : ' + messageErreur(erreur));
+        const quoi = estSon() ? 'le micro' : 'la caméra';
+        dire(refus ? 'Accès refusé : autorisez ' + quoi + ' dans le navigateur.'
+            : erreur && erreur.name === 'NotFoundError' ? (estSon() ? 'Aucun micro détecté.' : 'Aucune caméra détectée.')
+            : 'Démarrage impossible : ' + messageErreur(erreur));
         return;
     }
     etat.enMarche = true;
     etat.historique = [];
     majBarres();
-    etat.minuteur = setInterval(reconnaitre, INTERVALLE_RECO_MS);
+    if (estSon()) {
+        // Rien n'est reconnu tant qu'aucun son n'est entendu : le programme part d'une classe vide.
+        noyau().traiterResultat('son', etat.classes.map(c => ({ nom: c.nom, proba: 0 })), col);
+    } else {
+        etat.minuteur = setInterval(reconnaitre, INTERVALLE_RECO_MS);
+    }
     dire('Reconnaissance en marche (' + TYPES[etat.type].nom + ').');
     majDemarrer();
 }
@@ -443,19 +607,32 @@ async function reconnaitre() {
     }
 }
 
-function arreter() {
-    if (!etat.enMarche) return;
+// Un son entendu : vote des plus proches voisins, resultat garde DUREE_SON ms puis remis a vide.
+function reconnaitreSon(v) {
+    const voix = voter(v);
+    if (!voix) return;
+    noyau().traiterResultat('son', etat.classes.map((c, i) => ({ nom: c.nom, proba: voix[i] })), col);
+    clearTimeout(etat.finSon);
+    etat.finSon = setTimeout(() => {
+        if (etat.enMarche && estSon()) noyau().traiterResultat('son', etat.classes.map(c => ({ nom: c.nom, proba: 0 })), col);
+    }, DUREE_SON);
+}
+
+// genreDemande : arreter seulement si l'apprentissage en cours pilote ce genre (appel depuis ia.js).
+function arreter(genreDemande) {
+    if (!etat.enMarche || (genreDemande && genreDemande !== genre())) return;
     etat.enMarche = false;
     clearInterval(etat.minuteur); etat.minuteur = null;
-    eteindreCamera('imm-reco');
-    noyau().liberer('vision');
+    clearTimeout(etat.finSon); etat.finSon = null;
+    eteindreCapteur('imm-reco');
+    noyau().liberer(genre());
     dire('Arrêté.');
     majDemarrer();
 }
 
 // ---------- sauvegarde ----------
 // Images : empreinte de longueur 1, chaque nombre ramene a un octet signe (1 Ko par
-// exemple au lieu de 4). Squelettes : peu de nombres, gardes tels quels (Float32).
+// exemple au lieu de 4). Squelettes et sons : gardes tels quels (Float32).
 function octetsVersBase64(octets) {
     let s = '';
     for (let i = 0; i < octets.length; i += 0x8000) s += String.fromCharCode.apply(null, octets.subarray(i, i + 0x8000));
@@ -482,18 +659,21 @@ function decoder(texte, type) {
 function versDonnees() {
     return {
         format: 'apprentissage-ia-microbit', version: 1, type: etat.type,
-        classes: etat.classes.map(c => ({ nom: c.nom, exemples: c.ex.map(v => coder(v, etat.type)) })),
+        classes: etat.classes.map(c => ({ nom: c.nom, exemples: c.ex.map(e => coder(e.v, etat.type)) })),
     };
 }
 
+// Les vignettes ne sont pas dans le fichier : celles des squelettes et des sons se
+// redessinent a partir des empreintes ; les photos (objets et images) ne reviennent pas.
 function depuisDonnees(d) {
     if (!d || d.format !== 'apprentissage-ia-microbit' || !Array.isArray(d.classes)) throw new Error('ce fichier ne contient pas d\'apprentissage IA');
     const type = TYPES[d.type] ? d.type : 'images';
     const classes = d.classes.slice(0, MAX_CLASSES).map((c, i) => ({
         nom: String(c.nom || ('Classe ' + (i + 1))).slice(0, 30),
-        ex: (c.exemples || []).slice(0, MAX_EXEMPLES).map(e => decoder(e, type)),
+        ex: (c.exemples || []).slice(0, MAX_EXEMPLES).map(e => ({ v: decoder(e, type), vignette: undefined })),
     }));
     arreter();
+    eteindreCapteur('imm-capture');
     etat.type = type;
     etat.classes = classes.length ? classes : [{ nom: 'Classe 1', ex: [] }, { nom: 'Classe 2', ex: [] }];
     $('.ia-imm-type', col).value = type;
@@ -510,8 +690,9 @@ const FIN_ANNEXE = '# <<< apprentissage-ia';
 
 // Le JSON (sans retour a la ligne : JSON.stringify les echappe) est coupe en lignes
 // de 100 caracteres, chacune precedee de « # » ; la relecture recolle les morceaux.
-// Les espaces (seulement dans les noms de classes) sont ecrits   : un editeur qui
-// retire les espaces en fin de ligne ne peut pas abimer un nom coupe a cet endroit.
+// Les espaces (seulement dans les noms de classes) sont ecrits en sequence d'echappement
+// JSON (barre oblique inverse, u0020) : un editeur qui retire les espaces en fin de ligne
+// ne peut pas abimer un nom coupe a cet endroit.
 function annexePy() {
     if (!aDesExemples()) return '';
     const texte = JSON.stringify(versDonnees()).replace(/ /g, '\\u0020');
@@ -560,22 +741,22 @@ $('.ia-imm-type', col).addEventListener('change', evenement => {
         evenement.target.value = etat.type; return;
     }
     arreter();
+    eteindreCapteur('imm-capture');
     etat.type = nouveau;
     etat.classes.forEach(c => { c.ex = []; });
     apresModification();
     direCreer('Type : ' + TYPES[nouveau].nom + '. Ajoutez des exemples à chaque classe.');
 });
-$('.ia-imm-camera', col).addEventListener('click', async evenement => {
-    const bouton = evenement.currentTarget;
+$('.ia-imm-camera', col).addEventListener('click', async () => {
     try {
-        if (noyau().camera.raisons.has('imm-capture')) eteindreCamera('imm-capture');
-        else { await allumerCamera('imm-capture'); modele(etat.type).catch(() => {}); }
+        if (capteurAllume('imm-capture')) eteindreCapteur('imm-capture');
+        else { await allumerCapteur('imm-capture'); modele(etat.type).catch(() => {}); }
     } catch (erreur) {
-        direCreer(erreur && erreur.name === 'NotAllowedError' ? 'Accès refusé : autorisez la caméra dans le navigateur.' : 'Caméra impossible : ' + messageErreur(erreur));
+        const quoi = estSon() ? 'le micro' : 'la caméra';
+        direCreer(erreur && erreur.name === 'NotAllowedError' ? 'Accès refusé : autorisez ' + quoi + ' dans le navigateur.'
+            : (estSon() ? 'Micro' : 'Caméra') + ' impossible : ' + messageErreur(erreur));
     }
-    const allumee = noyau().camera.raisons.has('imm-capture');
-    bouton.classList.toggle('en-marche', allumee);
-    bouton.textContent = allumee ? '📷 Éteindre' : '📷 Caméra';
+    majTextesType();
 });
 video.addEventListener('loadedmetadata', () => ajusterCadre(video));
 $('.ia-ajouter-classe', col).addEventListener('click', () => {
@@ -751,11 +932,12 @@ window.addEventListener('pagehide', () => { arreter(); arreterQR(); });
 
 window.iaImmediat = {
     arreter,
-    classes: nomsClasses,
+    // Classes de l'apprentissage en cours, pour les menus des blocs du genre demande.
+    classes: genreDemande => (!genreDemande || genreDemande === genre() ? nomsClasses() : []),
     annexePy,
     lireAnnexePy,
     // Pour les verifications depuis la console (pas d'usage dans l'application).
     test: { etat, qr, TYPES, empreinte, voter, proximite, coder, decoder, versDonnees, depuisDonnees, ajouterImages,
             formeMain, formeBras, modele, chargerZxing, decoderToile, texteCarte, signalerQR, demarrer, demarrerQR, arreterQR,
-            renommerDansLesBlocs, reconnaitre },
+            renommerDansLesBlocs, reconnaitre, reconnaitreSon, vignetteSquelette, vignetteDe, genre },
 };

@@ -1418,3 +1418,17 @@ MicroPython, blocs, aide, .py), index.html (deux colonnes du panneau IA), app.py
 - Limites : gestes et positions non testes avec une vraie camera dans la session de developpement (modeles charges et
   verifies sur images de synthese) ; la carte peut perdre des lignes si le programme attend longtemps (sleep) avec
   plusieurs IA en marche, sans risque de faux declenchement (ligne illisible = ignoree).
+- Evolutions (oct. 2026) :
+  * SONS EN APPRENTISSAGE IMMEDIAT : type « sons et mots (micro) ». Sans modele ni entrainement (ia-son-immediat.js) :
+    le micro est decoupe en sons (volume au-dessus du bruit de fond), chaque son devient 30 instants x 12 coefficients
+    de timbre (MFCC), compares par alignement dans le temps (DTW). Un son reconnu le reste 1 s ; il pilote les blocs
+    « son ». Pas de classe « bruit de fond » : le silence ne declenche rien ; un bruit continu de plus de 1,5 s est ignore.
+    La colonne Son ne fait plus que charger un modele Teachable Machine (entrainement du son retire, ainsi que
+    lib/tm/base, 7,3 Mo, devenu inutile).
+  * VIGNETTES : chaque exemple apparait sous sa classe (photo pour les objets, en memoire seulement ; squelette pour les
+    gestes et positions ; dessin du timbre pour les sons). CLIQUER sur une vignette supprime cet exemple seul.
+    Apres reouverture d'un .py, squelettes et timbres se redessinent, les photos sont remplacees par ▣.
+  * RECONSTRUCTION EN BLOCS a l'import d'un .py : « lorsque l'IA reconnait » (vrai nom de classe retrouve parmi les
+    classes connues, sinon l'identifiant), « lorsqu'un code QR est lu », et les expressions IA (l'IA reconnait,
+    derniere classe, confiance, code QR visible, texte du QR). Les lignes de scrutation (_ia_traiter(), _radio_traiter(),
+    _ir_traiter()) et les « pass » des corps vides ne deviennent plus des blocs « code ».
