@@ -4,13 +4,13 @@ Dossier de travail d'origine : `C:\Users\jreyn\OneDrive\Bureau\blockly_ts` (V2.0
 Dossier de travail actuel (copie d'essai, V2.0E) : `C:\Users\jreyn\OneDrive\Documents\claude\blockly_ts_adacraft_vilain`
 Lancement : double-clic sur `lancer_projet.bat`, puis <http://localhost:8000> — ou l'exe `dist\MicrobitBlockly_V2.0E.exe`
 Hébergement : dossier `site_web` (site statique, voir `PROMPT_RECREATION.md` §26)
-Fichiers ajoutés depuis la V2.0C : `bandeau.js`, `exercices.js`, `exercices.json`, `site_web/` (voir la section « Évolutions de la copie »)
+Fichiers ajoutés depuis la V2.0C : `bandeau.js`, `exercices.js`, `exercices.json`, `ia-immediat.js`, `lib/mediapipe`, `lib/zxing`, `site_web/` (voir la section « Évolutions de la copie »)
 
 Ce fichier dit **où on en est** : ce qui a été vérifié, ce qui ne peut l'être
 sans matériel, et ce qui a été écarté. Les deux autres documents complètent :
 
 - `readme.txt` — mode d'emploi et pièges d'usage
-- `PROMPT_RECREATION.md` — tout reconstruire de zéro, avec les 71 pièges connus (nº 0 à nº 70) ; §22 à §26 pour les évolutions de la copie
+- `PROMPT_RECREATION.md` — tout reconstruire de zéro, avec les 75 pièges connus (nº 0 à nº 74) ; §22 à §27 pour les évolutions de la copie
 
 ---
 
@@ -91,6 +91,7 @@ nouveau fichier suffit — d'où `bandeau.js` et `exercices.js`, qui s'appuient 
 | Exercices pas à pas + mode évaluation | `exercices.js` (moteur) + `exercices.json` (16 exercices, 5 niveaux, modifiables à la main). Panneau « Mission » déplaçable, 3 indices, solution, validation automatique par lecture des blocs, étoiles, déverrouillage progressif, progression par élève (localStorage), export/import JSON, tableau de classe (CSV, impression). Évaluation : sans aide, 3 essais (100/75/50 % des points), chronomètre facultatif, note sur 20, rapport imprimable. **Vérifié** : les 16 règles refusent l'espace vide et acceptent leur solution ; un exercice validé en direct (3 étoiles enregistrées) ; une évaluation complète (1 essai raté puis réussi, un exercice passé) → note 7,5/20 et rapport affichés. Non vérifié : impression réelle, exports de fichiers, import, glisser-déposer réel de blocs |
 | Site statique `site_web` | Dossier prêt à héberger (GitHub Pages…) : `index.html`, `un.js`, `deux.js`, `trois.js`, `ia.js`, `tuto.js`, `bandeau.js`, `exercices.js`, `exercices.json`, `firmware.hex`, `readme.txt`, `lib/` (36 fichiers, 15 Mo), `.nojekyll`. Testé servi par un simple serveur statique : 36 catégories, espace de travail actif, simulateur chargé. Logo et mention « RAJ Editions » retirés de la page |
 | Exécutables | V2.0D (bandeau, recherche, alignement Arduino, liserés) et **V2.0E** (+ exercices) construits avec PyInstaller (16,2 Mo). Contenu de l'archive vérifié (tous les fichiers, version, menus). **Aucun des deux n'a pu être lancé depuis la session** (accès refusé par Windows) |
+| IA reprise d'EasyBloc TS (oct. 2026, après la V2.0E) | `ia-immediat.js` + `lib/mediapipe` (27 Mo) + `lib/zxing`. Apprentissage **immédiat** (k plus proches voisins, sans entraînement) : objets et images, **gestes de la main**, **positions des bras** ; exemples par la caméra ou par des **fichiers images** ; apprentissage **rangé dans le `.py`** (et export/import `.json`) ; **QR codes et codes-barres** (lecture + création à imprimer, 3 blocs) ; classe des blocs IA choisie dans une **liste**, renommage propagé aux blocs ; résultat **renvoyé toutes les 500 ms** et oublié par la carte après 1,5 s. **Vérifié** dans le navigateur : MediaPipe et ZXing chargés en local (aucune requête externe), 4 images inédites sur 4 bien classées, les 3 modèles chargés, normalisation main/bras (miroir, échelle), simulateur : gestionnaire déclenché **une seule fois** malgré les renvois, texte QR contenant « : » intact, classe oubliée 1,5 s après l'arrêt des envois ; aller-retour `.py` (CRLF, espaces de fin retirés), QR créé puis relu. **Non vérifié** : vraie caméra (gestes et positions réels), vraie carte, exe non reconstruit |
 
 ### Bugs rencontrés pendant ces évolutions (corrigés)
 
@@ -106,6 +107,7 @@ nouveau fichier suffit — d'où `bandeau.js` et `exercices.js`, qui s'appuient 
 2. Le sélecteur de carte et le voyant avec une vraie carte et un vrai port série.
 3. Les exercices en classe : choix des seuils (3 essais, 75 % / 50 %), exercices 5.2 et 5.4, impression du rapport.
 4. Le blocage antivirus des exes PyInstaller : désactiver UPX (`upx=False` dans `app.spec`), livrer en dossier plutôt qu'en un fichier, signer avec un certificat de signature de code, ou déclarer l'exe comme faux positif.
+5. L'IA reprise d'EasyBloc avec une vraie caméra (gestes de la main, positions des bras, QR codes imprimés) et une vraie carte (renvoi toutes les 500 ms, oubli après 1,5 s, programme avec de longues attentes). Exe à reconstruire (`ia-immediat.js` ajouté à `app.spec`, +27 Mo pour MediaPipe).
 
 ## Historique — fidélité visuelle de la carte micro:bit
 

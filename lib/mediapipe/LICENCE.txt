@@ -1,0 +1,7 @@
+MediaPipe Tasks Vision 0.10.14 (@mediapipe/tasks-vision), Google LLC.
+Licence Apache 2.0 : http://www.apache.org/licenses/LICENSE-2.0
+Texte complet identique a lib/zxing/LICENCE-zxing.txt (Apache License 2.0).
+
+Fichiers : vision_bundle.mjs, wasm/vision_wasm_internal.js, wasm/vision_wasm_internal.wasm
+Modeles  : hand_landmarker.task, pose_landmarker_lite.task (MediaPipe),
+           mobilenet_v3_small.tflite (MediaPipe Image Embedder), Apache 2.0.

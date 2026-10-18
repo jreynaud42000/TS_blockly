@@ -3323,7 +3323,7 @@ envoyer `lib/` par lots ou utiliser GitHub Desktop. L'appel `/_vie` (cœur de l'
 renvoie 404 sur un site statique : sans conséquence. Respecter la casse des noms de fichiers.
 
 **Exécutable** : `python -m PyInstaller app.spec --noconfirm`. `datas` : `index.html`, `un.js`, `deux.js`, `trois.js`, `ia.js`, `tuto.js`,
-`bandeau.js`, `exercices.js`, `exercices.json`, `firmware.hex`, `logo.png`, `readme.txt`, `lib` — **tout nouveau fichier utilisé par la page doit y être
+`ia-immediat.js`, `bandeau.js`, `exercices.js`, `exercices.json`, `firmware.hex`, `logo.png`, `readme.txt`, `lib` — **tout nouveau fichier utilisé par la page doit y être
 ajouté**. Le numéro de version est à tenir identique à **quatre** endroits : `VERSION` (`app.py`), `version_info.txt` (nombres + chaînes),
 `name=` (`app.spec`) et `#copyright-toolbar` (`index.html`). Vérifier l'archive sans lancer l'exe :
 `from PyInstaller.archive.readers import CArchiveReader; CArchiveReader(chemin).toc`. Port 8000 : si un autre serveur l'occupe, l'exe risque de ne pas démarrer
@@ -3334,4 +3334,40 @@ ou de servir l'autre application — ne pas le tuer sans l'accord de l'utilisate
 sur les postes) avec `signtool`. Les propriétés de l'exe (`CompanyName` dans `version_info.txt`) contiennent encore « RAJ Editions » : à changer
 séparément du site.
 
-Fournis le code complet des fichiers du §1 (et les modules des §22 à §26), prêt à être posé dans un dossier.
+## 27. IA : apprentissage immédiat, gestes, positions, QR codes (`ia-immediat.js`)
+
+Reprise des points forts de l'IA d'EasyBloc TS (Arduino R4), **réécrits** : seules les bibliothèques libres sont copiées
+(`lib/mediapipe` = `@mediapipe/tasks-vision` 0.10.14 + `hand_landmarker.task`, `pose_landmarker_lite.task`,
+`mobilenet_v3_small.tflite` ; `lib/zxing/zxing-0.21.3.min.js` ; Apache 2.0). Aucune requête hors de l'application.
+
+- **Noyau partagé** : `ia.js` expose `window.iaNoyau` (`traiterResultat(genre, probas, colonne)`, `liberer`, `envoyer`,
+  `ouvrirCamera`/`fermerCamera` avec une *raison*, `dernierEnvoi`, `moteurs`). `ia-immediat.js` envoie en genre `vision`
+  (mêmes blocs) et `qr`. Un seul moteur vision à la fois : démarrer l'un arrête l'autre.
+- **Empreintes** : images = `ImageEmbedder` (1024 nombres, `l2Normalize`) comparés par produit scalaire ; main = 21 points
+  ramenés au poignet, x multiplié par largeur/hauteur, main gauche retournée, divisés par la plus grande distance au poignet
+  (63 nombres) ; bras = points 11 à 16 ramenés au milieu des épaules et divisés par leur largeur (12 nombres, sans
+  retournement). Squelettes comparés par distance euclidienne. **k plus proches voisins**, K = 5, votes moyennés sur 3 images.
+- **Renvoi périodique** : le dernier résultat de chaque genre est renvoyé toutes les 500 ms ; le pilote MicroPython note
+  `_ia_vu[genre] = running_time()` et remet la classe à vide après 1,5 s sans ligne.
+- **Blocs** : `ChampClasseIA` (sous-classe de `FieldDropdown`) propose `window.iaClassesConnues(genre)` + « ✎ autre nom… ».
+  QR : `ia_qr_lorsque_lu` (`on_ia_qr_lu`), `ia_qr_visible`, `ia_qr_texte` (`_ia_qr_texte`).
+- **Sauvegarde** : JSON `{format: 'apprentissage-ia-microbit', version: 1, type, classes: [{nom, exemples: [base64]}]}` ;
+  images quantifiées en octets signés (×127) puis renormalisées, squelettes en Float32. Ajouté à la fin du `.py` en lignes
+  `# ` de 100 caractères entre `# >>> apprentissage-ia` et `# <<< apprentissage-ia`, retiré avant la reconstruction en blocs.
+
+**PIÈGE nº 71 — `.mjs` servi en `text/plain`** : Python 3.8 sous Windows ne connaît pas `.mjs` ; le navigateur refuse alors
+d'importer MediaPipe comme module. `app.py` fixe `extensions_map` (`.mjs` → `text/javascript`, `.wasm` → `application/wasm`) ;
+`ia-immediat.js` retombe sur `fetch` + `Blob` + `import()` pour un autre serveur.
+
+**PIÈGE nº 72 — menu dynamique et valeur hors menu** : `FieldDropdown.doClassValidation_` refuse toute valeur absente du menu
+(un programme ouvert avant le modèle perdrait ses classes) et `doValueUpdate_` cherche le libellé dans le menu **en cache**.
+Surcharger les deux : accepter tout texte non vide, et régénérer le menu (`getOptions(false)`) pour le libellé.
+
+**PIÈGE nº 73 — renvoi et oubli** : le gestionnaire `on_ia_…` se déclenche sur un **changement** de classe, donc les renvois ne
+le redéclenchent pas. Tester l'oubli (1,5 s) **après** avoir lu les lignes en attente : un programme qui dort plus de 1,5 s
+oublierait sinon à tort une classe toujours reconnue.
+
+**PIÈGE nº 74 — annexe du `.py`** : ne jamais la mettre dans le `.hex` (place du système de fichiers comptée). Écrire les espaces
+du JSON en `\u0020` : un éditeur qui retire les espaces de fin de ligne abîmerait un nom de classe coupé à cet endroit.
+
+Fournis le code complet des fichiers du §1 (et les modules des §22 à §27), prêt à être posé dans un dossier.

@@ -12,11 +12,18 @@
 // Bibliotheques (lib/tm/, embarquees dans l'exe, donc hors connexion) chargees
 // seulement au premier besoin : tf.min.js (TensorFlow.js 1.3.1),
 // teachablemachine-image.min.js, speech-commands.min.js.
+//
+// Le dernier resultat de chaque genre est RENVOYE toutes les 500 ms (RAPPEL_MS) :
+// une ligne perdue sur le cable ne laisse plus la carte bloquee sur une ancienne
+// classe, et le pilote de la carte oublie un resultat de plus de 1,5 s (navigateur
+// ferme, cable debranche). L'apprentissage immediat et les QR codes (ia-immediat.js)
+// passent par les memes fonctions, exposees dans window.iaNoyau.
 
 const DOSSIER_LIB = 'lib/tm/';
 const INTERVALLE_VISION_MS = 120;
 const ECART_CONFIANCE = 10;        // renvoyer la confiance si elle varie d'au moins 10 points...
 const DELAI_CONFIANCE_MS = 500;    // ...et pas plus d'une fois par demi-seconde
+const RAPPEL_MS = 500;             // renvoi du dernier resultat, meme inchange
 
 const $ = (sel, racine = document) => racine.querySelector(sel);
 
@@ -52,9 +59,12 @@ const moteurs = {
     vision: { modele: null, classes: [], enMarche: false, flux: null, minuteur: null, occupe: false },
     son:    { modele: null, classes: [], enMarche: false, flux: null, reconnaisseur: null },
 };
+// classe === null : rien en cours pour ce genre (pas de renvoi periodique).
+// Le genre "qr" (texte du dernier QR code, ia-immediat.js) n'a pas de moteur ici.
 const dernierEnvoi = {
     vision: { classe: null, confiance: -1, instant: 0 },
     son:    { classe: null, confiance: -1, instant: 0 },
+    qr:     { classe: null, confiance: -1, instant: 0 },
 };
 const colonne = genre => $('.ia-colonne[data-genre="' + genre + '"]');
 
@@ -74,8 +84,9 @@ function majEtatCarte() {
 }
 
 // Une ligne par changement de classe, plus un rappel de la confiance quand elle bouge.
+// Le texte d'un QR code part tel quel (deja nettoye par ia-immediat.js) : ce n'est pas un nom de classe.
 async function envoyer(genre, classe, confiance) {
-    const ligne = 'IA:' + genre + ':' + (classe ? slug(classe) : '') + ':' + confiance + '\n';
+    const ligne = 'IA:' + genre + ':' + (classe ? (genre === 'qr' ? classe : slug(classe)) : '') + ':' + confiance + '\n';
     if (typeof window.simu_uartPousser === 'function') window.simu_uartPousser(ligne);
     if (caseCarte && caseCarte.checked && typeof window.ecrireSerie === 'function') {
         await window.ecrireSerie(ligne);
@@ -85,8 +96,8 @@ async function envoyer(genre, classe, confiance) {
 }
 
 // Point d'entree commun (camera, micro, et tests) : probas = [{nom, proba 0..1}, ...]
-function traiterResultat(genre, probas) {
-    const col = colonne(genre);
+// col : colonne dont les barres sont mises a jour (l'apprentissage immediat a la sienne).
+function traiterResultat(genre, probas, col = colonne(genre)) {
     let meilleur = null;
     for (const p of probas) if (!meilleur || p.proba > meilleur.proba) meilleur = p;
     const confiance = meilleur ? Math.round(meilleur.proba * 100) : 0;
@@ -115,6 +126,28 @@ function traiterResultat(genre, probas) {
         return envoyer(genre, retenue, d.confiance);
     }
     return null;
+}
+
+// Renvoi periodique du dernier resultat de chaque genre en cours (voir RAPPEL_MS).
+setInterval(() => {
+    const maintenant = Date.now();
+    for (const genre of Object.keys(dernierEnvoi)) {
+        const d = dernierEnvoi[genre];
+        if (d.classe === null || maintenant - d.instant < RAPPEL_MS) continue;
+        d.instant = maintenant;
+        envoyer(genre, d.classe, d.confiance);
+    }
+}, 100);
+
+// Plus rien n'est reconnu pour ce genre : le programme repart d'une classe vide,
+// et le renvoi periodique s'arrete.
+function liberer(genre) {
+    const enCours = dernierEnvoi[genre].classe !== null;
+    dernierEnvoi[genre] = { classe: null, confiance: -1, instant: 0 };
+    if (!enCours) return;
+    const ligne = 'IA:' + genre + '::0\n';
+    if (typeof window.simu_uartPousser === 'function') window.simu_uartPousser(ligne);
+    if (caseCarte && caseCarte.checked && typeof window.ecrireSerie === 'function') window.ecrireSerie(ligne);
 }
 
 function afficherClasses(genre, noms) {
@@ -208,19 +241,27 @@ async function chargerModele(genre, source) {
 // ("capture") peuvent chacune le demander ; il s'eteint quand plus personne n'en a besoin.
 const camera = { flux: null, raisons: new Set() };
 
+// L'apercu de la colonne Vision ne s'affiche que pour SES usages ("reco", "capture") :
+// l'apprentissage immediat et les QR codes ont leur propre apercu (raisons commencant par "imm").
+function majApercuVision() {
+    const video = $('#ia-video');
+    if (video) video.classList.toggle('replie', !camera.flux || ![...camera.raisons].some(r => !r.startsWith('imm')));
+}
+
 async function ouvrirCamera(raison) {
     const video = $('#ia-video');
     if (!camera.flux) {
         camera.flux = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         video.srcObject = camera.flux;
-        video.classList.remove('replie');
         await video.play().catch(() => {});
     }
     camera.raisons.add(raison);
+    majApercuVision();
 }
 
 function fermerCamera(raison) {
     if (raison) camera.raisons.delete(raison); else camera.raisons.clear();
+    majApercuVision();
     if (camera.raisons.size) return;
     if (camera.flux) { camera.flux.getTracks().forEach(t => t.stop()); camera.flux = null; }
     const video = $('#ia-video');
@@ -285,15 +326,9 @@ function majBouton(genre) {
 }
 
 function arreter(genre) {
+    const enMarche = moteurs[genre].enMarche;
     if (genre === 'vision') arreterVision(); else arreterSon();
-    dernierEnvoi[genre] = { classe: null, confiance: -1, instant: 0 };
-    // Plus rien n'est reconnu : le programme repart d'une classe vide.
-    if (moteurs[genre].classes.length && typeof window.simu_uartPousser === 'function') {
-        window.simu_uartPousser('IA:' + genre + '::0\n');
-    }
-    if (caseCarte && caseCarte.checked && moteurs[genre].classes.length && typeof window.ecrireSerie === 'function') {
-        window.ecrireSerie('IA:' + genre + '::0\n');
-    }
+    if (enMarche) liberer(genre);
     majBouton(genre);
 }
 
@@ -301,6 +336,8 @@ async function basculer(genre) {
     const m = moteurs[genre];
     if (m.enMarche) { arreter(genre); dire(genre, 'Arrêté.'); return; }
     if (!m.classes.length) return;
+    // Un seul moteur a la fois pour le genre vision : l'apprentissage immediat s'arrete.
+    if (genre === 'vision' && window.iaImmediat) window.iaImmediat.arreter();
     dire(genre, genre === 'vision' ? 'Démarrage de la caméra…' : 'Démarrage du micro…');
     try {
         if (genre === 'vision') await demarrerVision(); else await demarrerSon();
@@ -697,4 +734,18 @@ setInterval(() => { if (caseCarte && caseCarte.checked) majEtatCarte(); }, 2000)
 // Camera et micro ne doivent pas rester allumes en cachette : on coupe a la fermeture de la page.
 window.addEventListener('pagehide', () => { arreterVision(); arreterSon(); fermerCamera(); });
 
-window.iaTest = { creation, camera, ouvrirCamera, fermerCamera, activationImage, entrainerVision, entrainerSon, capturerSon, enregistrerGenre, ajouterClasse, chargerBibliotheque, traiterResultat, chargerModele, basculer, arreter, moteurs, envoyer, trierFichiers, racineModele, dernierEnvoi };
+// Noms de classes connus pour un genre (menus des blocs IA, un.js) : modele charge,
+// classes en cours de creation, et apprentissage immediat pour la vision.
+window.iaClassesConnues = function (genre) {
+    const noms = [];
+    if (moteurs[genre]) noms.push(...moteurs[genre].classes);
+    // Classes en creation : seulement celles qui ont des exemples (pas les « Classe 1 » par defaut).
+    if (creation[genre]) noms.push(...creation[genre].classes.filter(c => (c.echantillons ? c.echantillons.length : c.n) > 0).map(c => c.nom));
+    if (genre === 'vision' && window.iaImmediat) noms.push(...window.iaImmediat.classes());
+    const vus = new Set();
+    return noms.map(n => String(n).trim()).filter(n => n && !vus.has(slug(n)) && vus.add(slug(n)));
+};
+
+window.iaNoyau = { traiterResultat, liberer, envoyer, ouvrirCamera, fermerCamera, camera, dernierEnvoi, moteurs, arreter, seuil };
+
+window.iaTest = { liberer, creation, camera, ouvrirCamera, fermerCamera, activationImage, entrainerVision, entrainerSon, capturerSon, enregistrerGenre, ajouterClasse, chargerBibliotheque, traiterResultat, chargerModele, basculer, arreter, moteurs, envoyer, trierFichiers, racineModele, dernierEnvoi };

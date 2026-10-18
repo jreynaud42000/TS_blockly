@@ -52,7 +52,7 @@ _etat = {"vu": False, "dernier": 0.0}
 
 
 def dossier_de_lapplication():
-    """Le dossier contenant index.html, un.js, deux.js, trois.js, ia.js, tuto.js et firmware.hex.
+    """Le dossier contenant index.html, les .js de la page, firmware.hex et lib/.
 
     Empaquete par PyInstaller, les fichiers sont extraits dans sys._MEIPASS ;
     sinon ils sont a cote de ce script. Dans les deux cas il faut s'y placer,
@@ -112,6 +112,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
       /_ferme?id=X   la page X se ferme (envoyee par le navigateur en quittant)
       /_app          identifie cette application (pour ne pas lancer deux exe)
     """
+
+    # MediaPipe (lib/mediapipe) est un module JavaScript en .mjs, plus un .wasm.
+    # Python 3.8 sous Windows annonce le .mjs en text/plain : le navigateur
+    # refuse alors de l'importer comme module. On fixe les deux types.
+    extensions_map = dict(http.server.SimpleHTTPRequestHandler.extensions_map,
+                          **{".mjs": "text/javascript", ".wasm": "application/wasm"})
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")

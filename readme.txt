@@ -1394,3 +1394,24 @@ pour tout deverrouiller). Evaluation : sans indice ni solution, bouton Valider, 
 rapport imprimable + export CSV / JSON. Progression : localStorage du navigateur (cle exercices_progression_v1), un profil par nom d'eleve ; export / import JSON
 pour regrouper une classe, tableau de classe imprimable et export CSV. Les ids d'exercice (1.1, 2.3...) ne doivent plus changer une fois utilises (la progression s'y rattache).
 app.spec embarque exercices.js et exercices.json ; l'exe V2.0E les embarque.
+
+32. IA : APPRENTISSAGE IMMEDIAT, GESTES, POSITIONS, QR CODES (copie d'essai, oct. 2026)
+Reprend les points forts de l'IA d'EasyBloc TS (Arduino R4), recrits ici (aucun code d'EasyBloc copie ; seules les bibliotheques
+libres MediaPipe et ZXing, licence Apache 2.0, sont reprises dans lib/mediapipe et lib/zxing, 27 Mo et 0,3 Mo).
+Fichiers : ia-immediat.js (nouveau, charge apres ia.js), ia.js (renvoi periodique, noyau partage window.iaNoyau), un.js (pilote
+MicroPython, blocs, aide, .py), index.html (deux colonnes du panneau IA), app.py (types .mjs et .wasm), app.spec (ia-immediat.js).
+- Colonne « Apprentissage immediat » : objets et images (MobileNet v3), gestes de la main (21 points), positions des bras
+  (epaules, coudes, poignets). Pas d'entrainement : k plus proches voisins (K = 5, votes moyennes sur 3 images). Exemples par la
+  camera (« Maintenir ») ou par des images (🖼). 8 classes, 150 exemples par classe au plus. Les resultats pilotent les blocs
+  « vision » ; demarrer l'un arrete l'autre (Teachable Machine ou immediat). Renommer une classe met a jour les blocs.
+- Sauvegarde : l'apprentissage (empreintes, jamais d'images) est ajoute a la fin du .py telecharge, en commentaires
+  « # >>> apprentissage-ia » ignores par la carte, et relu a l'ouverture du .py. « Exporter » / « Importer » : fichier .json.
+  PAS dans le .hex (place limitee, inutile a la carte). Environ 1,4 Ko par exemple d'image, 0,3 Ko par geste.
+- Colonne « QR codes » : lecture (QR, EAN, UPC, Code 128/39, Data Matrix) et creation d'un QR code a imprimer (.png).
+  Blocs : « lorsqu'un code QR est lu », « un code QR est visible », « texte du dernier code QR lu » (sans accents, 60 car.).
+- Blocs « l'IA reconnait » : la classe se choisit dans une liste (classes du panneau IA) ou « ✎ autre nom… ».
+- Fiabilite : le navigateur renvoie le dernier resultat toutes les 500 ms ; la carte oublie un resultat de plus de 1,5 s.
+  Ligne envoyee : IA:<vision|son|qr>:<classe ou texte>:<confiance>.
+- Limites : gestes et positions non testes avec une vraie camera dans la session de developpement (modeles charges et
+  verifies sur images de synthese) ; la carte peut perdre des lignes si le programme attend longtemps (sleep) avec
+  plusieurs IA en marche, sans risque de faux declenchement (ligne illisible = ignoree).
