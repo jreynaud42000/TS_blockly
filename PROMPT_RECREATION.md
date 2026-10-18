@@ -24,6 +24,11 @@ Un seul dossier, servi par son propre serveur Python (`app.py`, voir ci-dessous)
 | `un.js` | Blocs, générateurs MicroPython, boîte à outils, téléchargements, simulateur (partie JS) |
 | `deux.js` | Écriture du programme dans le système de fichiers MicroPython |
 | `trois.js` | Emballage au format Universal Hex |
+| `ia.js` | Reconnaissance d'images et de sons (Teachable Machine, `lib/tm/`), panneau IA |
+| `tuto.js` | Visites guidées (menu Aide) : bulle, surbrillance, étapes qui attendent une action réelle |
+| `bandeau.js` | Colle du bandeau : libellés Afficher/Masquer, voyant, sélecteur de carte, pastilles, recherche de blocs (§22, §23) |
+| `exercices.js` + `exercices.json` | Exercices pas à pas, progression, mode évaluation ; les exercices sont des données (§25) |
+| `site_web/` | Copie prête à héberger en site statique (§26) — à régénérer après chaque modification |
 | `firmware.hex` | Image MicroPython officielle (fournie par l'utilisateur) |
 | `app.py` | Serveur local : sert le dossier et **interdit la mise en cache** |
 | `app.spec` | Recette PyInstaller, pour produire un `.exe` autonome |
@@ -3157,4 +3162,215 @@ Ces sept-là ont fait conclure à tort qu'un correctif ne marchait pas :
 Règle générale : l'absence d'erreur ne prouve rien. Relire ce qui a été produit
 avec un outil indépendant de celui qui l'a produit.
 
-Fournis le code complet des fichiers du §1, prêt à être posé dans un dossier.
+## 22. Bandeau supérieur, console unique, sélecteur de carte (`bandeau.js`)
+
+Principe : **ne modifier aucune fonction existante** quand un module de « colle » suffit. `bandeau.js` est un module ES chargé en dernier
+(après `tuto.js`) ; il s'appuie sur les `id` et les classes déjà présents.
+
+Barre `#toolbar` (anthracite → orange de la charte, voir §24) : logo (optionnel), menu Affichage (thème/contraste), menu Fichier,
+nom du programme `#nom-fichier`, Défaire/Refaire, Capture, quatre boutons de bascule `#btn-vue-console`, `#btn-vue-simu`,
+`#btn-vue-code`, `#btn-vue-ia`, groupe carte (`#port-group`, `#port-select`, `#port-refresh`), `#btn-envoyer` (Téléverser),
+`#tb-lancer` (Lancer / Arrêter la simulation), `#copyright-toolbar` (version seule), menu Aide.
+
+**PIÈGE nº 59 — l'état « ouvert / fermé » d'un panneau est la classe `.inactif` du bouton, posée par le code existant.** Les libellés
+« Afficher / Masquer … » ne doivent donc pas être codés en dur : un `MutationObserver` sur l'attribut `class` du bouton (`suivreBascule`)
+réécrit le libellé. Même source pour le **liseré blanc** sous un bouton activé :
+`#btn-vue-console:not(.inactif), … { box-shadow: inset 0 -3px 0 #fff; border-radius: 4px 4px 0 0; }`.
+
+**PIÈGE nº 60 — un message d'état dans la barre la fait passer sur deux rangées.** `#etat` est une bulle `position: absolute; top: 100%`
+sous la barre, `pointer-events: none`. Vérifier la barre à 1280, 1366 et 1920 px : une rangée de 44 px à 1920, deux rangées sans bouton
+coupé à 1366 (réduire paddings et police à 12 px, champ du nom étroit).
+
+**Console = moniteur série.** Un seul panneau, trois sources de lignes (simulateur, carte, messages d'info). Le bouton Console affiche ou
+masque le panneau ; un voyant indique la connexion (`.voyant` : anneau vide = déconnectée, disque vert avec anneau = connectée,
+`#btn-console-carte.connecte`) — la **forme** change en plus de la couleur. « Moniteur » n'est qu'un raccourci vers « Connecter ». Après un
+téléversement la carte se redémarre : mémoriser le souhait de connexion (`connexionVoulue`) et reconnecter.
+
+**Sélecteur de carte** (`demarrerCartes(serial)`) : lister `navigator.serial.getPorts()`, envelopper `serial.requestPort()` pour mémoriser
+le port choisi, filtrer sur le fabricant micro:bit `0x0D28`, ouvrir à 115 200 bauds. Désactivé sans Web Serial (Firefox, Safari).
+**PIÈGE nº 61 (test) — un faux port série dont `readable` ne repasse jamais à `null` après `close()` fait tourner la boucle de lecture sans
+fin et gèle l'onglet de test.** Le faux port doit annuler `readable` à la fermeture, et la page doit être rechargée avant chaque test.
+
+## 23. Catégories : ordre, regroupements, palette, puces, recherche
+
+Tout passe par `reordonnerToolbox()` (`un.js`), appelée en **premier** par `appliquerPaletteToolbox()` : renomme « Communication » en
+**Radio** (sous-menus Groupe, Envoi, Réception, Plus), ajoute **Listes** (`CATEGORIE_LISTES`, blocs de liste natifs), regroupe Maqueen Plus,
+Maqueen Lite, Kitrobot v2 et LiDAR sous **Robots** (`NOMS_ROBOTS`), puis trie de façon **stable** selon `ORDRE_CATEGORIES` :
+Boucles, Temps, Affichage, Entrées/Sorties, Capteurs, Actionneurs (Audio), Servos, Radio, IA, Grove, Logique, Variables, Maths, Texte,
+Fonctions, Listes, Robots. Aucune définition de bloc n'est touchée.
+
+**Palette.** Une table `PALETTE_CATEGORIES` (une couleur hexadécimale par catégorie) fournit la couleur des blocs (enveloppe de `init` qui
+appelle `setColour`) ; `BLOCS_PALETTE_SUPPLEMENTAIRES` couvre les blocs absents de la boîte. Exigence de l'utilisateur : **aucune couleur
+identique entre deux catégories**. Méthode : échantillonnage du point le plus éloigné dans l'espace CIE-Lab (écart ΔE mini 26,7 sur 17
+couleurs), restreint aux teintes assez sombres pour du texte blanc (luminance relative ≤ 0,22), puis attribution dans l'ordre de la colonne
+pour que deux catégories voisines soient très différentes. Les sous-catégories héritent de leur parent.
+
+**Pastilles rondes** : `.blocklyToolboxCategory .blocklyTreeRow { border-left-width: 0 !important; padding-left: 33px !important }` (47 px pour
+une sous-catégorie) et `::before` rond de 18 px. Blockly pose la couleur de la catégorie en bordure gauche de la ligne ; `colorerPuces()` la
+recopie dans `--puce` (aujourd'hui lue dans la table `PASTILLES`, §24) et un `MutationObserver` (`childList`, pas `attributes`, pour ne pas
+boucler) recolore quand la boîte est reconstruite.
+
+**Recherche de blocs.** Champ `#recherche-blocs` (`position: sticky; top: 0`) au-dessus de « Boucles ». Index construit au premier usage
+sur toute la boîte d'origine (`construireIndex`, parcours récursif des catégories), plus les catégories dynamiques Variables et Fonctions
+relues à chaque recherche (`blocsDynamiques`). **PIÈGE nº 62** : le libellé d'un bouton dynamique est une clé de message
+(`%{BKY_NEW_VARIABLE}`) — la remplacer par `Blockly.Msg[clé]` avec une expression régulière, sans appeler `Blockly.utils.replaceMessageReferences`.
+Des synonymes (`SYNONYMES_DYNAMIQUES`) couvrent les mots qu'on tape mais qui ne figurent pas dans le libellé (« définir », « incrémenter »).
+Les résultats s'affichent dans le tiroir (`toolbox.getFlyout().show(...)`) ; gérer `autoClose` pour qu'il reste ouvert après un dépôt.
+
+## 24. Polices et couleurs alignées sur la version Arduino R4 (quatre modes)
+
+Mécanisme de thèmes de cette application : **sombre = défaut (aucun attribut)**, clair = `:root[data-theme="light"]`, contraste élevé =
+`:root[data-contrast="high"]`, clair + élevé = les deux. Si un prompt externe parle de `html[data-theme="sombre"]` ou `html.contraste-eleve`,
+**traduire les sélecteurs**, ne pas changer le mécanisme.
+
+**PIÈGE nº 63 — la police des blocs se règle dans le thème Blockly, jamais en CSS.** `fontStyle: { family, weight, size }` dans chacun des
+quatre thèmes (`sombreMicrobitV2`, `sombreEleveMicrobitV2`, `clairEleveMicrobitV2`, `clairMicrobitV2`, ce dernier dérivé de `Classic` pour
+pouvoir y fixer la police) ; Blockly mesure le texte avec cette police pour dimensionner les blocs. Jamais de gras (il déborde des blocs).
+Police finale des blocs : `sans-serif`, 11 pt ; interface : `'Segoe UI', Arial, sans-serif` via `--font`, et
+`button, input, select, textarea { font-family: inherit }`.
+
+**Fonds par mode** (variables `--ec-*` posées sur `:root`, une règle par mode ; les règles de style ne contiennent plus de couleur) :
+
+| Zone | Clair | Sombre | Élevé clair | Élevé sombre |
+| --- | --- | --- | --- | --- |
+| Page | #e8e8e8 | #1b1c1f | #e8e8e8 | #000 |
+| Colonne de catégories | #2e2e2e | #141517 | #fff + bord droit 3 px #000 | #000 + bord #fff |
+| Survol / choisie | #444 / #555 | #2a2c30 / #34363b | #e6e6e6 / #000 | #333 / #fff |
+| Zone de programmation | #fff | #1e1f23 | #fff | #000 |
+| Grille (20 / 3) | #e8e8e8 | #34373d | #bbb | #444 |
+| Tiroir de blocs | #d9d9d9 | #2a2c31 | #fff + contour 3 px #000 | #000 + contour #fff |
+| Simulation | #f7f7f7, bord #aaa | #1e1f23, bord #3c3f45 | #fff, bord 3 px #000 | #000, bord #fff |
+
+Fonds de la zone de programmation, de la colonne et du tiroir : **dans `componentStyles` du thème** (`workspaceBackgroundColour`,
+`toolboxBackgroundColour`, `toolboxForegroundColour`, `flyoutBackgroundColour`, `scrollbarColour`…) — la valeur `workspaceBackgroundColour` est
+aussi relue par la capture PNG (`theme.getComponentStyle`), donc elle doit être juste. Le reste en CSS : grille `pattern line { stroke: … !important }`
+(la couleur d'`inject` est un attribut, le CSS l'emporte), `.blocklyFlyoutBackground { fill … !important }`, `.blocklyFlyoutLabelText` en italique.
+`Blockly.inject` : `grid: { spacing: 20, length: 3, colour: '#e8e8e8', snap: true }` (l'aimantation est un changement de comportement,
+pas seulement d'apparence), `zoom: { controls: true, wheel: true, startScale: 1, minScale: 0.3, maxScale: 3, scaleSpeed: 1.2 }`.
+
+**PIÈGE nº 64 — la ligne de catégorie sélectionnée porte un `background-color` en style inline** (couleur de la catégorie, posé par Blockly) :
+le surcharger avec `!important` sur `.blocklyToolboxCategory > .blocklyTreeRow.blocklyTreeSelected`, et le filet gauche de 3 px par
+`box-shadow: inset 3px 0 0 var(--ec-cat-lisere)` (la bordure gauche est déjà utilisée pour récupérer la couleur de la pastille).
+
+**PIÈGE nº 65 — la flèche de dépliage d'une catégorie est un sprite noir** (`blocklyTreeIcon` + `sprites.png`) : invisible sur fond noir
+(contraste élevé sombre). Remplacer par `background-image: none !important` et `::before { content: '▸' }` / `'▾'` (états
+`blocklyTreeIconClosed` / `blocklyTreeIconOpen`), colorés avec le texte. Écrire ces caractères directement, pas en échappement octal.
+
+**Blocs en contraste élevé** : clair = `fill #fff`, `stroke #000`, 3 px, texte noir, champs (`.blocklyFieldRect`) blancs à bord noir,
+`.blocklyPathDark/.blocklyPathLight` effacés, flèches des menus en `grayscale` (filtre, pas `fill`) ; sombre = l'inverse. Les rectangles des
+menus déroulants ont `fill-opacity: .6` : forcer `fill-opacity: 1 !important`. Boutons du tiroir (« Créer une variable… ») : fond du tiroir,
+bord et texte de la couleur des libellés. Les règles du mode clair + élevé doivent être **plus spécifiques** que celles du mode sombre + élevé
+(`:root[data-theme="light"][data-contrast="high"] …`).
+
+**Pastilles** : couleurs exactes dans `PASTILLES` (`bandeau.js`), une sous-catégorie prend toujours la couleur de sa catégorie principale
+(trouvée par l'ancêtre `.blocklyToolboxCategory` du parent) — Boucles #FD7E14, Temps #15AABF, Affichage #F03E3E, Entrées/Sorties #343A40,
+Radio #1864AB, IA #9C6644, Grove #2B8A3E, Logique #FCC419, Variables #E64980, Maths #82C91E, Texte #7048E8, Fonctions #CC5DE8, Listes #A61E4D ;
+sans équivalent Arduino (proposées) : Capteurs #D2CC79, Actionneurs (Audio) #622D86, Servos #25F478, Robots #25F4CA. Liseré :
+`0 0 0 1.5px rgba(255,255,255,.55)` en normal, 2 px noir (élevé clair) ou blanc (élevé sombre). **Les couleurs des blocs ne changent pas.**
+
+**Bandeau orange** : `--bandeau: #ff5501` (clair), `--bandeau-sombre: #d94700`, noir en contraste élevé, filet bas `--accent-fonce: #b33a00`.
+
+## 25. Exercices pas à pas et mode évaluation (`exercices.js` + `exercices.json`)
+
+Module ES chargé après `bandeau.js`. Il ne modifie ni blocs, ni générateurs, ni simulateur : il **lit** `window.workspace` et ne la modifie que pour
+poser l'espace de départ (`au_demarrage` → `boucle_infinie`) ou la solution d'un exercice (`Blockly.serialization.workspaces.load`). Il injecte
+son propre CSS (variables du thème : `--fond-code`, `--texte-code`, `--bordure-chrome`, accent orange). Entrées : boutons `#ex-menu-btn`
+(« Exercices pas à pas ») et `#ex-eval-menu-btn` (« Mode évaluation ») du menu Aide.
+
+**Les exercices sont des données** (`exercices.json`, chargé par `fetch`, `cache: 'no-store'`) : `titre`, `niveaux[]` (`id`, `titre`,
+`notion`, `exercices[]`), chaque exercice = `id` (unique, **ne plus le changer** : la progression s'y rattache), `titre`, `consigne`,
+`indices[3]`, `regle`, `solution` facultative (`{ variables?, blocks[] }` au format de sérialisation Blockly), `points` (1 par défaut).
+
+**Règle de validation** (langage déclaratif, évalué sur `workspace.getAllBlocks(false)`) : un *motif* décrit un bloc — `bloc` (type ou liste),
+`champ {NOM: valeur}`, `dans [types du bloc racine]`, `ancetre` (type d'un parent), `contient` (motif ou liste, tous requis, cherchés dans
+`getDescendants(false)` donc **ombres comprises**), `entrees {ENTREE: nombre}` (lit `NUM` du bloc branché), `leds_min`, `texte_sauf`, `min`.
+Combinaisons `tous: [...]` / `ou: [...]`. Exemple : « cœur qui clignote » = icône + `effacer_ecran` dans `boucle_infinie` et au moins deux
+`attendre_temps` dans la même boucle.
+
+**PIÈGE nº 66 — `dans` regarde le bloc RACINE, pas le parent.** « Au démarrage » est chaîné à « Répéter indéfiniment » par `next`, donc tout
+ce qui est dans la boucle a pour racine `au_demarrage` ; pour exiger « dans la boucle » utiliser `ancetre: "boucle_infinie"`.
+
+**PIÈGE nº 67 — le texte par défaut d'un bloc de la boîte (« Bonjour ! ») est déjà valide.** Un exercice qui demande de le changer
+utilise `texte_sauf`. De même, les entrées numériques de la boîte sont des **ombres** `math_number` : lire via `getInputTargetBlock`.
+
+**PIÈGE nº 68 — écrire les solutions JSON à la main produit des accolades déséquilibrées** (une solution sur 16 l'était). Les générer
+avec `json.dumps` ou les valider (`json.load`) après chaque modification, puis **tester les 16** : espace vide → règle fausse, solution chargée
+→ règle vraie.
+
+**Entraînement** : panneau `#ex-panneau` (déplaçable par l'en-tête, réductible), validation automatique 400 ms après un changement non
+visuel (`addChangeListener`, `ev.isUiEvent` ignoré), étoiles : 3 sans indice, 2 avec un ou deux indices, 1 avec le troisième ou la solution
+(on garde le meilleur résultat) ; exercice suivant verrouillé tant que le précédent n'est ni fait ni « passé » (case « Accès libre »).
+Remplacer le programme en cours demande une confirmation (sauf espace vierge ou session déjà ouverte). **Évaluation** : aucune aide, bouton
+Valider, 3 essais (part des points 100 % / 75 % / 50 %), durée maximale facultative, `beforeunload` actif, note sur 20, rapport
+(`#ex-voile` plein écran, `@media print` masque le reste de la page), export CSV (séparateur `;`, BOM) et JSON, résultat enregistré.
+**PIÈGE nº 69 (test)** — `confirm()` renvoie `false` dans un navigateur piloté : une évaluation lancée par script sur un espace non vierge
+ne démarre pas, et la validation qui suit plante sans garde ; vider l'espace d'abord (`reinitialiserEspace`) et garder `validerEval` contre
+`session` nul.
+Progression : `localStorage['exercices_progression_v1']` = `{ profil, libre, profils: { nom: { faits: { id: { etoiles, indices, solution,
+secondes, date, passe? } } } }, evaluations: [...] }`. Un profil par nom d'élève ; export/import JSON (on garde le meilleur résultat par
+exercice, les évaluations ne sont ajoutées que si `nom` + `date` sont nouveaux), tableau de classe imprimable et CSV.
+Ajouter `exercices.js` **et** `exercices.json` à `app.spec` et au dossier `site_web`.
+
+## 26. Hébergement, exécutables, antivirus
+
+**Site statique** (`site_web`) : aucun serveur Python nécessaire. Fichiers : `index.html`, les sept `.js` (`un`, `deux`, `trois`, `ia`, `tuto`,
+`bandeau`, `exercices`), `exercices.json`, `firmware.hex`, `readme.txt`, `lib/` **en entier** (`blockly` + `media`, `brython`, `microbit`, `tm` :
+36 fichiers, 15 Mo), `.nojekyll`. Pas : `app.py`, `app.spec`, `version_info.txt`, `lancer_projet.bat`, `dist/`, `build/`, PDF, `.xlsx`, `.md`.
+**HTTPS obligatoire** (Web Serial, accès aux fichiers, caméra et micro de l'IA) ; Chrome, Edge ou Opera pour envoyer sur la carte.
+**PIÈGE nº 70 — `lib/` oublié** : la page s'affiche sans colonne de catégories ni espace de blocs, console : `404` sur
+`lib/blockly/blockly_compressed.js`… et `brython is not defined`. Le glisser-déposer du site GitHub s'arrête à 100 fichiers par envoi :
+envoyer `lib/` par lots ou utiliser GitHub Desktop. L'appel `/_vie` (cœur de l'exe qui ferme le serveur quand la dernière page est fermée)
+renvoie 404 sur un site statique : sans conséquence. Respecter la casse des noms de fichiers.
+
+**Exécutable** : `python -m PyInstaller app.spec --noconfirm`. `datas` : `index.html`, `un.js`, `deux.js`, `trois.js`, `ia.js`, `tuto.js`,
+`ia-immediat.js`, `bandeau.js`, `exercices.js`, `exercices.json`, `firmware.hex`, `logo.png`, `readme.txt`, `lib` — **tout nouveau fichier utilisé par la page doit y être
+ajouté**. Le numéro de version est à tenir identique à **quatre** endroits : `VERSION` (`app.py`), `version_info.txt` (nombres + chaînes),
+`name=` (`app.spec`) et `#copyright-toolbar` (`index.html`). Vérifier l'archive sans lancer l'exe :
+`from PyInstaller.archive.readers import CArchiveReader; CArchiveReader(chemin).toc`. Port 8000 : si un autre serveur l'occupe, l'exe risque de ne pas démarrer
+ou de servir l'autre application — ne pas le tuer sans l'accord de l'utilisateur.
+**Antivirus** : les exes PyInstaller « un seul fichier » sont souvent signalés à tort. Leviers par ordre de coût : `upx=False` dans `app.spec`
+(UPX est une cause fréquente), livrer en dossier (`onedir`) zippé, soumettre l'exe comme faux positif à l'éditeur de l'antivirus, enfin
+**signer** avec un certificat de signature de code (OV ou EV, ou Azure Trusted Signing ; un certificat auto-signé n'aide que s'il est déployé
+sur les postes) avec `signtool`. Les propriétés de l'exe (`CompanyName` dans `version_info.txt`) contiennent encore « RAJ Editions » : à changer
+séparément du site.
+
+## 27. IA : apprentissage immédiat, gestes, positions, QR codes (`ia-immediat.js`)
+
+Reprise des points forts de l'IA d'EasyBloc TS (Arduino R4), **réécrits** : seules les bibliothèques libres sont copiées
+(`lib/mediapipe` = `@mediapipe/tasks-vision` 0.10.14 + `hand_landmarker.task`, `pose_landmarker_lite.task`,
+`mobilenet_v3_small.tflite` ; `lib/zxing/zxing-0.21.3.min.js` ; Apache 2.0). Aucune requête hors de l'application.
+
+- **Noyau partagé** : `ia.js` expose `window.iaNoyau` (`traiterResultat(genre, probas, colonne)`, `liberer`, `envoyer`,
+  `ouvrirCamera`/`fermerCamera` avec une *raison*, `dernierEnvoi`, `moteurs`). `ia-immediat.js` envoie en genre `vision`
+  (mêmes blocs) et `qr`. Un seul moteur vision à la fois : démarrer l'un arrête l'autre.
+- **Empreintes** : images = `ImageEmbedder` (1024 nombres, `l2Normalize`) comparés par produit scalaire ; main = 21 points
+  ramenés au poignet, x multiplié par largeur/hauteur, main gauche retournée, divisés par la plus grande distance au poignet
+  (63 nombres) ; bras = points 11 à 16 ramenés au milieu des épaules et divisés par leur largeur (12 nombres, sans
+  retournement). Squelettes comparés par distance euclidienne. **k plus proches voisins**, K = 5, votes moyennés sur 3 images.
+- **Une seule façon de créer des classes d'images** : la colonne Vision ne garde que le chargement d'un modèle Teachable
+  Machine ; « Créer un modèle (entraînement) » n'existe plus que pour le son (code vision retiré de `ia.js`). La visite
+  guidée IA (`tuto.js`, `ETAPES_IA`) passe par l'apprentissage immédiat (`colImm`) et présente la colonne QR (`colQR`).
+- **Renvoi périodique** : le dernier résultat de chaque genre est renvoyé toutes les 500 ms ; le pilote MicroPython note
+  `_ia_vu[genre] = running_time()` et remet la classe à vide après 1,5 s sans ligne.
+- **Blocs** : `ChampClasseIA` (sous-classe de `FieldDropdown`) propose `window.iaClassesConnues(genre)` + « ✎ autre nom… ».
+  QR : `ia_qr_lorsque_lu` (`on_ia_qr_lu`), `ia_qr_visible`, `ia_qr_texte` (`_ia_qr_texte`).
+- **Sauvegarde** : JSON `{format: 'apprentissage-ia-microbit', version: 1, type, classes: [{nom, exemples: [base64]}]}` ;
+  images quantifiées en octets signés (×127) puis renormalisées, squelettes en Float32. Ajouté à la fin du `.py` en lignes
+  `# ` de 100 caractères entre `# >>> apprentissage-ia` et `# <<< apprentissage-ia`, retiré avant la reconstruction en blocs.
+
+**PIÈGE nº 71 — `.mjs` servi en `text/plain`** : Python 3.8 sous Windows ne connaît pas `.mjs` ; le navigateur refuse alors
+d'importer MediaPipe comme module. `app.py` fixe `extensions_map` (`.mjs` → `text/javascript`, `.wasm` → `application/wasm`) ;
+`ia-immediat.js` retombe sur `fetch` + `Blob` + `import()` pour un autre serveur.
+
+**PIÈGE nº 72 — menu dynamique et valeur hors menu** : `FieldDropdown.doClassValidation_` refuse toute valeur absente du menu
+(un programme ouvert avant le modèle perdrait ses classes) et `doValueUpdate_` cherche le libellé dans le menu **en cache**.
+Surcharger les deux : accepter tout texte non vide, et régénérer le menu (`getOptions(false)`) pour le libellé.
+
+**PIÈGE nº 73 — renvoi et oubli** : le gestionnaire `on_ia_…` se déclenche sur un **changement** de classe, donc les renvois ne
+le redéclenchent pas. Tester l'oubli (1,5 s) **après** avoir lu les lignes en attente : un programme qui dort plus de 1,5 s
+oublierait sinon à tort une classe toujours reconnue.
+
+**PIÈGE nº 74 — annexe du `.py`** : ne jamais la mettre dans le `.hex` (place du système de fichiers comptée). Écrire les espaces
+du JSON en `\u0020` : un éditeur qui retire les espaces de fin de ligne abîmerait un nom de classe coupé à cet endroit.
+
+Fournis le code complet des fichiers du §1 (et les modules des §22 à §27), prêt à être posé dans un dossier.

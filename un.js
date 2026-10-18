@@ -222,7 +222,12 @@ try {
     // accents, lettres/chiffres/_ seulement) : c'est aussi le nom du
     // gestionnaire genere on_ia_<type>_<classe>. Le navigateur envoie une ligne
     // a chaque CHANGEMENT de classe (classe vide quand la confiance retombe sous
-    // le seuil). Le simulateur recoit les memes lignes par un faux `uart`.
+    // le seuil), puis la RENVOIE toutes les 500 ms : un resultat qui n'a pas ete
+    // revu depuis 1,5 s est oublie (navigateur ferme, cable debranche, ligne
+    // perdue). Le simulateur recoit les memes lignes par un faux `uart`.
+    // Genre "qr" (ia-immediat.js) : IA:qr:<texte>:100 tant qu'un QR code est vu ;
+    // le texte peut contenir des « : », recolles ici. on_ia_qr_lu a chaque
+    // nouveau code, _ia_qr_texte garde le dernier lu.
 
     /** Nom de classe -> identifiant sur : "Chat noir !" devient "chat_noir". */
     function slugIA(texte) {
@@ -235,13 +240,15 @@ try {
     function piloteIA() {
         importerMicrobit();
         pilote('ia', [
-            '_ia_dernier = {"vision": "", "son": ""}',
-            '_ia_proba = {"vision": 0, "son": 0}',
+            '_ia_dernier = {"vision": "", "son": "", "qr": ""}',
+            '_ia_proba = {"vision": 0, "son": 0, "qr": 0}',
+            '_ia_vu = {"vision": 0, "son": 0, "qr": 0}',
+            '_ia_qr_texte = ""',
             '_ia_tampon = ""',
             'uart.init(115200)',
             '',
             'def _ia_traiter():',
-            '    global _ia_tampon',
+            '    global _ia_tampon, _ia_qr_texte',
             '    while uart.any():',
             '        morceau = uart.read()',
             '        if morceau:',
@@ -258,29 +265,78 @@ try {
             '            champs = coupe[0].strip().split(":")',
             '            if len(champs) >= 3 and champs[0] == "IA" and champs[1] in _ia_dernier:',
             '                genre = champs[1]',
+            '                if genre == "qr" and len(champs) > 4:',
+            '                    champs = [champs[0], genre, ":".join(champs[2:-1]), champs[-1]]',
             '                classe = champs[2]',
+            '                _ia_vu[genre] = running_time()',
             '                _ia_proba[genre] = int(champs[3]) if len(champs) > 3 else 100',
             '                if classe != _ia_dernier[genre]:',
             '                    _ia_dernier[genre] = classe',
-            '                    action = globals().get("on_ia_" + genre + "_" + classe)',
+            '                    if genre == "qr":',
+            '                        action = None',
+            '                        if classe:',
+            '                            _ia_qr_texte = classe',
+            '                            action = globals().get("on_ia_qr_lu")',
+            '                    else:',
+            '                        action = globals().get("on_ia_" + genre + "_" + classe)',
             '                    if action:',
             '                        action()',
             '        except Exception:',
             '            pass',
+            '    for genre in _ia_dernier:',
+            '        if _ia_dernier[genre] != "" and running_time() - _ia_vu[genre] > 1500:',
+            '            _ia_dernier[genre] = ""                # resultat trop ancien : plus rien de reconnu',
+            '            _ia_proba[genre] = 0',
         ]);
     }
 
     const TYPES_IA = [["vision", "vision"], ["son", "son"]];
 
+    // Choix de la classe : menu des classes connues du panneau IA (modele charge,
+    // classes en creation, apprentissage immediat : window.iaClassesConnues, ia.js),
+    // plus « ✎ autre nom… » pour un modele pas encore charge. La valeur reste un
+    // texte libre : un programme ouvert avant le modele garde ses noms de classes,
+    // meme absents du menu (Blockly refuserait sinon toute valeur hors du menu).
+    const AUTRE_CLASSE_IA = '__autre__';
+    class ChampClasseIA extends Blockly.FieldDropdown {
+        constructor(valeur) {
+            super(function () {
+                const actuelle = this.getValue() || valeur;
+                const bloc = this.getSourceBlock();
+                const genre = bloc ? bloc.getFieldValue('TYPE') : 'vision';
+                const noms = typeof window.iaClassesConnues === 'function' ? window.iaClassesConnues(genre) : [];
+                const options = noms.map(n => [n, n]);
+                if (!noms.some(n => slugIA(n) === slugIA(actuelle))) options.unshift([actuelle, actuelle]);
+                options.push(['✎ autre nom…', AUTRE_CLASSE_IA]);
+                return options;
+            }, function (nouvelle) {
+                if (nouvelle !== AUTRE_CLASSE_IA) return nouvelle;
+                Blockly.dialog.prompt('Nom de la classe (comme dans le panneau IA) :', this.getValue() || '', reponse => {
+                    if (reponse && reponse.trim()) this.setValue(reponse.trim());
+                });
+                return null;
+            });
+            this.setValue(valeur);
+        }
+        doClassValidation_(nouvelle) {
+            return typeof nouvelle === 'string' && nouvelle.trim() ? nouvelle : null;
+        }
+        // Le menu en cache peut ignorer une valeur qui vient d'arriver : on le regenere.
+        doValueUpdate_(nouvelle) {
+            super.doValueUpdate_(nouvelle);
+            this.selectedOption = this.getOptions(false).find(o => o[1] === nouvelle) || [nouvelle, nouvelle];
+        }
+    }
+
     Blockly.Blocks['ia_lorsque_reconnu'] = { init: function() {
         this.appendDummyInput().appendField("lorsque l'IA")
             .appendField(new Blockly.FieldDropdown(TYPES_IA), "TYPE")
             .appendField("reconnaît")
-            .appendField(new Blockly.FieldTextInput("classe"), "CLASSE");
+            .appendField(new ChampClasseIA("classe"), "CLASSE");
         this.appendStatementInput("DO").setCheck(null);
         this.setColour(330);
-        this.setTooltip("S'exécute quand l'IA passe à cette classe. Écrivez le nom de la classe comme dans " +
-                        "Teachable Machine (accents et majuscules sans importance).");
+        this.setTooltip("S'exécute quand l'IA passe à cette classe. Choisissez la classe dans la liste (classes du " +
+                        "panneau IA) ou « ✎ autre nom… » (accents et majuscules sans importance).");
     }};
     P.forBlock['ia_lorsque_reconnu'] = function(block) {
         piloteIA();
@@ -292,7 +348,7 @@ try {
         this.appendDummyInput().appendField("l'IA")
             .appendField(new Blockly.FieldDropdown(TYPES_IA), "TYPE")
             .appendField("reconnaît")
-            .appendField(new Blockly.FieldTextInput("classe"), "CLASSE");
+            .appendField(new ChampClasseIA("classe"), "CLASSE");
         this.setOutput(true, "Boolean");
         this.setColour(330);
         this.setTooltip("Vrai tant que la dernière classe reconnue par l'IA est celle-ci.");
@@ -326,6 +382,40 @@ try {
     P.forBlock['ia_confiance'] = function(block) {
         piloteIA();
         return ['_ia_proba["' + block.getFieldValue('TYPE') + '"]', P.ORDER_MEMBER];
+    };
+
+    // QR codes et codes-barres lus par la camera du PC (colonne « 🔳 QR codes », ia-immediat.js).
+    Blockly.Blocks['ia_qr_lorsque_lu'] = { init: function() {
+        this.appendDummyInput().appendField("lorsqu'un code QR est lu");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(330);
+        this.setTooltip("S'exécute à chaque nouveau QR code ou code-barres lu par la caméra (panneau IA, « Lire les codes »).");
+    }};
+    P.forBlock['ia_qr_lorsque_lu'] = function(block) {
+        piloteIA();
+        return declarerGestionnaire('on_ia_qr_lu', P.statementToCode(block, 'DO'));
+    };
+
+    Blockly.Blocks['ia_qr_visible'] = { init: function() {
+        this.appendDummyInput().appendField("un code QR est visible");
+        this.setOutput(true, "Boolean");
+        this.setColour(330);
+        this.setTooltip("Vrai tant que la caméra voit un QR code ou un code-barres.");
+    }};
+    P.forBlock['ia_qr_visible'] = function(block) {
+        piloteIA();
+        return ['(_ia_dernier["qr"] != "")', P.ORDER_RELATIONAL];
+    };
+
+    Blockly.Blocks['ia_qr_texte'] = { init: function() {
+        this.appendDummyInput().appendField("texte du dernier code QR lu");
+        this.setOutput(true, "String");
+        this.setColour(330);
+        this.setTooltip("Texte du dernier QR code ou code-barres lu, sans accents (texte vide si aucun).");
+    }};
+    P.forBlock['ia_qr_texte'] = function(block) {
+        piloteIA();
+        return ['_ia_qr_texte', P.ORDER_ATOMIC];
     };
 
     // ---------- Blocs « lorsque … » ----------
@@ -4579,7 +4669,11 @@ try {
               { "kind": "block", "type": "ia_lorsque_reconnu" },
               { "kind": "block", "type": "ia_classe_est" },
               { "kind": "block", "type": "ia_derniere_classe" },
-              { "kind": "block", "type": "ia_confiance" }
+              { "kind": "block", "type": "ia_confiance" },
+              { "kind": "label", "text": "QR codes et codes-barres (panneau IA)" },
+              { "kind": "block", "type": "ia_qr_lorsque_lu" },
+              { "kind": "block", "type": "ia_qr_visible" },
+              { "kind": "block", "type": "ia_qr_texte" }
             ]
           },
           {
@@ -6678,7 +6772,8 @@ try {
         afficher_valeur: "Affiche une valeur (texte ou nombre) sur la matrice de LED 5×5. Un texte de plusieurs " +
             "caractères est montré caractère par caractère ; pour le faire défiler, utiliser « faire défiler ».",
         ia_lorsque_reconnu: "Exécute les blocs quand l'IA (caméra ou micro, panneau IA) passe à la classe indiquée. " +
-            "Écrivez le nom de la classe comme dans Teachable Machine : accents et majuscules sont sans importance. " +
+            "Choisissez la classe dans la liste (classes du panneau IA : modèle chargé ou apprentissage immédiat), ou " +
+            "« ✎ autre nom… » pour un modèle pas encore chargé ; accents et majuscules sont sans importance. " +
             "Le bloc ne se redéclenche pas tant que la classe reste la même ; il repart quand l'IA a reconnu autre chose " +
             "(ou plus rien, confiance sous le seuil) entre-temps. Marche dans le simulateur et sur la vraie carte.",
         ia_classe_est: "Vrai tant que la dernière classe reconnue par l'IA est celle indiquée. À poser dans un « si » " +
@@ -6687,6 +6782,13 @@ try {
             "« chat_noir »), ou un texte vide si rien n'est reconnu.",
         ia_confiance: "Certitude de l'IA pour la dernière classe reconnue, de 0 à 100 (en %). Elle est mise à jour " +
             "quand elle varie nettement, pas à chaque image.",
+        ia_qr_lorsque_lu: "Exécute les blocs à chaque nouveau QR code ou code-barres lu par la caméra du PC (panneau IA, " +
+            "colonne « QR codes », bouton « Lire les codes »). Le texte lu est donné par « texte du dernier code QR lu ». " +
+            "Le même code montré en continu ne redéclenche pas le bloc ; il repart quand le code a disparu puis réapparu.",
+        ia_qr_visible: "Vrai tant que la caméra voit un QR code ou un code-barres (il redevient faux moins d'une seconde " +
+            "après que le code a disparu).",
+        ia_qr_texte: "Texte du dernier QR code ou code-barres lu, sans accents (« Élève » devient « Eleve »), " +
+            "60 caractères au plus. Il reste disponible après la disparition du code. Texte vide si aucun code n'a été lu.",
         afficher_console: "Écrit une valeur (texte ou nombre) dans la console, une ligne à chaque fois. Dans le " +
             "simulateur, elle apparaît dans la console (barre du bas, bouton « Console ») ; sur la vraie carte, elle part par le " +
             "câble USB et s'affiche après « Connecter » dans la console (Chrome ou Edge).",
@@ -7544,13 +7646,12 @@ try {
         "Teachable Machine (teachablemachine.withgoogle.com). Le résultat pilote le programme par les blocs " +
         "de la catégorie « IA », au choix dans le simulateur ou sur la vraie carte.\n\n" +
         "1. OBTENIR UN MODÈLE (deux possibilités)\n" +
-        "A. Le créer ici, sans Internet : dans une colonne, ouvrez « ✚ Créer un modèle ». Vision : « 📷 Caméra », puis " +
-        "maintenez « Maintenir » en face de chaque classe pour capturer des images (au moins 5, mieux 30 ou plus, en variant " +
-        "angle et lumière). Son : cliquez « ● 1 s » pour enregistrer 1 seconde de son (au moins 5 par classe, et une classe " +
-        "« Bruit de fond » pour le silence). Renommez les classes, ajoutez-en avec « + Classe », puis « 🏋 Entraîner ». " +
-        "Le modèle entraîné devient aussitôt le modèle actif : « Démarrer » pour le tester. « 💾 Enregistrer » télécharge " +
-        "model.json, metadata.json et weights.bin. Les exemples ne sont pas conservés si vous rechargez la page : " +
-        "enregistrez le modèle avant.\n" +
+        "A. Le créer ici, sans Internet. Images : colonne « ⚡ Apprentissage immédiat » (voir le point 5). Son : dans la " +
+        "colonne Son, ouvrez « ✚ Créer un modèle », cliquez « ● 1 s » pour enregistrer 1 seconde de son (au moins 5 par " +
+        "classe, et une classe « Bruit de fond » pour le silence), renommez les classes, ajoutez-en avec « + Classe », puis " +
+        "« 🏋 Entraîner ». Le modèle entraîné devient aussitôt le modèle actif : « Démarrer » pour le tester. " +
+        "« 💾 Enregistrer » télécharge model.json, metadata.json et weights.bin ; les exemples de son ne sont pas conservés " +
+        "si vous rechargez la page : enregistrez le modèle avant.\n" +
         "B. En importer un fait sur Teachable Machine (teachablemachine.withgoogle.com) : « Exporter le modèle », onglet " +
         "Tensorflow.js, copiez l'adresse (après « Importer ») ou téléchargez les 3 fichiers.\n\n" +
         "2. CHARGER UN MODÈLE EXISTANT\n" +
@@ -7568,10 +7669,25 @@ try {
         "• Vraie carte : connectez-la avec le bouton « Connecter » de la console, envoyez le programme, " +
         "cochez « Envoyer à la carte » puis démarrez la caméra ou le micro. Le navigateur doit rester ouvert : " +
         "c'est lui qui reconnaît, la carte reçoit seulement le résultat par le câble USB.\n" +
-        "• Le programme doit contenir au moins un bloc IA, sinon la carte n'écoute pas le port USB.\n\n" +
+        "• Le programme doit contenir au moins un bloc IA, sinon la carte n'écoute pas le port USB.\n" +
+        "• Le résultat est renvoyé deux fois par seconde ; la carte oublie un résultat de plus de 1,5 s " +
+        "(navigateur fermé, câble débranché).\n\n" +
+        "5. APPRENTISSAGE IMMÉDIAT (sans entraînement)\n" +
+        "• Colonne « ⚡ Apprentissage immédiat » : choisissez ce que l'IA reconnaît (objets et images, gestes de la main, " +
+        "positions des bras), allumez « 📷 Caméra » et maintenez « Maintenir » en face de chaque classe, ou ajoutez des " +
+        "images avec 🖼. Chaque exemple compte aussitôt : « ▶ Démarrer » dès que 2 classes ont des exemples.\n" +
+        "• Les résultats pilotent les blocs « vision ». Renommer une classe met à jour les blocs qui l'utilisent.\n" +
+        "• Gestes et positions : seul le squelette repéré est gardé, jamais la photo.\n" +
+        "• L'apprentissage (des nombres, pas des images) est rangé dans le .py téléchargé et relu à son ouverture ; " +
+        "« 💾 Exporter » le met dans un fichier .json à part. Il n'est pas dans le .hex.\n\n" +
+        "6. QR CODES ET CODES-BARRES\n" +
+        "• Colonne « 🔳 QR codes » : « ▶ Lire les codes », puis les blocs « lorsqu'un code QR est lu », " +
+        "« un code QR est visible », « texte du dernier code QR lu ». « Créer un QR code » en fabrique un à imprimer.\n\n" +
         "LIMITES\n" +
         "• Chrome ou Edge conseillé. La caméra et le micro demandent une page en localhost ou en HTTPS.\n" +
-        "• Un son est reconnu sur environ 1 seconde : la classe « Background Noise » correspond au bruit de fond.";
+        "• Un son est reconnu sur environ 1 seconde : la classe « Background Noise » correspond au bruit de fond.\n" +
+        "• « Charger » une adresse Teachable Machine télécharge le modèle depuis les serveurs de Google (aucune image " +
+        "ni aucun son n'y est envoyé). Sans Internet, utilisez « Fichiers… ».";
 
     function ouvrirAideIA() {
         if (!voileAide) return;
@@ -7695,6 +7811,8 @@ try {
         } else {
             codePython = SIGNATURE_EXPORT + codePython;
         }
+        // Apprentissage immediat du panneau IA (ia-immediat.js) : commentaires a la fin, ignores par la carte.
+        if (window.iaImmediat) codePython += window.iaImmediat.annexePy();
         const blob = new Blob([codePython], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -8865,7 +8983,9 @@ try {
             importPyInput.value = '';
             if (!fichier) return;
             try {
-                const texte = await fichier.text();
+                let texte = await fichier.text();
+                // L'apprentissage IA eventuellement range a la fin est recharge, puis retire du code.
+                if (window.iaImmediat) texte = window.iaImmediat.lireAnnexePy(texte);
                 importerCodeTexte(texte, 'Script .py');
                 definirNomFichier(fichier.name);
             } catch (erreur) {

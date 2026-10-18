@@ -1,13 +1,16 @@
 # État du projet — éditeur Blockly micro:bit V2
 
-Dossier de travail : `C:\Users\jreyn\OneDrive\Bureau\blockly_ts`
-Lancement : double-clic sur `lancer_projet.bat`, puis <http://localhost:8000>
+Dossier de travail d'origine : `C:\Users\jreyn\OneDrive\Bureau\blockly_ts` (V2.0C)
+Dossier de travail actuel (copie d'essai, V2.0E) : `C:\Users\jreyn\OneDrive\Documents\claude\blockly_ts_adacraft_vilain`
+Lancement : double-clic sur `lancer_projet.bat`, puis <http://localhost:8000> — ou l'exe `dist\MicrobitBlockly_V2.0E.exe`
+Hébergement : dossier `site_web` (site statique, voir `PROMPT_RECREATION.md` §26)
+Fichiers ajoutés depuis la V2.0C : `bandeau.js`, `exercices.js`, `exercices.json`, `ia-immediat.js`, `lib/mediapipe`, `lib/zxing`, `site_web/` (voir la section « Évolutions de la copie »)
 
 Ce fichier dit **où on en est** : ce qui a été vérifié, ce qui ne peut l'être
 sans matériel, et ce qui a été écarté. Les deux autres documents complètent :
 
 - `readme.txt` — mode d'emploi et pièges d'usage
-- `PROMPT_RECREATION.md` — tout reconstruire de zéro, avec les 46 pièges connus (nº 0 à nº 45)
+- `PROMPT_RECREATION.md` — tout reconstruire de zéro, avec les 75 pièges connus (nº 0 à nº 74) ; §22 à §27 pour les évolutions de la copie
 
 ---
 
@@ -64,6 +67,47 @@ Passe suivante, avec une image de référence de l'utilisateur (« je veux que l
 | Maqueen Lite | Registres I2C vérifiés depuis le dépôt GitHub officiel `DFRobot/pxt-maqueen` (namespace `maqueen`, socle commun — l'extension `Maqueen_V5` plus récente du même dépôt est hors périmètre) — jamais sur du vrai matériel. Module séparé du Maqueen Plus (catégorie et pilote `_ml_*` distincts). Depuis la fusion des pistes (entrée suivante), dispose d'un robot animé sur la piste partagée, remplaçant les deux cases à cocher d'origine. Génération de code vérifiée pour les 7 blocs (dont l'événement `lorsque le capteur de ligne...`) ; simulation testée sans erreur, et l'événement confirmé se déclencher exactement au changement d'état du capteur (position réelle sur la piste, vérifié via un effet observable sur un autre module) ; mouvement réel confirmé (`_ml_moteur` déplace vraiment `ML.x`/`ML.y` via le pipeline de blocs complet). Sprite initial (placeholder gris-violet) remplacé par un **SVG tracé** d'après deux photos officielles DFRobot du produit réel (`ROB0148-EN_Main_01.jpg` vue 3/4, `ROB0148-EN_Dim_02.jpg` vue de dessus de la carte « shield ») fournies par l'utilisateur via le lien produit : carte bleue en pointe vers l'avant, deux capteurs ultrasons chromés montés sur une petite sous-carte à la pointe, compartiment à piles noir avec contacts métal à l'arrière, grandes roues blanches/argentées à pneu noir — même technique hybride que Maqueen Plus (carrosserie **statique** en SVG, DEL/marqueur avant restés en `<div>` JS inchangés). Vérifié : les 18 formes du SVG (roues, coque, pile, sous-carte ultrasons, vis) ont toutes une `getBBox()` non nulle et cohérente avec le `viewBox` 22×28 ; les 6 dégradés référencés (`mlg-corps`, `mlg-batt`, `mlg-pneu`, `mlg-jante`, `mlg-us`, `mlg-vis`) existent tous dans `<defs>` (pas de référence cassée) ; `window.simu_mlDel('gauche', true)` confirmé toujours mettre à jour `#maqueenlite-sprite-del-g` (élément sorti de l'ancien `.mlite-corps` supprimé, code JS inchangé) |
 | Piste partagée entre les trois robots | Demande explicite de l'utilisateur : « je veux que la partie simulation piste soit la même et disponible pour tous les robots ». Un seul panneau/canevas (`#piste-panneau`, 300×220) pour Maqueen Plus, Kitrobot v2 et Maqueen Lite — un seul robot affiché à la fois, déterminé par `robotActifDetecte()` (quels blocs sont posés). Le tracé « Ligne droite (départ/arrivée) », auparavant la piste dédiée et séparée de Kitrobot (choix explicite antérieur de NE PAS réutiliser celle de Maqueen), est désormais un 4ᵉ choix dans le même sélecteur que les tracés Maqueen, utilisable par n'importe quel robot. Les couleurs de la piste (vert/blanc ou blanc/noir) suivent le **robot actif**, pas le tracé choisi (`couleursPisteRobotActif()`) — Kitrobot lit un pixel sombre comme « sur la ligne », l'inverse des deux autres, donc la piste doit s'inverser avec lui quel que soit le tracé. Largeur de piste et échelle du robot (curseurs déjà existants pour Maqueen Plus) désormais partagés par les trois. Vérifié : changement de robot actif change le titre du panneau, montre le bon sprite, cache les deux autres, redessine la piste dans les bonnes couleurs ; capteurs de ligne testés sur la piste partagée pour les trois robots ; fanions Départ/Arrivée affichés uniquement sur ce tracé, quel que soit le robot ; curseur d'échelle confirmé agir sur le robot réellement affiché (bug trouvé et corrigé : ne mettait à jour que le sprite Maqueen Plus au premier essai). Glisser-déposer du robot (souris/tactile via Pointer Events) également manquant pour Kitrobot v2 et Maqueen Lite après la fusion — signalé par l'utilisateur, pas trouvé par les tests — corrigé en factorisant l'écouteur (`activerGlisserDeposerRobot`) et en l'attachant aux trois robots au lieu du seul `#maqueen-robot` d'origine ; vérifié par `PointerEvent` synthétiques sur les trois |
 | Kitrobot v2 | Module séparé de Maqueen : broches **facultatives et configurables** par des blocs « définir » (pas de câblage réel vérifié pour ce kit), piste dédiée départ/arrivée (droite, noir sur blanc — inversée de Maqueen exprès pour les distinguer d'un coup d'œil). Génération de code vérifiée (tous les blocs, y compris ceux à l'intérieur du pilote retiré côté simulateur). Les 16 fonctions `_kb_*` du pilote — entièrement à l'intérieur du bloc `# >>> pilote kitrobot`, donc retirées avant exécution — ont chacune leur substitut dans le simulateur ; vérifié en exécutant un programme qui les appelle toutes (`_kb_avancer`, `_kb_pivoter`, `_kb_moteur`, `_kb_case`, `_kb_virage`, `_kb_buzzer`, `_kb_del_couleur`, `_kb_del_rgb`, `_kb_clignoter`, `_kb_arcenciel`…) sans aucune erreur. Cinématique et capteurs de ligne réutilisent le modèle de Maqueen (même formule différentielle), avec seulement deux capteurs (gauche/droit) et une détection **inversée** (ligne sombre sur fond clair). Panneau affiché/masqué selon les blocs posés, vérifié via `window.kitrobotTest` (même limite déjà connue : `workspace.clear()` synthétique ne déclenche pas l'écouteur de changement, la fonction de rafraîchissement appelée directement si). Non-régression sur Maqueen confirmée (les deux panneaux réagissent indépendamment) |
+
+## Évolutions de la copie `blockly_ts_adacraft_vilain` (V2.0C → V2.0E, oct. 2026)
+
+Toutes les évolutions ci-dessous ont été faites dans la **copie** `C:\Users\jreyn\OneDrive\Documents\claude\blockly_ts_adacraft_vilain`
+(le projet principal `blockly_ts` reste à la V2.0C, exe compris). Principe de travail : **ne modifier aucune fonction existante** quand un
+nouveau fichier suffit — d'où `bandeau.js` et `exercices.js`, qui s'appuient sur les identifiants et les classes existants (`.inactif`,
+`#btn-vue-*`, `window.workspace`, `window.simuEnCours`…). Détails de réalisation : `PROMPT_RECREATION.md` §22 à §26 (pièges nº 59 à nº 70) et
+`readme.txt` §23 à §31.
+
+| Domaine | Ce qui a été fait et contrôlé |
+| --- | --- |
+| Bandeau supérieur (modèle Arduino R4) | Refait pour ressembler au modèle d'un collègue : logo (retiré depuis), menu Fichier, nom du programme, Défaire/Refaire, Capture, Console / Simulation / Code / IA (libellés Afficher/Masquer qui suivent l'état), sélecteur de carte, Téléverser, Lancer la simulation, version, menu Aide. Les `id` d'origine sont conservés, seul le balisage change ; la logique de bascule des libellés est dans `bandeau.js` (`MutationObserver` sur la classe `.inactif`). Vérifié à 1280, 1366 et 1920 px (une ou deux rangées, aucun bouton coupé) ; message d'état transformé en bulle absolue sous la barre (il faisait passer la barre sur deux rangées) |
+| Couleur du bandeau | Orange de la charte Technologie Services : `#ff5501` en clair, `#d94700` en sombre (texte blanc plus lisible), noir en contraste élevé ; filet bas `#b33a00`. Liseré blanc de 3 px sous chaque bouton **activé** (console, simulation, code, IA affichés = classe `.inactif` absente) |
+| Console = Moniteur série | Un seul panneau « Console » pour trois sources de lignes (simulateur / carte / info) ; le bouton Console affiche ou masque, avec un voyant (anneau vide = carte non connectée, disque vert plein = connectée, `#btn-console-carte.connecte`) ; « Moniteur » devient un raccourci vers « Connecter ». Reconnexion automatique après un téléversement (`connexionVoulue`) |
+| Sélecteur de carte | `demarrerCartes(serial)` : enveloppe `serial.requestPort`, liste les ports déjà autorisés (`getPorts`), filtre sur le fabricant micro:bit `0x0D28`, 115 200 bauds. Testé avec de **faux ports** seulement ; un faux port doit remettre `readable` à `null` à sa fermeture sinon la boucle de lecture tourne sans fin et gèle l'onglet |
+| Catégories : ordre, noms, regroupements | Ordre : Boucles, Temps, Affichage, Entrées/Sorties, Capteurs, Actionneurs (Audio), Servos, Radio, IA, Grove, Logique, Variables, Maths, Texte, Fonctions, Listes, Robots. « Communication » renommée **Radio** (Groupe, Envoi, Réception, Plus) ; catégorie **Listes** ajoutée (blocs de liste natifs de Blockly) ; **Robots** regroupe Maqueen Plus, Maqueen Lite, Kitrobot v2, LiDAR. Tout se fait dans `reordonnerToolbox()` (tri stable, appelée en premier par `appliquerPaletteToolbox`) — aucune définition de bloc touchée |
+| Couleurs de catégories | Une table unique `PALETTE_CATEGORIES` (`un.js`) pilote la couleur des blocs. 17 couleurs **toutes différentes** (écart minimal Lab ΔE 26,7), assez sombres pour du texte blanc (luminance ≤ 0,22). Depuis l'alignement Arduino, les **pastilles** ont leurs propres couleurs (table `PASTILLES`, `bandeau.js`) et ne dépendent plus des blocs |
+| Pastilles rondes | 18 px, retrait de 33 px (47 px pour les sous-catégories), couleur dans `--puce` posée par `colorerPuces()` ; liseré blanc fin (noir ou blanc épais en contraste élevé) |
+| Recherche de blocs | Champ au-dessus de « Boucles », collé en haut pendant le défilement ; index construit au premier usage (~50 ms) sur **toute** la boîte d'origine, plus les catégories dynamiques Variables et Fonctions (relues à chaque recherche) ; synonymes pour les blocs dont le libellé ne contient pas le mot cherché ; le tiroir reste ouvert après un dépôt de bloc (gestion d'`autoClose`) |
+| Polices | Interface : `Segoe UI` (variable `--font`, repli Arial). Texte des blocs : réglé dans le **thème Blockly** (`fontStyle`, jamais en CSS, car Blockly mesure le texte pour dimensionner les blocs) ; après l'alignement Arduino : police par défaut `sans-serif`, 11 pt, jamais de gras |
+| Alignement sur la version Arduino R4 (4 modes) | Prompt « police et couleurs pour un collègue » appliqué **sans toucher aux blocs, noms ni ordre** : fonds de la page, de la colonne de catégories, de la zone de programmation (+ grille 20/3, aimantation `snap: true`), du tiroir, de la simulation, du code et de la console dans les quatre modes (sombre = défaut, clair, contraste élevé clair, contraste élevé sombre) ; catégorie choisie avec filet `#e8a020` ; blocs en contraste élevé : blancs à bord noir en clair, noirs à bord blanc en sombre. Variables CSS `--ec-*` par mode. Non repris : accent turquoise du modèle (charte orange gardée), barre d'onglets `CARTE…` (absente chez moi). Vérifié visuellement dans les 4 modes |
+| Exercices pas à pas + mode évaluation | `exercices.js` (moteur) + `exercices.json` (16 exercices, 5 niveaux, modifiables à la main). Panneau « Mission » déplaçable, 3 indices, solution, validation automatique par lecture des blocs, étoiles, déverrouillage progressif, progression par élève (localStorage), export/import JSON, tableau de classe (CSV, impression). Évaluation : sans aide, 3 essais (100/75/50 % des points), chronomètre facultatif, note sur 20, rapport imprimable. **Vérifié** : les 16 règles refusent l'espace vide et acceptent leur solution ; un exercice validé en direct (3 étoiles enregistrées) ; une évaluation complète (1 essai raté puis réussi, un exercice passé) → note 7,5/20 et rapport affichés. Non vérifié : impression réelle, exports de fichiers, import, glisser-déposer réel de blocs |
+| Site statique `site_web` | Dossier prêt à héberger (GitHub Pages…) : `index.html`, `un.js`, `deux.js`, `trois.js`, `ia.js`, `tuto.js`, `bandeau.js`, `exercices.js`, `exercices.json`, `firmware.hex`, `readme.txt`, `lib/` (36 fichiers, 15 Mo), `.nojekyll`. Testé servi par un simple serveur statique : 36 catégories, espace de travail actif, simulateur chargé. Logo et mention « RAJ Editions » retirés de la page |
+| Exécutables | V2.0D (bandeau, recherche, alignement Arduino, liserés) et **V2.0E** (+ exercices) construits avec PyInstaller (16,2 Mo). Contenu de l'archive vérifié (tous les fichiers, version, menus). **Aucun des deux n'a pu être lancé depuis la session** (accès refusé par Windows) |
+| IA reprise d'EasyBloc TS (oct. 2026, après la V2.0E) | `ia-immediat.js` + `lib/mediapipe` (27 Mo) + `lib/zxing`. Apprentissage **immédiat** (k plus proches voisins, sans entraînement) : objets et images, **gestes de la main**, **positions des bras** ; exemples par la caméra ou par des **fichiers images** ; apprentissage **rangé dans le `.py`** (et export/import `.json`) ; **QR codes et codes-barres** (lecture + création à imprimer, 3 blocs) ; classe des blocs IA choisie dans une **liste**, renommage propagé aux blocs ; **doublon supprimé** à la demande de l'utilisateur : la colonne Vision ne fait plus que charger un modèle Teachable Machine, la création d'images passe par l'apprentissage immédiat (visite guidée IA réécrite, 15 étapes, toutes les cibles vérifiées) ; résultat **renvoyé toutes les 500 ms** et oublié par la carte après 1,5 s. **Vérifié** dans le navigateur : MediaPipe et ZXing chargés en local (aucune requête externe), 4 images inédites sur 4 bien classées, les 3 modèles chargés, normalisation main/bras (miroir, échelle), simulateur : gestionnaire déclenché **une seule fois** malgré les renvois, texte QR contenant « : » intact, classe oubliée 1,5 s après l'arrêt des envois ; aller-retour `.py` (CRLF, espaces de fin retirés), QR créé puis relu. **Non vérifié** : vraie caméra (gestes et positions réels), vraie carte, exe non reconstruit |
+
+### Bugs rencontrés pendant ces évolutions (corrigés)
+
+- **Page GitHub Pages vide** : le dossier `lib/` n'avait pas été envoyé (404 sur Blockly, Brython, microbit-fs) → `brython is not defined`, aucun bloc. Rien à corriger dans le code.
+- **Flèche de dépliage invisible en contraste élevé sombre** : c'est un sprite noir de Blockly ; remplacée par ▸ / ▾ à la couleur du texte.
+- **Caractère de contrôle `\x15` dans le CSS** : `'\\25B8'` écrit par un script Python lancé depuis un heredoc est devenu `\25` (octal) ; les symboles se mettent directement ou par `chr(0x25B8)`.
+- **JSON d'exercices invalide** : accolades mal appariées dans une solution écrite à la main ; régénérée avec `json.dumps`. Valider toujours `exercices.json` après modification.
+- **`validerEval()` sans session** (évaluation refusée par `confirm()` dans un test automatisé) : garde ajoutée.
+
+### À vérifier avec du matériel ou chez l'utilisateur
+
+1. L'exe V2.0E **lancé** sur un poste (démarrage, menus Exercices, port 8000 libre — un autre serveur Python l'occupait pendant les tests).
+2. Le sélecteur de carte et le voyant avec une vraie carte et un vrai port série.
+3. Les exercices en classe : choix des seuils (3 essais, 75 % / 50 %), exercices 5.2 et 5.4, impression du rapport.
+4. Le blocage antivirus des exes PyInstaller : désactiver UPX (`upx=False` dans `app.spec`), livrer en dossier plutôt qu'en un fichier, signer avec un certificat de signature de code, ou déclarer l'exe comme faux positif.
+5. L'IA reprise d'EasyBloc avec une vraie caméra (gestes de la main, positions des bras, QR codes imprimés) et une vraie carte (renvoi toutes les 500 ms, oubli après 1,5 s, programme avec de longues attentes). Exe à reconstruire (`ia-immediat.js` ajouté à `app.spec`, +27 Mo pour MediaPipe).
 
 ## Historique — fidélité visuelle de la carte micro:bit
 
@@ -341,9 +385,9 @@ Rien de tout cela n'est douteux, mais rien n'est confirmé non plus.
 Donner ces trois fichiers comme point de départ :
 
 ```
-C:\Users\jreyn\OneDrive\Bureau\blockly_ts\ETAT_DU_PROJET.md
-C:\Users\jreyn\OneDrive\Bureau\blockly_ts\readme.txt
-C:\Users\jreyn\OneDrive\Bureau\blockly_ts\PROMPT_RECREATION.md
+C:\Users\jreyn\OneDrive\Documents\claude\blockly_ts_adacraft_vilain\ETAT_DU_PROJET.md
+C:\Users\jreyn\OneDrive\Documents\claude\blockly_ts_adacraft_vilain\readme.txt
+C:\Users\jreyn\OneDrive\Documents\claude\blockly_ts_adacraft_vilain\PROMPT_RECREATION.md
 ```
 
 Puis préciser ce qu'on veut faire. Le code lui-même est commenté en français, en
@@ -356,7 +400,7 @@ pour la mise en page, comparer les dimensions au conteneur.
 
 ## Détail agaçant à connaître
 
-Le navigateur garde `un.js`, `deux.js` et `firmware.hex` en cache. Après toute
+Le navigateur garde `un.js`, `deux.js`, `bandeau.js`, `exercices.js` et `firmware.hex` en cache. Après toute
 modification, recharger par **Ctrl+Maj+R**, sinon on teste l'ancienne version.
 Le firmware est désormais lu en `no-store`, mais pas les scripts.
 

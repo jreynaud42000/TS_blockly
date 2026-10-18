@@ -231,7 +231,9 @@
     #tb-lancer.running { background: #c0392b; }
     #tb-lancer.running:hover { background: #a5322a; }
 
-    #copyright-toolbar { color: rgba(255,255,255,0.75); font-size: 11px; white-space: nowrap; margin: 0 6px; }
+    /* Version : derniere ligne du menu Aide, discrete, separee des entrees par un filet. */
+    .menu-version { padding: 7px 14px 8px; border-top: 1px solid rgba(128,128,128,0.35); font-size: 11.5px;
+        color: #888; white-space: nowrap; cursor: default; user-select: text; }
 
     /* Voyant de connexion de la carte (bouton Console) : anneau vide = non connectee, disque plein vert = connectee.
        La forme change en plus de la couleur (lisible sans distinguer les teintes). */
@@ -522,7 +524,20 @@
     .ia-ex-capt.enregistre { background: #c0392b; }
     .ia-creer-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
     .ia-creer-statut { margin-top: 6px; font-size: 11px; color: #b8b8b8; min-height: 1.2em; }
-    .ia-colonne button.ia-camera-capture.en-marche { background: #c0392b; }
+    /* Apprentissage immediat et QR codes (ia-immediat.js) */
+    .ia-imm-ex { grid-template-columns: 1fr 34px auto auto auto; }
+    .ia-imm-type-label { font-size: 12px; display: flex; align-items: center; gap: 6px; flex: 1 1 auto; }
+    .ia-imm-type { font-size: 12px; padding: 3px 6px; border-radius: 4px;
+        background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome); }
+    .ia-colonne button.ia-imm-camera.en-marche { background: #c0392b; }
+    .ia-imm-cadre { position: relative; width: 160px; height: 120px; margin-bottom: 6px; border-radius: 4px; overflow: hidden; background: #000; }
+    .ia-imm-cadre.replie { display: none; }
+    .ia-imm-cadre > video, .ia-imm-cadre > canvas { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); }
+    .ia-imm-cadre > video { object-fit: fill; }
+    .ia-qr-texte { font-size: 12px; color: #b8b8b8; min-height: 1.2em; word-break: break-all; }
+    .ia-qr-texte.vu { color: #2ecc71; font-weight: bold; }
+    .ia-qr-image { display: block; width: 160px; height: 160px; image-rendering: pixelated; margin-top: 6px; }
+    .ia-qr-image.replie { display: none; }
     /* Boutons de zoom ronds et corbeille de Blockly : leurs icones sont gris fonce, quasi invisibles sur fond sombre.
        On les inverse (clair sur sombre) dans les themes sombres ; le theme clair garde les icones d'origine. */
     :root:not([data-theme="light"]) .blocklyZoom > image { filter: invert(1) brightness(1.15); opacity: 1; }
@@ -1305,8 +1320,6 @@
 
     <button id="btn-options" class="btn-vue" title="Panneau administrateur">Options</button>
     <span id="etat"></span>
-    <span id="copyright-toolbar">V2.0E</span>
-
     <!-- 19. Aide : tout a droite, s'ouvre vers la gauche -->
     <div id="menu-aide-conteneur" class="tb-dropdown menu-deroulant">
       <button id="menu-aide-btn" class="tb-btn menu-btn" title="Visites guidées">
@@ -1321,6 +1334,9 @@
         <button id="tb-mission" disabled title="Non disponible dans cette version">🚀 Mon premier programme</button>
         <button id="tuto-clicdroit-menu-btn">🖱 Visite guidée clic droit</button>
         <button id="tuto-console-menu-btn">⌨ Visite guidée Console</button>
+        <!-- Numero de version : en dernier dans le menu Aide (texte de #copyright-toolbar, a tenir
+             identique a app.py, app.spec et version_info.txt). Simple mention, pas un bouton. -->
+        <div class="menu-version">Version <span id="copyright-toolbar">V2.0E</span></div>
       </div>
     </div>
   </div>
@@ -1915,11 +1931,46 @@
       </span>
     </div>
     <div id="ia-colonnes">
+      <!-- Apprentissage immediat (sans entrainement) et QR codes : moteur dans ia-immediat.js.
+           Resultats envoyes comme ceux de la colonne Vision (genre "vision") et en "qr". -->
+      <div class="ia-colonne" data-genre="immediat">
+        <h4>⚡ Apprentissage immédiat (caméra)</h4>
+        <div class="ia-modele">
+          <label class="ia-imm-type-label">Reconnaître :
+            <select class="ia-imm-type" title="Ce que l'IA apprend à reconnaître">
+              <option value="images">objets et images</option>
+              <option value="mains">gestes de la main</option>
+              <option value="bras">positions des bras</option>
+            </select>
+          </label>
+          <button class="btn-vue ia-imm-camera" title="Allumer la caméra pour ajouter des exemples">📷 Caméra</button>
+        </div>
+        <div class="ia-actions">
+          <button class="btn-vue ia-demarrer" disabled>▶ Démarrer</button>
+          <span class="ia-statut">Ajoutez des exemples à au moins 2 classes.</span>
+        </div>
+        <div class="ia-imm-cadre replie"><video class="ia-imm-video" autoplay muted playsinline></video><canvas class="ia-imm-calque"></canvas></div>
+        <div class="ia-classes"></div>
+        <details class="ia-creer" open>
+          <summary>✚ Exemples (aucun entraînement : chaque exemple compte aussitôt)</summary>
+          <p class="ia-creer-aide">Maintenir le bouton d'une classe pour ajouter des exemples pris par la caméra, ou 🖼 pour des images. Gestes et positions : seul le squelette est gardé, jamais la photo.</p>
+          <div class="ia-creer-classes"></div>
+          <div class="ia-creer-actions">
+            <button class="btn-vue ia-ajouter-classe">+ Classe</button>
+            <button class="btn-vue ia-imm-exporter" title="Télécharger l'apprentissage dans un fichier .json (il est aussi rangé dans le .py téléchargé)">💾 Exporter</button>
+            <button class="btn-vue ia-imm-importer" title="Ouvrir un apprentissage enregistré (.json)">📂 Importer</button>
+            <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
+          </div>
+          <input type="file" class="ia-imm-fichiers" accept="image/png,image/jpeg,image/webp" multiple style="display:none;">
+          <input type="file" class="ia-imm-import-fichier" accept=".json,application/json" style="display:none;">
+          <div class="ia-creer-statut"></div>
+        </details>
+      </div>
       <div class="ia-colonne" data-genre="vision">
-        <h4>📷 Vision (caméra)</h4>
+        <h4>📷 Vision : modèle Teachable Machine (caméra)</h4>
         <div class="ia-modele">
           <input type="text" class="ia-url" placeholder="https://teachablemachine.withgoogle.com/models/…/" spellcheck="false">
-          <button class="btn-vue ia-charger-url" title="Charger le modèle depuis son adresse (nécessite Internet)">Charger</button>
+          <button class="btn-vue ia-charger-url" title="Charger le modèle depuis son adresse (nécessite Internet : le modèle est téléchargé depuis les serveurs de Google ; aucune image ni aucun son n'y est envoyé). Sans Internet, utilisez « Fichiers… ».">Charger</button>
           <button class="btn-vue ia-charger-fichiers" title="Charger les 3 fichiers du modèle exporté : model.json, metadata.json, weights.bin (fonctionne hors connexion)">Fichiers…</button>
           <input type="file" class="ia-fichiers" accept=".json,.bin" multiple style="display:none;">
         </div>
@@ -1929,25 +1980,13 @@
         </div>
         <video id="ia-video" class="ia-apercu replie" autoplay muted playsinline></video>
         <div class="ia-classes"></div>
-        <details class="ia-creer">
-          <summary>✚ Créer un modèle (entraînement)</summary>
-          <p class="ia-creer-aide">Maintenir le bouton de chaque classe pour capturer des images (une vingtaine de plus par seconde).</p>
-          <div class="ia-creer-classes"></div>
-          <div class="ia-creer-actions">
-          <button class="btn-vue ia-camera-capture" title="Allumer la caméra pour capturer des exemples">📷 Caméra</button>
-            <button class="btn-vue ia-ajouter-classe">+ Classe</button>
-            <button class="btn-vue ia-entrainer">🏋 Entraîner</button>
-            <button class="btn-vue ia-enregistrer" disabled title="Télécharger model.json, metadata.json et weights.bin (à recharger avec « Fichiers… »)">💾 Enregistrer</button>
-            <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
-          </div>
-          <div class="ia-creer-statut"></div>
-        </details>
+        <p class="ia-creer-aide">Pour créer vos propres classes d'images, utilisez « ⚡ Apprentissage immédiat ».</p>
       </div>
       <div class="ia-colonne" data-genre="son">
         <h4>🎤 Son (micro)</h4>
         <div class="ia-modele">
           <input type="text" class="ia-url" placeholder="https://teachablemachine.withgoogle.com/models/…/" spellcheck="false">
-          <button class="btn-vue ia-charger-url" title="Charger le modèle depuis son adresse (nécessite Internet)">Charger</button>
+          <button class="btn-vue ia-charger-url" title="Charger le modèle depuis son adresse (nécessite Internet : le modèle est téléchargé depuis les serveurs de Google ; aucune image ni aucun son n'y est envoyé). Sans Internet, utilisez « Fichiers… ».">Charger</button>
           <button class="btn-vue ia-charger-fichiers" title="Charger les 3 fichiers du modèle exporté : model.json, metadata.json, weights.bin (fonctionne hors connexion)">Fichiers…</button>
           <input type="file" class="ia-fichiers" accept=".json,.bin" multiple style="display:none;">
         </div>
@@ -1967,6 +2006,24 @@
             <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
           </div>
           <div class="ia-creer-statut"></div>
+        </details>
+      </div>
+      <div class="ia-colonne" data-genre="qr">
+        <h4>🔳 QR codes et codes-barres (caméra)</h4>
+        <div class="ia-actions">
+          <button class="btn-vue ia-demarrer">▶ Lire les codes</button>
+          <span class="ia-statut">Arrêté.</span>
+        </div>
+        <div class="ia-imm-cadre replie"><video class="ia-imm-video" autoplay muted playsinline></video></div>
+        <div class="ia-qr-texte"></div>
+        <details class="ia-creer">
+          <summary>✚ Créer un QR code à imprimer</summary>
+          <div class="ia-modele">
+            <input type="text" class="ia-url ia-qr-a-creer" maxlength="200" placeholder="Texte du QR code (ex. : avancer)" spellcheck="false">
+            <button class="btn-vue ia-qr-creer">Créer</button>
+            <button class="btn-vue ia-qr-telecharger" disabled title="Télécharger l'image (.png)">💾 PNG</button>
+          </div>
+          <canvas class="ia-qr-image replie"></canvas>
         </details>
       </div>
     </div>
@@ -1990,6 +2047,7 @@
   <script type="module" src="deux.js"></script>
   <script type="module" src="un.js"></script>
   <script type="module" src="ia.js"></script>
+  <script type="module" src="ia-immediat.js"></script>
   <script type="module" src="tuto.js"></script>
   <script type="module" src="bandeau.js"></script>
   <script type="module" src="exercices.js"></script>
