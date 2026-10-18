@@ -1106,6 +1106,13 @@
     .buzzer-pastille { width: 14px; height: 14px; border-radius: 50%; background: #3b3f46; border: 2px solid #6b7480; box-sizing: border-box; }
     .buzzer-pastille.on { background: #ffb020; border-color: #ffd27a; animation: buzzer-vibre 0.12s linear infinite; }
     @keyframes buzzer-vibre { 50% { transform: translateX(1px); } }
+    /* Capteurs a curseur (modele C) : petit module Grove dessine + afficheur numerique vert, curseur dessous. */
+    .mesure-ligne { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; }
+    .mesure-module { flex: 0 0 auto; }
+    .mesure-lecture { font-family: Consolas, monospace; font-size: 14px; color: #7dffb0; background: #04070b;
+        border: 3px solid #1f6fb2; border-radius: 4px; padding: 2px 8px; min-width: 96px; text-align: right; white-space: nowrap; }
+    .mesure-lecture b { font-weight: normal; color: inherit; }
+    .mesure-curseur { display: block; font-size: 10px; color: #9aa4ad; margin-top: 2px; }
     /* Barre de LED (MY9221) : 10 LED dans un boitier bleu ; 1 rouge, 2 orange, 3 a 10 vertes. */
     #grove-barreled { display: flex; gap: 3px; padding: 6px; background: #1f6fb2; border-radius: 5px; width: max-content; margin: 2px auto; }
     .barre-led { width: 12px; height: 22px; border-radius: 2px; background: #1d3b1d; border: 1px solid #0d1a0d; }
@@ -1599,8 +1606,9 @@
         </div>
 
         <div class="grove-bloc" id="grove-sec-ultrason">
-          <label class="grove-titre" for="grove-distance">Ultrason : <b id="grove-distance-val">50</b> cm</label>
-          <input type="range" id="grove-distance" min="0" max="200" value="50">
+          <span class="grove-titre">Ultrason (distance)</span>
+          <div class="mesure-ligne"><svg class="mesure-module" viewBox="0 0 120 100" width="44" height="36" aria-hidden="true"><rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/><circle cx="42" cy="50" r="17" fill="#c9cfd6"/><circle cx="42" cy="50" r="10" fill="#3b3f46"/><circle cx="78" cy="50" r="17" fill="#c9cfd6"/><circle cx="78" cy="50" r="10" fill="#3b3f46"/></svg><span class="mesure-lecture"><b id="grove-distance-val">50</b> cm</span></div>
+          <input type="range" id="grove-distance" min="0" max="200" value="50" aria-label="Distance (cm)">
         </div>
 
         <div class="grove-bloc" id="grove-sec-joystick">
@@ -1633,8 +1641,9 @@
         </div>
 
         <div class="grove-bloc" id="grove-sec-lumiere">
-          <label class="grove-titre" for="grove-lumiere">Lumière : <b id="grove-lumiere-val">512 (50 %)</b></label>
-          <input type="range" id="grove-lumiere" min="0" max="1023" value="512">
+          <span class="grove-titre">Lumière</span>
+          <div class="mesure-ligne"><svg class="mesure-module" viewBox="0 0 120 100" width="44" height="36" aria-hidden="true"><rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/><circle cx="60" cy="50" r="18" fill="#e8a24a"/><path d="M48 44h24M48 50h24M48 56h24" stroke="#8a4b12" stroke-width="3"/></svg><span class="mesure-lecture"><b id="grove-lumiere-val">512 (50 %)</b></span></div>
+          <input type="range" id="grove-lumiere" min="0" max="1023" value="512" aria-label="Lumière (0 à 1023)">
         </div>
 
         <!-- Detecteur de mouvement : module Grove dessine (modele A, choix de l'utilisateur). Un clic sur le
@@ -1670,13 +1679,15 @@
         </div>
 
         <div class="grove-bloc" id="grove-sec-pression">
-          <label class="grove-titre" for="grove-pression">Pression : <b id="grove-pression-val">1013</b> hPa</label>
-          <input type="range" id="grove-pression" min="950" max="1060" value="1013">
+          <span class="grove-titre">Pression (BMP280)</span>
+          <div class="mesure-ligne"><svg class="mesure-module" viewBox="0 0 120 100" width="44" height="36" aria-hidden="true"><rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/><rect x="44" y="34" width="32" height="32" rx="4" fill="#3b3f46"/><circle cx="60" cy="50" r="5" fill="#9aa4ad"/></svg><span class="mesure-lecture"><b id="grove-pression-val">1013</b> hPa</span></div>
+          <input type="range" id="grove-pression" min="950" max="1060" value="1013" aria-label="Pression (hPa)">
         </div>
 
         <div class="grove-bloc" id="grove-sec-cov">
-          <label class="grove-titre" for="grove-cov">COV totaux : <b id="grove-cov-val">50</b> ppb</label>
-          <input type="range" id="grove-cov" min="0" max="2000" value="50">
+          <span class="grove-titre">COV totaux (SGP30)</span>
+          <div class="mesure-ligne"><svg class="mesure-module" viewBox="0 0 120 100" width="44" height="36" aria-hidden="true"><rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/><rect x="44" y="34" width="32" height="32" rx="4" fill="#3b3f46"/><circle cx="60" cy="50" r="5" fill="#9aa4ad"/></svg><span class="mesure-lecture"><b id="grove-cov-val">50</b> ppb</span></div>
+          <input type="range" id="grove-cov" min="0" max="2000" value="50" aria-label="COV totaux (ppb)">
         </div>
 
         <div class="grove-bloc" id="grove-sec-rtc">
@@ -1722,15 +1733,18 @@
         </div>
 
         <div class="grove-bloc" id="grove-sec-th">
-          <label class="grove-titre" for="grove-temp">Température : <b id="grove-temp-val">22</b> °C</label>
+          <span class="grove-titre">Température et humidité</span>
+          <div class="mesure-ligne"><svg class="mesure-module" viewBox="0 0 120 100" width="44" height="36" aria-hidden="true"><rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/><rect x="40" y="30" width="40" height="40" rx="4" fill="#f2f2f2"/><g fill="#9aa4ad"><rect x="46" y="36" width="28" height="3"/><rect x="46" y="44" width="28" height="3"/><rect x="46" y="52" width="28" height="3"/><rect x="46" y="60" width="28" height="3"/></g></svg><span class="mesure-lecture"><b id="grove-temp-val">22</b> °C&nbsp; <b id="grove-humi-val">45</b> %</span></div>
+          <label class="mesure-curseur" for="grove-temp">Température</label>
           <input type="range" id="grove-temp" min="-10" max="60" value="22">
-          <label class="grove-titre" for="grove-humi">Humidité : <b id="grove-humi-val">45</b> %</label>
+          <label class="mesure-curseur" for="grove-humi">Humidité</label>
           <input type="range" id="grove-humi" min="0" max="100" value="45">
         </div>
 
         <div class="grove-bloc" id="grove-sec-co2">
-          <label class="grove-titre" for="grove-co2">CO₂ : <b id="grove-co2-val">600</b> ppm</label>
-          <input type="range" id="grove-co2" min="400" max="5000" step="10" value="600">
+          <span class="grove-titre">CO₂</span>
+          <div class="mesure-ligne"><svg class="mesure-module" viewBox="0 0 120 100" width="44" height="36" aria-hidden="true"><rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/><rect x="44" y="34" width="32" height="32" rx="4" fill="#3b3f46"/><circle cx="60" cy="50" r="5" fill="#9aa4ad"/></svg><span class="mesure-lecture"><b id="grove-co2-val">600</b> ppm</span></div>
+          <input type="range" id="grove-co2" min="400" max="5000" step="10" value="600" aria-label="CO₂ (ppm)">
         </div>
 
         <div class="grove-bloc" id="grove-sec-couleur">

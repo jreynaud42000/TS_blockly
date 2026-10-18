@@ -1510,3 +1510,9 @@ Cinq modules, meme organisation que le premier lot (sous-categorie, aide, exempl
 DHT20 : deja pris en charge par « Temperature & humidite » (meme puce que l'AHT20, adresse 0x38).
 A verifier avec le materiel : sens des broches de la barre de LED, adresses I2C reelles des modules, et chaque pilote
 (aucun n'a pu etre essaye sur une carte).
+
+41. CAPTEURS A CURSEUR : MODULES ET AFFICHEURS (oct. 2026)
+Modele C (choisi parmi 3 propositions) pour tous les capteurs reglables du panneau Grove : ultrason, temperature et
+humidite, CO2, lumiere, pression, COV. Chaque section montre un petit module Grove dessine (composant propre a chaque
+capteur), un afficheur numerique vert sur fond noir avec la valeur et son unite, et le curseur dessous. Les id des
+curseurs et des valeurs (grove-temp, grove-temp-val...) sont inchanges : un.js n'a pas eu a changer.
