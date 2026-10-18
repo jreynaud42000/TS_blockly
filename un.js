@@ -7646,13 +7646,12 @@ try {
         "Teachable Machine (teachablemachine.withgoogle.com). Le résultat pilote le programme par les blocs " +
         "de la catégorie « IA », au choix dans le simulateur ou sur la vraie carte.\n\n" +
         "1. OBTENIR UN MODÈLE (deux possibilités)\n" +
-        "A. Le créer ici, sans Internet : dans une colonne, ouvrez « ✚ Créer un modèle ». Vision : « 📷 Caméra », puis " +
-        "maintenez « Maintenir » en face de chaque classe pour capturer des images (au moins 5, mieux 30 ou plus, en variant " +
-        "angle et lumière). Son : cliquez « ● 1 s » pour enregistrer 1 seconde de son (au moins 5 par classe, et une classe " +
-        "« Bruit de fond » pour le silence). Renommez les classes, ajoutez-en avec « + Classe », puis « 🏋 Entraîner ». " +
-        "Le modèle entraîné devient aussitôt le modèle actif : « Démarrer » pour le tester. « 💾 Enregistrer » télécharge " +
-        "model.json, metadata.json et weights.bin. Les exemples ne sont pas conservés si vous rechargez la page : " +
-        "enregistrez le modèle avant.\n" +
+        "A. Le créer ici, sans Internet. Images : colonne « ⚡ Apprentissage immédiat » (voir le point 5). Son : dans la " +
+        "colonne Son, ouvrez « ✚ Créer un modèle », cliquez « ● 1 s » pour enregistrer 1 seconde de son (au moins 5 par " +
+        "classe, et une classe « Bruit de fond » pour le silence), renommez les classes, ajoutez-en avec « + Classe », puis " +
+        "« 🏋 Entraîner ». Le modèle entraîné devient aussitôt le modèle actif : « Démarrer » pour le tester. " +
+        "« 💾 Enregistrer » télécharge model.json, metadata.json et weights.bin ; les exemples de son ne sont pas conservés " +
+        "si vous rechargez la page : enregistrez le modèle avant.\n" +
         "B. En importer un fait sur Teachable Machine (teachablemachine.withgoogle.com) : « Exporter le modèle », onglet " +
         "Tensorflow.js, copiez l'adresse (après « Importer ») ou téléchargez les 3 fichiers.\n\n" +
         "2. CHARGER UN MODÈLE EXISTANT\n" +

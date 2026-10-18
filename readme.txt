@@ -1409,6 +1409,9 @@ MicroPython, blocs, aide, .py), index.html (deux colonnes du panneau IA), app.py
   PAS dans le .hex (place limitee, inutile a la carte). Environ 1,4 Ko par exemple d'image, 0,3 Ko par geste.
 - Colonne « QR codes » : lecture (QR, EAN, UPC, Code 128/39, Data Matrix) et creation d'un QR code a imprimer (.png).
   Blocs : « lorsqu'un code QR est lu », « un code QR est visible », « texte du dernier code QR lu » (sans accents, 60 car.).
+- Plus de doublon : la colonne Vision ne fait plus que CHARGER un modele Teachable Machine (adresse ou 3 fichiers) ;
+  toute creation de classes d'images passe par l'apprentissage immediat. Le son garde sa creation (entrainement).
+  La visite guidee IA (menu Aide) suit ce nouveau parcours.
 - Blocs « l'IA reconnait » : la classe se choisit dans une liste (classes du panneau IA) ou « ✎ autre nom… ».
 - Fiabilite : le navigateur renvoie le dernier resultat toutes les 500 ms ; la carte oublie un resultat de plus de 1,5 s.
   Ligne envoyee : IA:<vision|son|qr>:<classe ou texte>:<confiance>.

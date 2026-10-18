@@ -146,6 +146,8 @@ const ETAPES_GENERAL = [
 // ---------- visite guidee de la partie IA (menu Aide > Visite guidee IA) ----------
 const colVision = '.ia-colonne[data-genre="vision"]';
 const colSon = '.ia-colonne[data-genre="son"]';
+const colImm = '.ia-colonne[data-genre="immediat"]';
+const colQR = '.ia-colonne[data-genre="qr"]';
 const ouvrirCreation = genre => { const d = $('.ia-colonne[data-genre="' + genre + '"] .ia-creer'); if (d) d.open = true; };
 const panneauIA = () => { if (window.ouvrirPanneauIA) window.ouvrirPanneauIA(); };
 
@@ -165,53 +167,46 @@ const ETAPES_IA = [
         attendre: () => panneauOuvert('btn-vue-ia'),
     },
     {
-        titre: '2. Deux colonnes : vision et son',
-        texte: 'À gauche, « Vision » utilise la caméra ; à droite, « Son » utilise le micro. Chaque colonne fonctionne ' +
-            'de la même façon : on lui donne un modèle (voir les deux manières ci-dessous), puis on la démarre.',
+        titre: '2. Quatre colonnes',
+        texte: '« ⚡ Apprentissage immédiat » crée vos propres classes avec la caméra (objets, gestes de la main, positions des bras). ' +
+            '« Vision » charge un modèle déjà fait sur Teachable Machine. « Son » crée ou charge un modèle pour le micro. ' +
+            '« QR codes » lit les QR codes et codes-barres. Toutes envoient leur résultat aux blocs de la catégorie « IA ».',
         cible: '#ia-colonnes',
         avant: panneauIA,
     },
     {
-        titre: '3. Créer son modèle : la caméra',
-        texte: 'Un modèle est un petit programme qui a appris à distinguer des « classes » (par exemple « main » et « fond »). ' +
-            'Vous pouvez le créer ici, sans Internet. Commencez par allumer la caméra : le navigateur demande l\'autorisation.',
-        cible: colVision + ' .ia-camera-capture',
-        avant: () => { panneauIA(); ouvrirCreation('vision'); },
+        titre: '3. Créer ses classes : la caméra',
+        texte: 'L\'apprentissage immédiat n\'a pas besoin d\'entraînement : chaque exemple compte aussitôt. Choisissez d\'abord ' +
+            'ce que l\'IA doit reconnaître (« objets et images », « gestes de la main » ou « positions des bras »), puis allumez ' +
+            'la caméra : le navigateur demande l\'autorisation.',
+        cible: colImm + ' .ia-imm-camera',
+        avant: () => { panneauIA(); ouvrirCreation('immediat'); },
         consigne: 'Cliquez sur « 📷 Caméra » et autorisez-la.',
-        attendre: () => { const v = $('#ia-video'); return !!v && !v.classList.contains('replie'); },
+        attendre: () => { const c = $(colImm + ' .ia-imm-cadre'); return !!c && !c.classList.contains('replie'); },
     },
     {
-        titre: '4. Capturer des exemples',
-        texte: 'Chaque ligne est une classe. Renommez-la (par exemple « main », puis « fond »). Placez ce que la caméra doit ' +
-            'reconnaître devant elle et MAINTENEZ le bouton « Maintenir » de la classe : des images sont capturées en rafale. ' +
-            'Variez l\'angle, la distance, la lumière. Le compteur indique le nombre d\'images. Il en faut au moins 5 par classe, ' +
-            'mieux 30 ou plus. « + Classe » en ajoute une.',
-        cible: colVision + ' .ia-creer-classes',
-        avant: () => { panneauIA(); ouvrirCreation('vision'); },
-        consigne: 'Capturez au moins 5 images pour chacune des deux classes.',
-        attendre: () => { const n = Array.from(document.querySelectorAll(colVision + ' .ia-ex-n')); return n.length >= 2 && n.every(e => Number(e.textContent) >= 5); },
+        titre: '4. Ajouter des exemples',
+        texte: 'Chaque ligne est une classe. Renommez-la (par exemple « main », puis « fond ») : les blocs qui l\'utilisent suivent. ' +
+            'Placez ce que la caméra doit reconnaître devant elle et MAINTENEZ le bouton « Maintenir » de la classe : des exemples ' +
+            'sont ajoutés en rafale. Variez l\'angle, la distance, la lumière. 🖼 ajoute des exemples depuis des images. ' +
+            '« + Classe » en ajoute une (8 au plus). Pour les gestes et les positions, seul le squelette est gardé, jamais la photo.',
+        cible: colImm + ' .ia-creer-classes',
+        avant: () => { panneauIA(); ouvrirCreation('immediat'); },
+        consigne: 'Ajoutez au moins 5 exemples à chacune des deux classes.',
+        attendre: () => { const n = Array.from(document.querySelectorAll(colImm + ' .ia-ex-n')); return n.length >= 2 && n.filter(e => Number(e.textContent) >= 5).length >= 2; },
     },
     {
-        titre: '5. Entraîner',
-        texte: 'L\'entraînement apprend au modèle à reconnaître vos classes ; il prend quelques secondes à une minute. Gardez ' +
-            'cet onglet visible pendant ce temps. La progression et la précision s\'affichent sous les boutons.',
-        cible: colVision + ' .ia-entrainer',
-        avant: () => { panneauIA(); ouvrirCreation('vision'); },
-        consigne: 'Cliquez sur « 🏋 Entraîner » et attendez « Entraînement terminé ».',
-        attendre: () => { const s = $(colVision + ' .ia-statut'); return !!s && s.textContent.includes('Modèle entraîné'); },
-    },
-    {
-        titre: '6. Tester le modèle',
-        texte: 'Le modèle entraîné est aussitôt actif. « Démarrer » lance la reconnaissance en continu : une barre par classe ' +
-            'montre la probabilité en direct, et la classe retenue passe en vert. Montrez vos objets à la caméra pour vérifier. ' +
-            'Si deux classes se confondent, ajoutez des exemples et ré-entraînez.',
-        cible: colVision + ' .ia-demarrer',
+        titre: '5. Tester',
+        texte: '« Démarrer » lance la reconnaissance en continu : une barre par classe montre la confiance en direct, et la classe ' +
+            'retenue passe en vert. Montrez vos objets ou vos gestes à la caméra pour vérifier. Si deux classes se confondent, ' +
+            'ajoutez-leur des exemples : c\'est pris en compte immédiatement, sans rien relancer.',
+        cible: colImm + ' .ia-demarrer',
         avant: panneauIA,
         consigne: 'Cliquez sur « ▶ Démarrer » et testez.',
-        attendre: () => { const b = $(colVision + ' .ia-demarrer'); return !!b && b.textContent.includes('Arrêter'); },
+        attendre: () => { const b = $(colImm + ' .ia-demarrer'); return !!b && b.textContent.includes('Arrêter'); },
     },
     {
-        titre: '7. Le seuil de confiance',
+        titre: '6. Le seuil de confiance',
         texte: 'En dessous de ce pourcentage, l\'IA considère qu\'elle ne reconnaît « rien » (classe vide). Un seuil élevé évite les ' +
             'fausses détections mais en rate davantage ; un seuil bas réagit plus vite mais se trompe plus souvent. ' +
             '80 % est un bon départ.',
@@ -219,34 +214,42 @@ const ETAPES_IA = [
         avant: panneauIA,
     },
     {
-        titre: '8. Ou charger un modèle existant',
-        texte: 'Deuxième manière : utiliser un modèle fait sur Teachable Machine (teachablemachine.withgoogle.com). Collez son ' +
+        titre: '7. Enregistrer l\'apprentissage',
+        texte: 'L\'apprentissage est rangé automatiquement dans le fichier .py quand vous téléchargez le programme (menu « Fichier »), ' +
+            'et rechargé quand vous rouvrez ce .py. « 💾 Exporter » le met aussi dans un fichier .json à part, à rouvrir avec ' +
+            '« 📂 Importer ». Seuls des nombres sont gardés, jamais les images. Il n\'est pas dans le .hex.',
+        cible: colImm + ' .ia-imm-exporter',
+        avant: () => { panneauIA(); ouvrirCreation('immediat'); },
+    },
+    {
+        titre: '8. Ou charger un modèle Teachable Machine',
+        texte: 'La colonne « Vision » utilise un modèle fait sur Teachable Machine (teachablemachine.withgoogle.com). Collez son ' +
             'adresse puis « Charger » (nécessite Internet), ou cliquez « Fichiers… » et sélectionnez ses trois fichiers ' +
-            '(model.json, metadata.json, weights.bin) à la fois : cela fonctionne sans Internet.',
+            '(model.json, metadata.json, weights.bin) à la fois : cela fonctionne sans Internet. Démarrer l\'une des deux ' +
+            'colonnes caméra arrête l\'autre.',
         cible: colVision + ' .ia-modele',
         avant: panneauIA,
     },
     {
         titre: '9. Le son, avec le micro',
-        texte: 'Même principe avec le son. Cliquez « ● 1 s » pour enregistrer 1 seconde de son dans une classe (au moins 5 par classe). ' +
-            'Créez toujours une classe « Bruit de fond » avec le silence ou l\'ambiance de la pièce, sinon le modèle croit entendre ' +
-            'vos classes tout le temps. Le micro de reconnaissance et la capture ne fonctionnent pas en même temps.',
+        texte: 'Pour le son, ouvrez « ✚ Créer un modèle » dans la colonne Son. Cliquez « ● 1 s » pour enregistrer 1 seconde de son dans ' +
+            'une classe (au moins 5 par classe), puis « 🏋 Entraîner ». Créez toujours une classe « Bruit de fond » avec le silence ou ' +
+            'l\'ambiance de la pièce. « 💾 Enregistrer » télécharge le modèle (3 fichiers), sinon il est perdu au rechargement.',
         cible: colSon,
         avant: () => { panneauIA(); ouvrirCreation('son'); },
     },
     {
-        titre: '10. Enregistrer le modèle',
-        texte: 'Les exemples ne sont pas conservés si vous rechargez la page. « 💾 Enregistrer » télécharge le modèle entraîné en ' +
-            'trois fichiers (model.json, metadata.json, weights.bin), à recharger plus tard avec « Fichiers… ». ' +
-            'Le bouton est actif une fois un modèle entraîné.',
-        cible: colVision + ' .ia-enregistrer',
-        avant: () => { panneauIA(); ouvrirCreation('vision'); },
+        titre: '10. Les QR codes',
+        texte: '« ▶ Lire les codes » fait lire les QR codes et codes-barres à la caméra ; leur texte arrive dans le programme. ' +
+            '« Créer un QR code à imprimer » en fabrique un (par exemple « avancer », « stop ») à montrer ensuite à la caméra.',
+        cible: colQR,
+        avant: panneauIA,
     },
     {
         titre: '11. Les blocs IA',
         texte: 'La catégorie « IA » de la boîte à outils contient quatre blocs : « lorsque l\'IA reconnaît… » (réagit au changement ' +
             'de classe), « l\'IA reconnaît… » (condition à placer dans un « si »), « dernière classe reconnue » (le nom) et ' +
-            '« confiance de l\'IA » (0 à 100).',
+            '« confiance de l\'IA » (0 à 100) ; puis trois blocs pour les QR codes.',
         cible: () => categorie('IA'),
         consigne: 'Cliquez sur la catégorie « IA ».',
         attendre: () => {
@@ -257,8 +260,8 @@ const ETAPES_IA = [
     },
     {
         titre: '12. Réagir à une classe',
-        texte: 'Glissez « lorsque l\'IA vision reconnaît … » dans la zone de blocs, puis écrivez le nom de la classe comme dans le ' +
-            'modèle (majuscules et accents sont sans importance). Mettez à l\'intérieur ce que doit faire la carte : par exemple ' +
+        texte: 'Glissez « lorsque l\'IA vision reconnaît … » dans la zone de blocs, puis choisissez la classe dans sa liste ' +
+            '(ou « ✎ autre nom… » ; majuscules et accents sont sans importance). Mettez à l\'intérieur ce que doit faire la carte : par exemple ' +
             '« afficher icône » (cœur). Un second bloc pour l\'autre classe, et c\'est un programme qui obéit à la caméra !',
         cible: '#blocklyDiv',
         consigne: 'Posez un bloc « lorsque l\'IA reconnaît » dans la zone de blocs.',
@@ -266,7 +269,7 @@ const ETAPES_IA = [
     },
     {
         titre: '13. Essayer dans le simulateur',
-        texte: 'Lancez la simulation, puis démarrez la caméra (colonne Vision) : quand la classe est reconnue, vos blocs s\'exécutent ' +
+        texte: 'Lancez la simulation, puis démarrez la reconnaissance (« ⚡ Apprentissage immédiat » ou « Vision ») : quand la classe est reconnue, vos blocs s\'exécutent ' +
             'sur la carte virtuelle. Le simulateur doit être en marche, sinon les résultats ne lui sont pas transmis.',
         cible: '#run-sim',
         avant: () => ouvrir('btn-vue-simu'),
@@ -290,7 +293,7 @@ const ETAPES_IA = [
     },
     {
         titre: 'Vous savez tout faire 🎉',
-        texte: 'Créer ou charger un modèle, le tester, programmer des réactions et les essayer dans le simulateur ou sur la carte. ' +
+        texte: 'Apprendre des classes ou charger un modèle, les tester, programmer des réactions et les essayer dans le simulateur ou sur la carte. ' +
             'Cette visite se relance par le menu « Aide » > « Visite guidée IA ».',
     },
 ];

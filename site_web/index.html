@@ -522,7 +522,6 @@
     .ia-ex-capt.enregistre { background: #c0392b; }
     .ia-creer-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
     .ia-creer-statut { margin-top: 6px; font-size: 11px; color: #b8b8b8; min-height: 1.2em; }
-    .ia-colonne button.ia-camera-capture.en-marche { background: #c0392b; }
     /* Apprentissage immediat et QR codes (ia-immediat.js) */
     .ia-imm-ex { grid-template-columns: 1fr 34px auto auto auto; }
     .ia-imm-type-label { font-size: 12px; display: flex; align-items: center; gap: 6px; flex: 1 1 auto; }
@@ -1930,7 +1929,7 @@
     </div>
     <div id="ia-colonnes">
       <div class="ia-colonne" data-genre="vision">
-        <h4>📷 Vision (caméra)</h4>
+        <h4>📷 Vision : modèle Teachable Machine (caméra)</h4>
         <div class="ia-modele">
           <input type="text" class="ia-url" placeholder="https://teachablemachine.withgoogle.com/models/…/" spellcheck="false">
           <button class="btn-vue ia-charger-url" title="Charger le modèle depuis son adresse (nécessite Internet : le modèle est téléchargé depuis les serveurs de Google ; aucune image ni aucun son n'y est envoyé). Sans Internet, utilisez « Fichiers… ».">Charger</button>
@@ -1943,19 +1942,7 @@
         </div>
         <video id="ia-video" class="ia-apercu replie" autoplay muted playsinline></video>
         <div class="ia-classes"></div>
-        <details class="ia-creer">
-          <summary>✚ Créer un modèle (entraînement)</summary>
-          <p class="ia-creer-aide">Maintenir le bouton de chaque classe pour capturer des images (une vingtaine de plus par seconde).</p>
-          <div class="ia-creer-classes"></div>
-          <div class="ia-creer-actions">
-          <button class="btn-vue ia-camera-capture" title="Allumer la caméra pour capturer des exemples">📷 Caméra</button>
-            <button class="btn-vue ia-ajouter-classe">+ Classe</button>
-            <button class="btn-vue ia-entrainer">🏋 Entraîner</button>
-            <button class="btn-vue ia-enregistrer" disabled title="Télécharger model.json, metadata.json et weights.bin (à recharger avec « Fichiers… »)">💾 Enregistrer</button>
-            <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
-          </div>
-          <div class="ia-creer-statut"></div>
-        </details>
+        <p class="ia-creer-aide">Pour créer vos propres classes d'images, utilisez « ⚡ Apprentissage immédiat ».</p>
       </div>
       <div class="ia-colonne" data-genre="son">
         <h4>🎤 Son (micro)</h4>

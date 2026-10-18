@@ -3347,6 +3347,9 @@ Reprise des points forts de l'IA d'EasyBloc TS (Arduino R4), **réécrits** : se
   ramenés au poignet, x multiplié par largeur/hauteur, main gauche retournée, divisés par la plus grande distance au poignet
   (63 nombres) ; bras = points 11 à 16 ramenés au milieu des épaules et divisés par leur largeur (12 nombres, sans
   retournement). Squelettes comparés par distance euclidienne. **k plus proches voisins**, K = 5, votes moyennés sur 3 images.
+- **Une seule façon de créer des classes d'images** : la colonne Vision ne garde que le chargement d'un modèle Teachable
+  Machine ; « Créer un modèle (entraînement) » n'existe plus que pour le son (code vision retiré de `ia.js`). La visite
+  guidée IA (`tuto.js`, `ETAPES_IA`) passe par l'apprentissage immédiat (`colImm`) et présente la colonne QR (`colQR`).
 - **Renvoi périodique** : le dernier résultat de chaque genre est renvoyé toutes les 500 ms ; le pilote MicroPython note
   `_ia_vu[genre] = running_time()` et remet la classe à vide après 1,5 s sans ligne.
 - **Blocs** : `ChampClasseIA` (sous-classe de `FieldDropdown`) propose `window.iaClassesConnues(genre)` + « ✎ autre nom… ».

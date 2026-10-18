@@ -241,7 +241,7 @@ async function chargerModele(genre, source) {
 // ("capture") peuvent chacune le demander ; il s'eteint quand plus personne n'en a besoin.
 const camera = { flux: null, raisons: new Set() };
 
-// L'apercu de la colonne Vision ne s'affiche que pour SES usages ("reco", "capture") :
+// L'apercu de la colonne Vision ne s'affiche que pour SON usage ("reco", modele Teachable Machine) :
 // l'apprentissage immediat et les QR codes ont leur propre apercu (raisons commencant par "imm").
 function majApercuVision() {
     const video = $('#ia-video');
@@ -353,18 +353,20 @@ async function basculer(genre) {
     majBouton(genre);
 }
 
-// ---------- creation d'un modele (entrainement dans le navigateur) ----------
-// Apprentissage par transfert, comme Teachable Machine : un reseau de base
-// (MobileNet pour les images, speech-commands pour les sons, dans lib/tm/base,
-// donc hors connexion) extrait des caracteristiques ; seule une petite couche
-// finale est entrainee sur les exemples captures. Les exemples ne quittent pas
-// le navigateur et sont perdus au rechargement de la page : "Enregistrer" garde
-// le modele (3 fichiers, a recharger avec « Fichiers… »).
+// ---------- creation d'un modele de SON (entrainement dans le navigateur) ----------
+// Apprentissage par transfert, comme Teachable Machine : le reseau de base
+// speech-commands (lib/tm/base/son, donc hors connexion) extrait des
+// caracteristiques ; seule une petite couche finale est entrainee sur les
+// exemples enregistres. Les exemples ne quittent pas le navigateur et sont
+// perdus au rechargement de la page : "Enregistrer" garde le modele (3 fichiers,
+// a recharger avec « Fichiers… »).
+// Pour les IMAGES, la creation se fait dans « Apprentissage immediat »
+// (ia-immediat.js) : la colonne Vision ne fait plus que charger un modele
+// Teachable Machine (une seule facon de creer, plus de doublon).
 const absolu = chemin => new URL(chemin, location.href).href;
 const attente = ms => new Promise(r => setTimeout(r, ms));
 
 const creation = {
-    vision: { classes: [{ nom: 'Classe 1', echantillons: [] }, { nom: 'Classe 2', echantillons: [] }], tm: null, occupe: false },
     son: { classes: [{ nom: 'Bruit de fond', n: 0 }, { nom: 'Classe 1', n: 0 }], base: null, transfer: null, compteur: 0,
            motsEntraines: null, occupe: false },
 };
@@ -404,23 +406,22 @@ function majLignesClasses(genre) {
     const etat = creation[genre];
     conteneur.textContent = '';
     etat.classes.forEach((c, i) => {
-        const nb = genre === 'vision' ? c.echantillons.length : c.n;
+        const nb = c.n;
         const l = document.createElement('div');
         l.className = 'ia-ex';
         const nom = document.createElement('input');
         nom.className = 'ia-ex-nom'; nom.value = c.nom; nom.spellcheck = false;
-        nom.disabled = genre === 'son' && nb > 0;      // le nom est inscrit dans chaque exemple sonore
+        nom.disabled = nb > 0;                         // le nom est inscrit dans chaque exemple sonore
         nom.addEventListener('input', () => { c.nom = nom.value; });
         const n = document.createElement('span'); n.className = 'ia-ex-n'; n.textContent = String(nb);
         const capt = document.createElement('button');
         capt.className = 'btn-vue ia-ex-capt';
-        capt.textContent = genre === 'vision' ? 'Maintenir' : '● 1 s';
-        capt.title = genre === 'vision' ? 'Maintenir enfoncé pour capturer des images' : 'Enregistrer 1 seconde de son';
+        capt.textContent = '● 1 s';
+        capt.title = 'Enregistrer 1 seconde de son';
         const sup = document.createElement('button');
         sup.className = 'btn-vue ia-ex-sup'; sup.textContent = '🗑'; sup.title = 'Supprimer cette classe et ses exemples';
         sup.addEventListener('click', () => supprimerClasse(genre, i));
-        if (genre === 'vision') brancherCaptureVision(capt, i, n);
-        else capt.addEventListener('click', () => capturerSon(i, capt));
+        capt.addEventListener('click', () => capturerSon(i, capt));
         l.append(nom, n, capt, sup);
         conteneur.appendChild(l);
     });
@@ -429,14 +430,14 @@ function majLignesClasses(genre) {
 function ajouterClasse(genre) {
     const etat = creation[genre];
     const nom = 'Classe ' + (etat.classes.length + 1);
-    etat.classes.push(genre === 'vision' ? { nom, echantillons: [] } : { nom, n: 0 });
+    etat.classes.push({ nom, n: 0 });
     majLignesClasses(genre);
 }
 
 function supprimerClasse(genre, i) {
     const etat = creation[genre];
     const c = etat.classes[i];
-    if (genre === 'son' && c.n > 0 && etat.transfer) {
+    if (c.n > 0 && etat.transfer) {
         try { for (const e of etat.transfer.getExamples(c.nom)) etat.transfer.removeExample(e.uid); } catch (erreur) { /* rien a retirer */ }
     }
     etat.classes.splice(i, 1);
@@ -445,12 +446,8 @@ function supprimerClasse(genre, i) {
 
 function toutEffacer(genre) {
     const etat = creation[genre];
-    if (genre === 'vision') {
-        etat.classes = [{ nom: 'Classe 1', echantillons: [] }, { nom: 'Classe 2', echantillons: [] }];
-    } else {
-        try { if (etat.transfer) etat.transfer.clearExamples(); } catch (erreur) { /* deja vide */ }
-        etat.classes = [{ nom: 'Bruit de fond', n: 0 }, { nom: 'Classe 1', n: 0 }];
-    }
+    try { if (etat.transfer) etat.transfer.clearExamples(); } catch (erreur) { /* deja vide */ }
+    etat.classes = [{ nom: 'Bruit de fond', n: 0 }, { nom: 'Classe 1', n: 0 }];
     majLignesClasses(genre);
     direCreer(genre, 'Exemples effacés.');
 }
@@ -459,128 +456,12 @@ function toutEffacer(genre) {
 function installerModele(genre, modele, noms) {
     arreter(genre);
     const m = moteurs[genre];
-    if (genre === 'vision') m.modele = modele; else m.reconnaisseur = modele;
+    m.reconnaisseur = modele;
     m.classes = noms;
     afficherClasses(genre, noms);
     $('.ia-demarrer', colonne(genre)).disabled = false;
     $('.ia-enregistrer', colonne(genre)).disabled = false;
     dire(genre, 'Modèle entraîné : ' + noms.length + ' classes. Cliquez « Démarrer ».');
-}
-
-// ----- vision -----
-async function modeleBaseVision() {
-    const etat = creation.vision;
-    if (!etat.tm) {
-        await chargerBibliotheque('vision');
-        etat.tm = await window.tmImage.createTeachable(
-            { tfjsVersion: window.tf.version.tfjs, labels: ['x'] },
-            { checkpointUrl: absolu('lib/tm/base/mobilenet/model.json'), trainingLayer: 'out_relu' });
-    }
-    return etat.tm;
-}
-
-// Une image -> ses caracteristiques MobileNet (1280 nombres), via le reseau tronque.
-// addExample attend une image deja en 224x224 : on decoupe le carre central et on le redimensionne,
-// comme le fait predict() a la reconnaissance.
-const toileCapture = document.createElement('canvas');
-toileCapture.width = toileCapture.height = 224;
-async function activationImage(source) {
-    const tm = await modeleBaseVision();
-    const l = source.videoWidth || source.width, h = source.videoHeight || source.height;
-    const cote = Math.min(l, h);
-    toileCapture.getContext('2d').drawImage(source, (l - cote) / 2, (h - cote) / 2, cote, cote, 0, 0, 224, 224);
-    tm.examples = [[]];
-    await tm.addExample(0, toileCapture);
-    tm.totalSamples = 0;
-    return tm.examples[0].pop();
-}
-
-function brancherCaptureVision(bouton, i, compteur) {
-    let appuye = false;
-    const arret = () => { appuye = false; bouton.classList.remove('enregistre'); };
-    bouton.addEventListener('pointerdown', async evenement => {
-        evenement.preventDefault();
-        const etat = creation.vision;
-        if (appuye || etat.occupe) return;
-        const video = $('#ia-video');
-        if (!camera.flux || video.readyState < 2) { direCreer('vision', 'Allumez d\'abord la caméra (bouton 📷 Caméra).'); return; }
-        appuye = true;
-        bouton.classList.add('enregistre');
-        try { bouton.setPointerCapture(evenement.pointerId); } catch (erreur) { /* pas grave */ }
-        try {
-            while (appuye) {
-                etat.classes[i].echantillons.push(await activationImage(video));
-                compteur.textContent = String(etat.classes[i].echantillons.length);
-                await attente(40);
-            }
-        } catch (erreur) {
-            direCreer('vision', 'Capture impossible : ' + messageErreur(erreur));
-        }
-        arret();
-    });
-    bouton.addEventListener('pointerup', arret);
-    bouton.addEventListener('pointercancel', arret);
-    bouton.addEventListener('lostpointercapture', arret);
-}
-
-async function basculerCameraCapture() {
-    const bouton = $('.ia-camera-capture', colonne('vision'));
-    try {
-        if (camera.raisons.has('capture')) {
-            fermerCamera('capture');
-        } else {
-            await ouvrirCamera('capture');
-        }
-    } catch (erreur) {
-        direCreer('vision', erreur && erreur.name === 'NotAllowedError'
-            ? 'Accès refusé : autorisez la caméra dans le navigateur.' : 'Caméra impossible : ' + messageErreur(erreur));
-    }
-    const allumee = camera.raisons.has('capture');
-    bouton.classList.toggle('en-marche', allumee);
-    bouton.textContent = allumee ? '📷 Éteindre' : '📷 Caméra';
-}
-
-function nomsValides(classes) {
-    const noms = classes.map(c => c.nom.trim());
-    if (noms.some(n => !n)) throw new Error('Chaque classe doit avoir un nom.');
-    if (new Set(noms.map(n => n.toLowerCase())).size !== noms.length) throw new Error('Deux classes portent le même nom.');
-    return noms;
-}
-
-async function entrainerVision() {
-    const etat = creation.vision;
-    if (etat.occupe) return;
-    etat.occupe = true;
-    const bouton = $('.ia-entrainer', colonne('vision'));
-    bouton.disabled = true;
-    try {
-        const noms = nomsValides(etat.classes);
-        if (noms.length < 2) throw new Error('Il faut au moins 2 classes.');
-        const pauvres = etat.classes.filter(c => c.echantillons.length < 5).map(c => c.nom);
-        if (pauvres.length) throw new Error('Au moins 5 images par classe (il en manque pour : ' + pauvres.join(', ') + ').');
-        const tm = await modeleBaseVision();
-        tm.setLabels(noms);                                    // remet les exemples a zero...
-        tm.examples = etat.classes.map(c => c.echantillons.slice());   // ...on remet les notres
-        tm.totalSamples = tm.examples.reduce((a, e) => a + e.length, 0);
-        tm.trainDataset = null; tm.validationDataset = null;
-        const EPOQUES = 50;
-        direCreer('vision', 'Entraînement…');
-        await tm.train({ denseUnits: 100, epochs: EPOQUES, learningRate: 0.001, batchSize: 16 }, {
-            onEpochEnd: async (epoque, logs) => {
-                const precision = logs.acc != null ? logs.acc : logs.accuracy;
-                direCreer('vision', 'Entraînement : époque ' + (epoque + 1) + '/' + EPOQUES +
-                    (precision != null ? ' — précision ' + Math.round(precision * 100) + ' %' : ''));
-                await attente(0);
-            },
-        });
-        installerModele('vision', tm, noms.slice());
-        direCreer('vision', 'Entraînement terminé. Cliquez « Démarrer » (colonne du haut) pour tester.');
-    } catch (erreur) {
-        direCreer('vision', 'Entraînement impossible : ' + messageErreur(erreur));
-    } finally {
-        etat.occupe = false;
-        bouton.disabled = false;
-    }
 }
 
 // ----- son -----
@@ -674,19 +555,10 @@ async function entrainerSon() {
 async function enregistrerGenre(genre) {
     try {
         const m = moteurs[genre];
-        const horodatage = new Date().toISOString();
-        if (genre === 'vision') {
-            await enregistrerModele(m.modele, {
-                tfjsVersion: window.tf.version.tfjs, tmVersion: '2.4.0', packageVersion: '0.8.4',
-                packageName: '@teachablemachine/image', timeStamp: horodatage, userMetadata: {},
-                modelName: 'modele-microbit', labels: m.classes, imageSize: 224,
-            });
-        } else {
-            await enregistrerModele(m.reconnaisseur, {
-                tfjsVersion: window.tf.version.tfjs, tfjsSpeechCommandsVersion: '0.4.0',
-                modelName: 'modele-microbit', timeStamp: horodatage, wordLabels: m.classes,
-            });
-        }
+        await enregistrerModele(m.reconnaisseur, {
+            tfjsVersion: window.tf.version.tfjs, tfjsSpeechCommandsVersion: '0.4.0',
+            modelName: 'modele-microbit', timeStamp: new Date().toISOString(), wordLabels: m.classes,
+        });
         direCreer(genre, 'Fichiers téléchargés : model.json, weights.bin, metadata.json (rechargez-les avec « Fichiers… »).');
     } catch (erreur) {
         direCreer(genre, 'Enregistrement impossible : ' + messageErreur(erreur));
@@ -717,16 +589,14 @@ for (const genre of ['vision', 'son']) {
     });
     $('.ia-demarrer', col).addEventListener('click', () => basculer(genre));
 }
-for (const genre of ['vision', 'son']) {
-    const col = colonne(genre);
-    if (!col || !colCreer(genre)) continue;
-    majLignesClasses(genre);
-    $('.ia-ajouter-classe', col).addEventListener('click', () => ajouterClasse(genre));
-    $('.ia-tout-effacer', col).addEventListener('click', () => toutEffacer(genre));
-    $('.ia-entrainer', col).addEventListener('click', () => (genre === 'vision' ? entrainerVision() : entrainerSon()));
-    $('.ia-enregistrer', col).addEventListener('click', () => enregistrerGenre(genre));
+if (colonne('son') && colCreer('son')) {
+    const col = colonne('son');
+    majLignesClasses('son');
+    $('.ia-ajouter-classe', col).addEventListener('click', () => ajouterClasse('son'));
+    $('.ia-tout-effacer', col).addEventListener('click', () => toutEffacer('son'));
+    $('.ia-entrainer', col).addEventListener('click', entrainerSon);
+    $('.ia-enregistrer', col).addEventListener('click', () => enregistrerGenre('son'));
 }
-$('.ia-camera-capture', colonne('vision')).addEventListener('click', basculerCameraCapture);
 if (curseurSeuil) curseurSeuil.addEventListener('input', () => { valeurSeuil.textContent = curseurSeuil.value; });
 if (caseCarte) caseCarte.addEventListener('change', majEtatCarte);
 setInterval(() => { if (caseCarte && caseCarte.checked) majEtatCarte(); }, 2000);
@@ -740,7 +610,7 @@ window.iaClassesConnues = function (genre) {
     const noms = [];
     if (moteurs[genre]) noms.push(...moteurs[genre].classes);
     // Classes en creation : seulement celles qui ont des exemples (pas les « Classe 1 » par defaut).
-    if (creation[genre]) noms.push(...creation[genre].classes.filter(c => (c.echantillons ? c.echantillons.length : c.n) > 0).map(c => c.nom));
+    if (creation[genre]) noms.push(...creation[genre].classes.filter(c => c.n > 0).map(c => c.nom));
     if (genre === 'vision' && window.iaImmediat) noms.push(...window.iaImmediat.classes());
     const vus = new Set();
     return noms.map(n => String(n).trim()).filter(n => n && !vus.has(slug(n)) && vus.add(slug(n)));
@@ -748,4 +618,4 @@ window.iaClassesConnues = function (genre) {
 
 window.iaNoyau = { traiterResultat, liberer, envoyer, ouvrirCamera, fermerCamera, camera, dernierEnvoi, moteurs, arreter, seuil };
 
-window.iaTest = { liberer, creation, camera, ouvrirCamera, fermerCamera, activationImage, entrainerVision, entrainerSon, capturerSon, enregistrerGenre, ajouterClasse, chargerBibliotheque, traiterResultat, chargerModele, basculer, arreter, moteurs, envoyer, trierFichiers, racineModele, dernierEnvoi };
+window.iaTest = { liberer, creation, camera, ouvrirCamera, fermerCamera, entrainerSon, capturerSon, enregistrerGenre, ajouterClasse, chargerBibliotheque, traiterResultat, chargerModele, basculer, arreter, moteurs, envoyer, trierFichiers, racineModele, dernierEnvoi };
