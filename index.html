@@ -1097,21 +1097,81 @@
        transition. Un servo a rotation continue tourne sans fin : rotation
        animee par des images cles, dont la duree vient de la vitesse. */
     .servo { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px; }
-    .servo-cadran { width: 44px; height: 44px; border-radius: 50%; background: #0f1c26;
-                    border: 2px solid #46617d; position: relative; box-sizing: border-box; }
-    .servo-rotor { position: absolute; inset: 0; transform: rotate(0deg);
+    /* Premier lot Grove : bouton poussoir, buzzer, relais, ecran OLED. */
+    .grove-bouton-poussoir { width: 56px; height: 56px; border-radius: 50%; border: 4px solid #3b3f46; background: #d93a2b;
+        color: #fff; font-size: 11px; font-weight: 600; cursor: pointer; margin: 4px auto; display: block;
+        box-shadow: 0 3px 0 #8f2419; touch-action: none; user-select: none; }
+    .grove-bouton-poussoir.enfonce { transform: translateY(3px); box-shadow: 0 0 0 #8f2419; background: #b52e21; }
+    .grove-sortie { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 2px 0; }
+    .buzzer-pastille { width: 14px; height: 14px; border-radius: 50%; background: #3b3f46; border: 2px solid #6b7480; box-sizing: border-box; }
+    .buzzer-pastille.on { background: #ffb020; border-color: #ffd27a; animation: buzzer-vibre 0.12s linear infinite; }
+    @keyframes buzzer-vibre { 50% { transform: translateX(1px); } }
+    /* Capteurs a curseur (modele C) : petit module Grove dessine + afficheur numerique vert, curseur dessous. */
+    .mesure-ligne { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; }
+    .mesure-module { flex: 0 0 auto; }
+    .mesure-lecture { font-family: Consolas, monospace; font-size: 14px; color: #7dffb0; background: #04070b;
+        border: 3px solid #1f6fb2; border-radius: 4px; padding: 2px 8px; min-width: 96px; text-align: right; white-space: nowrap; }
+    .mesure-lecture b { font-weight: normal; color: inherit; }
+    .mesure-curseur { display: block; font-size: 10px; color: #9aa4ad; margin-top: 2px; }
+    /* Barre de LED (MY9221) : 10 LED dans un boitier bleu ; 1 rouge, 2 orange, 3 a 10 vertes. */
+    #grove-barreled { display: flex; gap: 3px; padding: 6px; background: #1f6fb2; border-radius: 5px; width: max-content; margin: 2px auto; }
+    .barre-led { width: 12px; height: 22px; border-radius: 2px; background: #1d3b1d; border: 1px solid #0d1a0d; }
+    .barre-led.on { background: #3ddc4f; box-shadow: 0 0 6px #3ddc4f; }
+    .barre-led.orange { background: #4a3410; } .barre-led.orange.on { background: #ffb020; box-shadow: 0 0 6px #ffb020; }
+    .barre-led.rouge { background: #4a1612; } .barre-led.rouge.on { background: #ff3b30; box-shadow: 0 0 6px #ff3b30; }
+    /* Horloge temps reel : afficheur sombre */
+    #grove-rtc { display: flex; flex-direction: column; align-items: center; padding: 6px 10px; margin: 2px auto; width: max-content;
+        background: #04070b; border: 4px solid #1f6fb2; border-radius: 5px; }
+    .rtc-heure { font-family: Consolas, monospace; font-size: 20px; color: #7dffb0; letter-spacing: 1px; }
+    .rtc-date { font-family: Consolas, monospace; font-size: 11px; color: #9aa4ad; }
+    /* Modules dessines (PIR, relais) : voyant rouge allume quand le module est actif. */
+    #grove-pir-visuel { display: block; margin: 2px auto; cursor: pointer; }
+    #grove-pir-visuel:focus-visible { outline: 2px solid #ff7a33; outline-offset: 2px; border-radius: 6px; }
+    .pir-dome { fill: #e9ecef; }
+    .pir-facettes { fill: none; stroke: #c9cfd6; stroke-width: 1; }
+    .module-led { fill: #5a2a2a; transition: fill .15s; }
+    .actif .module-led { fill: #ff3b30; }
+    #grove-relais { display: flex; flex-wrap: wrap; gap: 8px; }
+    .relais-module { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; }
+    .relais-boitier { fill: #2f63c9; stroke: #1a3f86; stroke-width: 2; }
+    .relais-marque { fill: #cfe0ff; font-size: 8px; font-family: sans-serif; }
+    .relais-bornier { fill: #2e8b57; }
+    .relais-vis { fill: #1b5e3a; }
+    #grove-oled { display: block; width: 100%; max-width: 256px; margin: 4px auto 0; image-rendering: pixelated;
+        border: 6px solid #1f6fb2; border-radius: 4px; box-sizing: border-box; background: #04070b; }
+
+    /* Potentiometre Grove (module dessine) : le bouton tourne de -150° a +150° autour de son axe (60, 52). */
+    #grove-pot-visuel { display: block; margin: 2px auto 4px; cursor: grab; touch-action: none; }
+    #grove-pot-visuel:active { cursor: grabbing; }
+    .pot-carte { fill: #1f6fb2; }
+    .pot-trou { fill: var(--fond-saisie); }
+    .pot-connecteur { fill: #f2f2f2; }
+    .pot-texte { fill: #cfe6fb; font-size: 7px; font-family: sans-serif; }
+    .pot-socle { fill: #d9dde2; }
+    .pot-bouton { fill: #3b3f46; }
+    .pot-repere { fill: #ffffff; }
+    #grove-pot-rotor { transform-box: view-box; transform-origin: 60px 52px; }
+
+    /* Servo vu de dessus (SVG cree par cadranServo, un.js) : boitier bleu, palonnier blanc. Le rotor
+       tourne autour de l'axe (42, 52) du dessin : transform-box: view-box rend l'origine en unites du viewBox. */
+    .servo-cadran { display: block; overflow: visible; }
+    .servo-corps { fill: #1f6fb2; }
+    .servo-dessus { fill: #2a82c9; }
+    .servo-trou { fill: var(--fond-saisie); }
+    .servo-bras { stroke: #f4f4f4; stroke-width: 9; stroke-linecap: round; fill: none; }
+    .servo-moyeu { fill: #f4f4f4; }
+    .servo-trou-bras { fill: #9aa4ad; }
+    .servo-rotor { transform-box: view-box; transform-origin: 42px 52px; transform: rotate(0deg);
                    transition: transform 0.35s ease-out; }
-    .servo-bras { position: absolute; left: 50%; top: 4px; width: 3px; height: 16px;
-                  margin-left: -1.5px; background: #2ecc71; border-radius: 2px; }
-    .servo-axe { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px;
-                 margin: -3.5px 0 0 -3.5px; background: #46617d; border-radius: 50%; }
     .servo-cadran.continu .servo-rotor {
         transition: none;
         animation: servo-tour var(--duree, 2s) linear infinite;
     }
     .servo-cadran.continu.inverse .servo-rotor { animation-direction: reverse; }
-    .servo-cadran.arret { border-color: #8c8c8c; }
-    .servo-cadran.arret .servo-bras { background: #8c8c8c; }
+    /* Servo arrete (signal coupe) : boitier et palonnier gris. */
+    .servo-cadran.arret .servo-corps, .servo-cadran.arret .servo-dessus { fill: #6b7480; }
+    .servo-cadran.arret .servo-bras { stroke: #b4b9bf; }
+    .servo-cadran.arret .servo-moyeu { fill: #b4b9bf; }
     @keyframes servo-tour { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .servo-nom { font-size: 10px; color: #b8b8b8; }
     .servo-etat { font-size: 10px; color: var(--texte-chrome); text-align: center; line-height: 1.2; }
@@ -1546,8 +1606,9 @@
         </div>
 
         <div class="grove-bloc" id="grove-sec-ultrason">
-          <label class="grove-titre" for="grove-distance">Ultrason : <b id="grove-distance-val">50</b> cm</label>
-          <input type="range" id="grove-distance" min="0" max="200" value="50">
+          <span class="grove-titre">Ultrason (distance)</span>
+          <div class="mesure-ligne"><svg class="mesure-module" viewBox="0 0 120 100" width="44" height="36" aria-hidden="true"><rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/><circle cx="42" cy="50" r="17" fill="#c9cfd6"/><circle cx="42" cy="50" r="10" fill="#3b3f46"/><circle cx="78" cy="50" r="17" fill="#c9cfd6"/><circle cx="78" cy="50" r="10" fill="#3b3f46"/></svg><span class="mesure-lecture"><b id="grove-distance-val">50</b> cm</span></div>
+          <input type="range" id="grove-distance" min="0" max="200" value="50" aria-label="Distance (cm)">
         </div>
 
         <div class="grove-bloc" id="grove-sec-joystick">
@@ -1555,6 +1616,88 @@
           <label>X (P0) : <b id="grove-jx-val">512</b><input type="range" id="grove-jx" min="0" max="1023" value="512"></label>
           <label>Y (P1) : <b id="grove-jy-val">512</b><input type="range" id="grove-jy" min="0" max="1023" value="512"></label>
           <label class="grove-case"><input type="checkbox" id="grove-jbtn"> bouton enfoncé</label>
+        </div>
+
+        <!-- Potentiometre : module Grove dessine (modele A, choix de l'utilisateur). Le bouton se tourne a la
+             souris (glisser) ; le curseur dessous reste pour le clavier et le reglage fin (un.js). -->
+        <div class="grove-bloc" id="grove-sec-potentiometre">
+          <label class="grove-titre" for="grove-pot">Potentiomètre : <b id="grove-pot-val">512 (150°)</b></label>
+          <svg id="grove-pot-visuel" viewBox="0 0 120 100" width="96" height="80" role="img" aria-label="Potentiomètre Grove : glisser pour tourner le bouton">
+            <rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/>
+            <circle class="pot-trou" cx="26" cy="16" r="3"/><circle class="pot-trou" cx="94" cy="16" r="3"/>
+            <rect class="pot-connecteur" x="44" y="84" width="32" height="10" rx="2"/>
+            <text class="pot-texte" x="60" y="81" text-anchor="middle">Rotary Angle</text>
+            <circle class="pot-socle" cx="60" cy="52" r="24"/>
+            <g id="grove-pot-rotor"><circle class="pot-bouton" cx="60" cy="52" r="18"/><rect class="pot-repere" x="58" y="34" width="4" height="14" rx="2"/></g>
+          </svg>
+          <input type="range" id="grove-pot" min="0" max="1023" value="512">
+        </div>
+
+        <!-- Premier lot Grove (un.js : simu_groveEntree, simu_groveSortie, simu_oled) -->
+        <div class="grove-bloc" id="grove-sec-bouton">
+          <span class="grove-titre">Bouton poussoir</span>
+          <button id="grove-bouton-appui" class="grove-bouton-poussoir" title="Maintenir enfoncé pour appuyer sur le bouton">Appuyer</button>
+          <label class="grove-case"><input type="checkbox" id="grove-bouton-maintenu"> maintenu enfoncé</label>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-lumiere">
+          <span class="grove-titre">Lumière</span>
+          <div class="mesure-ligne"><svg class="mesure-module" viewBox="0 0 120 100" width="44" height="36" aria-hidden="true"><rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/><circle cx="60" cy="50" r="18" fill="#e8a24a"/><path d="M48 44h24M48 50h24M48 56h24" stroke="#8a4b12" stroke-width="3"/></svg><span class="mesure-lecture"><b id="grove-lumiere-val">512 (50 %)</b></span></div>
+          <input type="range" id="grove-lumiere" min="0" max="1023" value="512" aria-label="Lumière (0 à 1023)">
+        </div>
+
+        <!-- Detecteur de mouvement : module Grove dessine (modele A, choix de l'utilisateur). Un clic sur le
+             module simule un mouvement (ou l'arrete) ; la case a cocher reste la source de l'etat (un.js). -->
+        <div class="grove-bloc" id="grove-sec-pir">
+          <span class="grove-titre">Détecteur de mouvement</span>
+          <svg id="grove-pir-visuel" viewBox="0 0 120 100" width="84" height="70" role="button" tabindex="0"
+               aria-label="Détecteur de mouvement : cliquer pour simuler un mouvement">
+            <rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/>
+            <circle class="pot-trou" cx="26" cy="16" r="3"/><circle class="pot-trou" cx="94" cy="16" r="3"/>
+            <rect class="pot-connecteur" x="44" y="84" width="32" height="10" rx="2"/>
+            <circle class="pir-dome" cx="60" cy="48" r="24"/>
+            <g class="pir-facettes"><circle cx="60" cy="48" r="17"/><circle cx="60" cy="48" r="10"/><path d="M36 48h48M60 24v48"/></g>
+            <circle class="module-led" cx="88" cy="76" r="4"/>
+          </svg>
+          <label class="grove-case"><input type="checkbox" id="grove-pir"> mouvement détecté</label>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-buzzer">
+          <span class="grove-titre">Buzzer</span>
+          <div id="grove-buzzer"><span class="grove-vide">aucun</span></div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-relais">
+          <span class="grove-titre">Relais</span>
+          <div id="grove-relais"><span class="grove-vide">aucun</span></div>
+        </div>
+
+        <!-- Deuxieme lot Grove (un.js : simu_barreLed, simu_rtc, simu_mesure('pression' | 'cov')) -->
+        <div class="grove-bloc" id="grove-sec-barreled">
+          <span class="grove-titre">Barre de LED</span>
+          <div id="grove-barreled"></div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-pression">
+          <span class="grove-titre">Pression (BMP280)</span>
+          <div class="mesure-ligne"><svg class="mesure-module" viewBox="0 0 120 100" width="44" height="36" aria-hidden="true"><rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/><rect x="44" y="34" width="32" height="32" rx="4" fill="#3b3f46"/><circle cx="60" cy="50" r="5" fill="#9aa4ad"/></svg><span class="mesure-lecture"><b id="grove-pression-val">1013</b> hPa</span></div>
+          <input type="range" id="grove-pression" min="950" max="1060" value="1013" aria-label="Pression (hPa)">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-cov">
+          <span class="grove-titre">COV totaux (SGP30)</span>
+          <div class="mesure-ligne"><svg class="mesure-module" viewBox="0 0 120 100" width="44" height="36" aria-hidden="true"><rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/><rect x="44" y="34" width="32" height="32" rx="4" fill="#3b3f46"/><circle cx="60" cy="50" r="5" fill="#9aa4ad"/></svg><span class="mesure-lecture"><b id="grove-cov-val">50</b> ppb</span></div>
+          <input type="range" id="grove-cov" min="0" max="2000" value="50" aria-label="COV totaux (ppb)">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-rtc">
+          <span class="grove-titre">Horloge temps réel</span>
+          <div id="grove-rtc"></div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-oled">
+          <span class="grove-titre">Écran OLED 0,96"</span>
+          <canvas id="grove-oled" width="256" height="128" role="img" aria-label="Écran OLED simulé"></canvas>
         </div>
 
         <div class="grove-bloc" id="grove-sec-gestes">
@@ -1590,15 +1733,18 @@
         </div>
 
         <div class="grove-bloc" id="grove-sec-th">
-          <label class="grove-titre" for="grove-temp">Température : <b id="grove-temp-val">22</b> °C</label>
+          <span class="grove-titre">Température et humidité</span>
+          <div class="mesure-ligne"><svg class="mesure-module" viewBox="0 0 120 100" width="44" height="36" aria-hidden="true"><rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/><rect x="40" y="30" width="40" height="40" rx="4" fill="#f2f2f2"/><g fill="#9aa4ad"><rect x="46" y="36" width="28" height="3"/><rect x="46" y="44" width="28" height="3"/><rect x="46" y="52" width="28" height="3"/><rect x="46" y="60" width="28" height="3"/></g></svg><span class="mesure-lecture"><b id="grove-temp-val">22</b> °C&nbsp; <b id="grove-humi-val">45</b> %</span></div>
+          <label class="mesure-curseur" for="grove-temp">Température</label>
           <input type="range" id="grove-temp" min="-10" max="60" value="22">
-          <label class="grove-titre" for="grove-humi">Humidité : <b id="grove-humi-val">45</b> %</label>
+          <label class="mesure-curseur" for="grove-humi">Humidité</label>
           <input type="range" id="grove-humi" min="0" max="100" value="45">
         </div>
 
         <div class="grove-bloc" id="grove-sec-co2">
-          <label class="grove-titre" for="grove-co2">CO₂ : <b id="grove-co2-val">600</b> ppm</label>
-          <input type="range" id="grove-co2" min="400" max="5000" step="10" value="600">
+          <span class="grove-titre">CO₂</span>
+          <div class="mesure-ligne"><svg class="mesure-module" viewBox="0 0 120 100" width="44" height="36" aria-hidden="true"><rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/><rect x="44" y="34" width="32" height="32" rx="4" fill="#3b3f46"/><circle cx="60" cy="50" r="5" fill="#9aa4ad"/></svg><span class="mesure-lecture"><b id="grove-co2-val">600</b> ppm</span></div>
+          <input type="range" id="grove-co2" min="400" max="5000" step="10" value="600" aria-label="CO₂ (ppm)">
         </div>
 
         <div class="grove-bloc" id="grove-sec-couleur">
@@ -2479,6 +2625,82 @@
     def _grove_distance_cm(broche): return int(window.simu_distanceCm())
     def _grove_distance_pouces(broche): return int(int(window.simu_distanceCm()) / 2.54)
     def _grove_joystick(bx, by, direction): return bool(window.simu_joystickDirection(direction))
+    # Deuxieme lot Grove : substituts des pilotes I2C et de la barre de LED.
+    class _BarreLEDMock:
+        def __init__(self, donnee=None, horloge=None):
+            self.leds = [0] * 10
+            self._afficher()
+        def _afficher(self): window.simu_barreLed(','.join(str(v) for v in self.leds))
+        def niveau(self, n):
+            n = max(0, min(10, int(n)))
+            self.leds = [1 if i < n else 0 for i in range(10)]
+            self._afficher()
+        def led(self, numero, etat):
+            numero = int(numero)
+            if 1 <= numero <= 10:
+                self.leds[numero - 1] = 1 if etat else 0
+                self._afficher()
+    def _grove_barre(donnee, horloge): return _grove_obj('barre', _BarreLEDMock)
+    class _CapteurBMP280Mock:
+        def __init__(self): pass
+        def mesure(self, grandeur):
+            p = float(window.simu_mesure('pression'))
+            if grandeur == "temperature": return round(float(window.simu_mesure('temperature')), 1)
+            if grandeur == "altitude": return round(44330 * (1 - (p / 1013.25) ** (1 / 5.255)), 1)
+            return round(p, 1)
+    def _grove_bmp280(): return _grove_obj('bmp280', _CapteurBMP280Mock)
+    class _CapteurSGP30Mock:
+        def __init__(self): pass
+        def mesure(self, grandeur):
+            return int(window.simu_mesure('cov' if grandeur == "cov" else 'co2'))
+    def _grove_sgp30(): return _grove_obj('sgp30', _CapteurSGP30Mock)
+    class _HorlogeRTCMock:
+        def __init__(self): pass
+        def regler(self, annee, mois, jour, heure, minute, seconde):
+            window.simu_rtcRegler(int(annee), int(mois), int(jour), int(heure), int(minute), int(seconde))
+        def lire(self, champ): return int(window.simu_rtc(champ))
+        def texte(self): return str(window.simu_rtc('texte'))
+    def _grove_rtc(): return _grove_obj('rtc', _HorlogeRTCMock)
+    class _PiloteServosMock:
+        def __init__(self, adresse=0x7F): pass
+        def angle(self, voie, angle):
+            voie = max(0, min(15, int(voie)))
+            angle = max(0, min(180, int(angle)))
+            window.simu_servo('S' + str(voie), 'angle', angle, angle)
+        def continu(self, voie, vitesse):
+            voie = max(0, min(15, int(voie)))
+            vitesse = max(-100, min(100, int(vitesse)))
+            window.simu_servo('S' + str(voie), 'continu', vitesse, 90)
+    def _grove_servos(): return _grove_obj('pca9685', _PiloteServosMock)
+    # Premier lot Grove : commandes du panneau a la place des broches.
+    _grove_bouton_avant = {}
+    def _grove_bouton(broche): return bool(window.simu_groveEntree('bouton'))
+    def _grove_bouton_front(broche):
+        etat = bool(window.simu_groveEntree('bouton'))
+        avant = _grove_bouton_avant.get(broche.id_pin, False)
+        _grove_bouton_avant[broche.id_pin] = etat
+        return etat and not avant
+    def _grove_lumiere(broche, unite):
+        v = int(window.simu_groveEntree('lumiere'))
+        return round(v * 100 / 1023) if unite == "pourcent" else v
+    def _grove_pir(broche): return bool(window.simu_groveEntree('pir'))
+    def _grove_buzzer(broche, etat): window.simu_groveSortie('buzzer', broche.id_pin, 1 if etat else 0)
+    def _grove_buzzer_bip(broche, duree):
+        window.simu_groveSortie('buzzer', broche.id_pin, 1)
+        sleep(int(duree))
+        window.simu_groveSortie('buzzer', broche.id_pin, 0)
+    def _grove_relais(broche, etat): window.simu_groveSortie('relais', broche.id_pin, 1 if etat else 0)
+    class _EcranOLEDMock:
+        def __init__(self): window.simu_oled('init', '', 0, 0)
+        def effacer(self): window.simu_oled('effacer', '', 0, 0)
+        def texte(self, message, x, y): window.simu_oled('texte', str(message), int(x), int(y))
+    def _grove_oled(): return _grove_obj('oled', _EcranOLEDMock)
+    # Potentiometre : le curseur du panneau Grove remplace la broche analogique.
+    def _grove_potentiometre(broche, unite):
+        v = int(window.simu_potentiometre())
+        if unite == "angle": return round(v * 300 / 1023)
+        if unite == "pourcent": return round(v * 100 / 1023)
+        return v
 
     class _CapteurGestesMock:
         def __init__(self): pass
@@ -2955,6 +3177,7 @@
         # ne doit surtout pas passer par ici : c'est justement ce qui doit
         # persister d'un declenchement au suivant.
         _grove_objets.clear()
+        _grove_bouton_avant.clear()
         _SERVO_ETAT_SIMU.clear()
         # Les pilotes Grove pilotent de vraies broches : on les retire et ce sont
         # les classes ci-dessus, injectees dans env, qui prennent le relais.
@@ -2990,6 +3213,16 @@
             '_grove_distance_cm': _grove_distance_cm,
             '_grove_distance_pouces': _grove_distance_pouces,
             '_grove_joystick': _grove_joystick,
+            '_grove_potentiometre': _grove_potentiometre,
+            '_grove_bouton': _grove_bouton, '_grove_bouton_front': _grove_bouton_front,
+            '_grove_lumiere': _grove_lumiere, '_grove_pir': _grove_pir,
+            '_grove_buzzer': _grove_buzzer, '_grove_buzzer_bip': _grove_buzzer_bip, '_grove_relais': _grove_relais,
+            '_EcranOLED': _EcranOLEDMock, '_grove_oled': _grove_oled,
+            '_BarreLED': _BarreLEDMock, '_grove_barre': _grove_barre,
+            '_CapteurBMP280': _CapteurBMP280Mock, '_grove_bmp280': _grove_bmp280,
+            '_CapteurSGP30': _CapteurSGP30Mock, '_grove_sgp30': _grove_sgp30,
+            '_HorlogeRTC': _HorlogeRTCMock, '_grove_rtc': _grove_rtc,
+            '_PiloteServos': _PiloteServosMock, '_grove_servos': _grove_servos,
             '_CapteurGestes': _CapteurGestesMock,
             '_CapteurTH': _CapteurTHMock, '_EcranLCD': _EcranLCDMock, '_EcranLCDRGB': _EcranLCDRGBMock,
             '_CapteurCouleur': _CapteurCouleurMock,

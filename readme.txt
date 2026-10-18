@@ -1457,3 +1457,62 @@ masquees. Code masque, le simulateur occupe 37 % de la largeur (au lieu de 24 %)
 « Reinitialiser la simulation » se placent a droite de la carte, et la poignee de redimensionnement est active d'emblee.
 Reglage : classes inactif / replie dans index.html (#btn-vue-code, #code-container), regle CSS
 #code-container.replie ~ #simulator-container, et synchroniserResizerSimulateur() appele au demarrage (un.js).
+
+37. DESSIN DES SERVOMOTEURS (oct. 2026)
+Le cadran rond du panneau « Servomoteurs » est remplace par un servo vu de dessus (modele A, choisi parmi 4 propositions) :
+boitier bleu type SG90 a deux oreilles, palonnier blanc qui tourne autour de l'axe (90 deg = palonnier vers le haut,
+0 deg a gauche, 180 deg a droite). Rotation continue : le palonnier tourne sans fin (sens et vitesse selon la vitesse).
+Arret : boitier et palonnier gris. Dessin SVG cree par cadranServo() (un.js), styles .servo-* (index.html) ; le rotor
+tourne avec transform-box: view-box et transform-origin: 42px 52px (unites du dessin).
+
+38. GROVE : POTENTIOMETRE (oct. 2026)
+Nouvelle sous-categorie Grove « Potentiometre » (Grove Rotary Angle Sensor), apres « Joystick ». Un bloc :
+« potentiometre sur [broche] en [valeur 0 a 1023 / angle 0 a 300 deg / pourcentage 0 a 100 %] ». A brancher sur P0, P1
+ou P2 (entrees analogiques). Code : pilote « potentiometre » (_grove_potentiometre(broche, unite), read_analog() puis
+conversion). Simulateur : module Grove dessine (modele A, choisi parmi 4 propositions : carte bleue, bouton gris a repere
+blanc) dont on tourne le bouton a la souris (butees a 0 et 300 deg), plus un curseur dessous (clavier, reglage fin) ;
+valeur et angle affiches ; substitut
+_grove_potentiometre dans index.html. Aide du bloc, exemple « Angle du potentiometre », reconstruction a l'import d'un .py.
+
+39. GROVE : PREMIER LOT DE MODULES (oct. 2026)
+Six modules ajoutes au menu Grove, chacun dans sa sous-categorie, avec aide (clic droit), exemple, section du panneau
+Grove du simulateur et reconstruction en blocs a l'import d'un .py :
+- Bouton poussoir (numerique) : « bouton poussoir sur Px appuye » et « lorsque le bouton poussoir sur Px est appuye »
+  (une fois par appui, front montant : _grove_bouton_front, scrute a chaque tour comme les autres « lorsque »).
+  Simulateur : bouton rouge « Appuyer » (enfonce tant qu'on le maintient) et case « maintenu enfonce ».
+- Capteur de lumiere (analogique, P0/P1/P2) : valeur 0 a 1023 ou pourcentage. Simulateur : curseur.
+- Detecteur de mouvement PIR (numerique) : « mouvement detecte sur Px ». Simulateur : module Grove dessine (dome blanc,
+  voyant rouge), un clic ou Entree simule un mouvement ; la case « mouvement detecte » reste dessous.
+- Buzzer (actif, numerique) : marche / arret, et « bip pendant ... ms ». Simulateur : pastille orange qui vibre et bip
+  de 2,3 kHz a faible volume ; le buzzer se tait a l'arret de la simulation.
+- Relais (numerique) : ferme (marche) / ouvert (arret). Simulateur : un module Grove dessine par broche (boitier
+  RELAY bleu, bornier vert), voyant rouge allume quand le contact est ferme.
+- Ecran OLED 0,96" 128 x 64 (I2C 0x3C, SSD1315 / SSD1306) : initialiser, afficher un texte en colonne (0 a 20) et ligne
+  (0 a 7), effacer. Mode texte sans memoire d'image (compatible V1) : police 5 x 7 (ASCII 32 a 126) envoyee caractere
+  par caractere ; accents ramenes a la lettre simple. Le simulateur dessine l'ecran avec la meme police (POLICE_OLED).
+A verifier avec le materiel : niveaux logiques des modules reels (bouton et PIR actifs a l'etat haut, buzzer actif),
+et l'ecran OLED (sequence d'initialisation SSD1306 ; la version SSD1308 plus ancienne n'a pas ete testee).
+
+40. GROVE : DEUXIEME LOT DE MODULES (oct. 2026)
+Cinq modules, meme organisation que le premier lot (sous-categorie, aide, exemple, panneau Grove, reconstruction .py) :
+- Barre de LED (Grove LED Bar v2.0, MY9221) : niveau 0 a 10, LED n allumee / eteinte. Branchee sur un port Grove a deux
+  broches (P0/P14, P1/P15, P2/P16, P8/P12) : broche jaune = donnees, blanche = horloge (bibliotheque Seeed).
+  Simulateur : barre dessinee (LED 1 rouge, 2 orange, 3 a 10 vertes).
+- Pression BMP280 (I2C 0x77) : pression (hPa), temperature (C), altitude (m, par rapport a 1013,25 hPa). Formules de
+  compensation Bosch en virgule flottante. Simulateur : curseur « Pression » (+ curseur de temperature existant).
+- Qualite de l'air SGP30 (I2C 0x58) : eCO2 (ppm), COV totaux (ppb) ; 400 ppm / 0 ppb pendant les 15 premieres secondes.
+  Simulateur : curseur « COV totaux » (+ curseur CO2 existant pour l'eCO2).
+- Horloge temps reel DS1307 / DS3231 (I2C 0x68) : regler date et heure, lire heure / minute / seconde / jour / mois /
+  annee, heure en texte « hh:mm:ss ». Simulateur : heure du PC decalee de ce que le programme a regle, afficheur
+  qui avance chaque seconde.
+- Pilote 16 servos PCA9685 (I2C 0x7F pour le module Grove, 0x40 pour les autres cartes) : angle (0 a 180) ou rotation
+  continue (-100 a 100 %) du servo de la voie 0 a 15, a 50 Hz. Simulateur : servos S0 a S15 dans la zone « Servomoteurs ».
+DHT20 : deja pris en charge par « Temperature & humidite » (meme puce que l'AHT20, adresse 0x38).
+A verifier avec le materiel : sens des broches de la barre de LED, adresses I2C reelles des modules, et chaque pilote
+(aucun n'a pu etre essaye sur une carte).
+
+41. CAPTEURS A CURSEUR : MODULES ET AFFICHEURS (oct. 2026)
+Modele C (choisi parmi 3 propositions) pour tous les capteurs reglables du panneau Grove : ultrason, temperature et
+humidite, CO2, lumiere, pression, COV. Chaque section montre un petit module Grove dessine (composant propre a chaque
+capteur), un afficheur numerique vert sur fond noir avec la valeur et son unite, et le curseur dessous. Les id des
+curseurs et des valeurs (grove-temp, grove-temp-val...) sont inchanges : un.js n'a pas eu a changer.
