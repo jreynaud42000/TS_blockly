@@ -1106,13 +1106,19 @@
     .buzzer-pastille { width: 14px; height: 14px; border-radius: 50%; background: #3b3f46; border: 2px solid #6b7480; box-sizing: border-box; }
     .buzzer-pastille.on { background: #ffb020; border-color: #ffd27a; animation: buzzer-vibre 0.12s linear infinite; }
     @keyframes buzzer-vibre { 50% { transform: translateX(1px); } }
-    .relais-contact { position: relative; width: 26px; height: 14px; }
-    .relais-contact::before, .relais-contact::after { content: ''; position: absolute; top: 9px; width: 4px; height: 4px;
-        border-radius: 50%; background: #9aa4ad; }
-    .relais-contact::before { left: 0; } .relais-contact::after { right: 0; }
-    .relais-contact > i { position: absolute; left: 3px; top: 10px; width: 20px; height: 2px; background: #9aa4ad;
-        transform-origin: left center; transform: rotate(-30deg); transition: transform .15s; }
-    .relais-contact.ferme > i { transform: rotate(0deg); background: #2ecc71; }
+    /* Modules dessines (PIR, relais) : voyant rouge allume quand le module est actif. */
+    #grove-pir-visuel { display: block; margin: 2px auto; cursor: pointer; }
+    #grove-pir-visuel:focus-visible { outline: 2px solid #ff7a33; outline-offset: 2px; border-radius: 6px; }
+    .pir-dome { fill: #e9ecef; }
+    .pir-facettes { fill: none; stroke: #c9cfd6; stroke-width: 1; }
+    .module-led { fill: #5a2a2a; transition: fill .15s; }
+    .actif .module-led { fill: #ff3b30; }
+    #grove-relais { display: flex; flex-wrap: wrap; gap: 8px; }
+    .relais-module { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; }
+    .relais-boitier { fill: #2f63c9; stroke: #1a3f86; stroke-width: 2; }
+    .relais-marque { fill: #cfe0ff; font-size: 8px; font-family: sans-serif; }
+    .relais-bornier { fill: #2e8b57; }
+    .relais-vis { fill: #1b5e3a; }
     #grove-oled { display: block; width: 100%; max-width: 256px; margin: 4px auto 0; image-rendering: pixelated;
         border: 6px solid #1f6fb2; border-radius: 4px; box-sizing: border-box; background: #04070b; }
 
@@ -1620,8 +1626,19 @@
           <input type="range" id="grove-lumiere" min="0" max="1023" value="512">
         </div>
 
+        <!-- Detecteur de mouvement : module Grove dessine (modele A, choix de l'utilisateur). Un clic sur le
+             module simule un mouvement (ou l'arrete) ; la case a cocher reste la source de l'etat (un.js). -->
         <div class="grove-bloc" id="grove-sec-pir">
           <span class="grove-titre">Détecteur de mouvement</span>
+          <svg id="grove-pir-visuel" viewBox="0 0 120 100" width="84" height="70" role="button" tabindex="0"
+               aria-label="Détecteur de mouvement : cliquer pour simuler un mouvement">
+            <rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/>
+            <circle class="pot-trou" cx="26" cy="16" r="3"/><circle class="pot-trou" cx="94" cy="16" r="3"/>
+            <rect class="pot-connecteur" x="44" y="84" width="32" height="10" rx="2"/>
+            <circle class="pir-dome" cx="60" cy="48" r="24"/>
+            <g class="pir-facettes"><circle cx="60" cy="48" r="17"/><circle cx="60" cy="48" r="10"/><path d="M36 48h48M60 24v48"/></g>
+            <circle class="module-led" cx="88" cy="76" r="4"/>
+          </svg>
           <label class="grove-case"><input type="checkbox" id="grove-pir"> mouvement détecté</label>
         </div>
 

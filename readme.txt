@@ -1481,10 +1481,12 @@ Grove du simulateur et reconstruction en blocs a l'import d'un .py :
   (une fois par appui, front montant : _grove_bouton_front, scrute a chaque tour comme les autres « lorsque »).
   Simulateur : bouton rouge « Appuyer » (enfonce tant qu'on le maintient) et case « maintenu enfonce ».
 - Capteur de lumiere (analogique, P0/P1/P2) : valeur 0 a 1023 ou pourcentage. Simulateur : curseur.
-- Detecteur de mouvement PIR (numerique) : « mouvement detecte sur Px ». Simulateur : case a cocher.
+- Detecteur de mouvement PIR (numerique) : « mouvement detecte sur Px ». Simulateur : module Grove dessine (dome blanc,
+  voyant rouge), un clic ou Entree simule un mouvement ; la case « mouvement detecte » reste dessous.
 - Buzzer (actif, numerique) : marche / arret, et « bip pendant ... ms ». Simulateur : pastille orange qui vibre et bip
   de 2,3 kHz a faible volume ; le buzzer se tait a l'arret de la simulation.
-- Relais (numerique) : ferme (marche) / ouvert (arret). Simulateur : contact dessine ouvert ou ferme.
+- Relais (numerique) : ferme (marche) / ouvert (arret). Simulateur : un module Grove dessine par broche (boitier
+  RELAY bleu, bornier vert), voyant rouge allume quand le contact est ferme.
 - Ecran OLED 0,96" 128 x 64 (I2C 0x3C, SSD1315 / SSD1306) : initialiser, afficher un texte en colonne (0 a 20) et ligne
   (0 a 7), effacer. Mode texte sans memoire d'image (compatible V1) : police 5 x 7 (ASCII 32 a 126) envoyee caractere
   par caractere ; accents ramenes a la lettre simple. Le simulateur dessine l'ecran avec la meme police (POLICE_OLED).

@@ -10234,9 +10234,18 @@ try {
                 (on ? 'sonne' : 'silencieux') + '</div>');
         }
         if (zoneRelais) {
+            // Relais : module Grove dessine (modele A, choix de l'utilisateur), voyant rouge quand le contact est ferme.
             zoneRelais.innerHTML = lignes(etatSortiesGrove.relais, (nom, on) =>
-                '<div class="grove-sortie"><span class="relais-contact' + (on ? ' ferme' : '') + '"><i></i></span>' + nom +
-                ' : ' + (on ? 'fermé (marche)' : 'ouvert (arrêt)') + '</div>');
+                '<div class="relais-module' + (on ? ' actif' : '') + '">' +
+                '<svg viewBox="0 0 120 100" width="72" height="60" aria-hidden="true">' +
+                '<rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/>' +
+                '<circle class="pot-trou" cx="26" cy="16" r="3"/><circle class="pot-trou" cx="94" cy="16" r="3"/>' +
+                '<rect class="relais-boitier" x="34" y="22" width="52" height="38" rx="3"/>' +
+                '<text class="relais-marque" x="60" y="45" text-anchor="middle">RELAY</text>' +
+                '<rect class="relais-bornier" x="30" y="68" width="24" height="14" rx="2"/>' +
+                '<circle class="relais-vis" cx="37" cy="75" r="3"/><circle class="relais-vis" cx="47" cy="75" r="3"/>' +
+                '<circle class="module-led" cx="80" cy="75" r="5"/></svg>' +
+                '<span>' + nom + ' : ' + (on ? 'fermé (marche)' : 'ouvert (arrêt)') + '</span></div>');
         }
         majSonBuzzer();
     }
@@ -11563,6 +11572,15 @@ try {
         const regler = enfonce => () => { boutonPoussoirEnfonce = enfonce; boutonPoussoirGrove.classList.toggle('enfonce', enfonce); };
         boutonPoussoirGrove.addEventListener('pointerdown', regler(true));
         ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => boutonPoussoirGrove.addEventListener(t, regler(false)));
+    }
+    const visuelPir = document.getElementById('grove-pir-visuel');
+    if (visuelPir && casePir) {
+        const majPir = () => visuelPir.classList.toggle('actif', casePir.checked);
+        const basculer = () => { casePir.checked = !casePir.checked; majPir(); };
+        visuelPir.addEventListener('click', basculer);
+        visuelPir.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); basculer(); } });
+        casePir.addEventListener('change', majPir);
+        majPir();
     }
     if (curseurLumiere) curseurLumiere.addEventListener('input', () => {
         valeurLumiere.textContent = curseurLumiere.value + ' (' + Math.round(Number(curseurLumiere.value) * 100 / 1023) + ' %)';
