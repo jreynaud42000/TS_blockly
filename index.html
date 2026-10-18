@@ -1106,6 +1106,17 @@
     .buzzer-pastille { width: 14px; height: 14px; border-radius: 50%; background: #3b3f46; border: 2px solid #6b7480; box-sizing: border-box; }
     .buzzer-pastille.on { background: #ffb020; border-color: #ffd27a; animation: buzzer-vibre 0.12s linear infinite; }
     @keyframes buzzer-vibre { 50% { transform: translateX(1px); } }
+    /* Barre de LED (MY9221) : 10 LED dans un boitier bleu ; 1 rouge, 2 orange, 3 a 10 vertes. */
+    #grove-barreled { display: flex; gap: 3px; padding: 6px; background: #1f6fb2; border-radius: 5px; width: max-content; margin: 2px auto; }
+    .barre-led { width: 12px; height: 22px; border-radius: 2px; background: #1d3b1d; border: 1px solid #0d1a0d; }
+    .barre-led.on { background: #3ddc4f; box-shadow: 0 0 6px #3ddc4f; }
+    .barre-led.orange { background: #4a3410; } .barre-led.orange.on { background: #ffb020; box-shadow: 0 0 6px #ffb020; }
+    .barre-led.rouge { background: #4a1612; } .barre-led.rouge.on { background: #ff3b30; box-shadow: 0 0 6px #ff3b30; }
+    /* Horloge temps reel : afficheur sombre */
+    #grove-rtc { display: flex; flex-direction: column; align-items: center; padding: 6px 10px; margin: 2px auto; width: max-content;
+        background: #04070b; border: 4px solid #1f6fb2; border-radius: 5px; }
+    .rtc-heure { font-family: Consolas, monospace; font-size: 20px; color: #7dffb0; letter-spacing: 1px; }
+    .rtc-date { font-family: Consolas, monospace; font-size: 11px; color: #9aa4ad; }
     /* Modules dessines (PIR, relais) : voyant rouge allume quand le module est actif. */
     #grove-pir-visuel { display: block; margin: 2px auto; cursor: pointer; }
     #grove-pir-visuel:focus-visible { outline: 2px solid #ff7a33; outline-offset: 2px; border-radius: 6px; }
@@ -1650,6 +1661,27 @@
         <div class="grove-bloc" id="grove-sec-relais">
           <span class="grove-titre">Relais</span>
           <div id="grove-relais"><span class="grove-vide">aucun</span></div>
+        </div>
+
+        <!-- Deuxieme lot Grove (un.js : simu_barreLed, simu_rtc, simu_mesure('pression' | 'cov')) -->
+        <div class="grove-bloc" id="grove-sec-barreled">
+          <span class="grove-titre">Barre de LED</span>
+          <div id="grove-barreled"></div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-pression">
+          <label class="grove-titre" for="grove-pression">Pression : <b id="grove-pression-val">1013</b> hPa</label>
+          <input type="range" id="grove-pression" min="950" max="1060" value="1013">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-cov">
+          <label class="grove-titre" for="grove-cov">COV totaux : <b id="grove-cov-val">50</b> ppb</label>
+          <input type="range" id="grove-cov" min="0" max="2000" value="50">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-rtc">
+          <span class="grove-titre">Horloge temps réel</span>
+          <div id="grove-rtc"></div>
         </div>
 
         <div class="grove-bloc" id="grove-sec-oled">
@@ -2579,6 +2611,53 @@
     def _grove_distance_cm(broche): return int(window.simu_distanceCm())
     def _grove_distance_pouces(broche): return int(int(window.simu_distanceCm()) / 2.54)
     def _grove_joystick(bx, by, direction): return bool(window.simu_joystickDirection(direction))
+    # Deuxieme lot Grove : substituts des pilotes I2C et de la barre de LED.
+    class _BarreLEDMock:
+        def __init__(self, donnee=None, horloge=None):
+            self.leds = [0] * 10
+            self._afficher()
+        def _afficher(self): window.simu_barreLed(','.join(str(v) for v in self.leds))
+        def niveau(self, n):
+            n = max(0, min(10, int(n)))
+            self.leds = [1 if i < n else 0 for i in range(10)]
+            self._afficher()
+        def led(self, numero, etat):
+            numero = int(numero)
+            if 1 <= numero <= 10:
+                self.leds[numero - 1] = 1 if etat else 0
+                self._afficher()
+    def _grove_barre(donnee, horloge): return _grove_obj('barre', _BarreLEDMock)
+    class _CapteurBMP280Mock:
+        def __init__(self): pass
+        def mesure(self, grandeur):
+            p = float(window.simu_mesure('pression'))
+            if grandeur == "temperature": return round(float(window.simu_mesure('temperature')), 1)
+            if grandeur == "altitude": return round(44330 * (1 - (p / 1013.25) ** (1 / 5.255)), 1)
+            return round(p, 1)
+    def _grove_bmp280(): return _grove_obj('bmp280', _CapteurBMP280Mock)
+    class _CapteurSGP30Mock:
+        def __init__(self): pass
+        def mesure(self, grandeur):
+            return int(window.simu_mesure('cov' if grandeur == "cov" else 'co2'))
+    def _grove_sgp30(): return _grove_obj('sgp30', _CapteurSGP30Mock)
+    class _HorlogeRTCMock:
+        def __init__(self): pass
+        def regler(self, annee, mois, jour, heure, minute, seconde):
+            window.simu_rtcRegler(int(annee), int(mois), int(jour), int(heure), int(minute), int(seconde))
+        def lire(self, champ): return int(window.simu_rtc(champ))
+        def texte(self): return str(window.simu_rtc('texte'))
+    def _grove_rtc(): return _grove_obj('rtc', _HorlogeRTCMock)
+    class _PiloteServosMock:
+        def __init__(self, adresse=0x7F): pass
+        def angle(self, voie, angle):
+            voie = max(0, min(15, int(voie)))
+            angle = max(0, min(180, int(angle)))
+            window.simu_servo('S' + str(voie), 'angle', angle, angle)
+        def continu(self, voie, vitesse):
+            voie = max(0, min(15, int(voie)))
+            vitesse = max(-100, min(100, int(vitesse)))
+            window.simu_servo('S' + str(voie), 'continu', vitesse, 90)
+    def _grove_servos(): return _grove_obj('pca9685', _PiloteServosMock)
     # Premier lot Grove : commandes du panneau a la place des broches.
     _grove_bouton_avant = {}
     def _grove_bouton(broche): return bool(window.simu_groveEntree('bouton'))
@@ -3125,6 +3204,11 @@
             '_grove_lumiere': _grove_lumiere, '_grove_pir': _grove_pir,
             '_grove_buzzer': _grove_buzzer, '_grove_buzzer_bip': _grove_buzzer_bip, '_grove_relais': _grove_relais,
             '_EcranOLED': _EcranOLEDMock, '_grove_oled': _grove_oled,
+            '_BarreLED': _BarreLEDMock, '_grove_barre': _grove_barre,
+            '_CapteurBMP280': _CapteurBMP280Mock, '_grove_bmp280': _grove_bmp280,
+            '_CapteurSGP30': _CapteurSGP30Mock, '_grove_sgp30': _grove_sgp30,
+            '_HorlogeRTC': _HorlogeRTCMock, '_grove_rtc': _grove_rtc,
+            '_PiloteServos': _PiloteServosMock, '_grove_servos': _grove_servos,
             '_CapteurGestes': _CapteurGestesMock,
             '_CapteurTH': _CapteurTHMock, '_EcranLCD': _EcranLCDMock, '_EcranLCDRGB': _EcranLCDRGBMock,
             '_CapteurCouleur': _CapteurCouleurMock,

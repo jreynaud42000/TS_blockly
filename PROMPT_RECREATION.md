@@ -3403,6 +3403,12 @@ sans confondre ces modules avec une LED ou un joystick sur la même broche. Entr
 sorties : `simu_groveSortie(nom, broche, valeur)` et `simu_oled(...)` passent par la file (rythme du programme).
 « lorsque le bouton poussoir est appuyé » : entrées de `GESTIONNAIRES` générées pour chaque broche de `BROCHES_GROVE`.
 
+Deuxième lot : `_BarreLED` / `_grove_barre(donnee, horloge)` (MY9221 : l'horloge **change d'état** à chaque bit,
+verrouillage par 4 impulsions sur la donnée), `_CapteurBMP280` (compensation Bosch en flottant), `_CapteurSGP30`
+(0x2003 puis 0x2008, réponse après 12 ms), `_HorlogeRTC` (BCD, bit 7 des secondes à 0 sur le DS1307), `_PiloteServos`
+(PCA9685, prédiviseur 121 pour 50 Hz, 4096 pas sur 20 ms). Les objets I²C passent par le registre `_grove_obj` ; la
+reconstruction reconnaît `_fabrique().methode(...)` (`appelMethodeGrove`).
+
 **PIÈGE nº 77 — guillemet dans un nom de catégorie** : `"Écran OLED 0,96""` casse tout `un.js` (la page reste vide). Utiliser
 le signe pouce ″ (U+2033). Vérifier la syntaxe d'un module avec `node --check` sur une copie en `.mjs`.
 

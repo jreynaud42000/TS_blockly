@@ -1492,3 +1492,21 @@ Grove du simulateur et reconstruction en blocs a l'import d'un .py :
   par caractere ; accents ramenes a la lettre simple. Le simulateur dessine l'ecran avec la meme police (POLICE_OLED).
 A verifier avec le materiel : niveaux logiques des modules reels (bouton et PIR actifs a l'etat haut, buzzer actif),
 et l'ecran OLED (sequence d'initialisation SSD1306 ; la version SSD1308 plus ancienne n'a pas ete testee).
+
+40. GROVE : DEUXIEME LOT DE MODULES (oct. 2026)
+Cinq modules, meme organisation que le premier lot (sous-categorie, aide, exemple, panneau Grove, reconstruction .py) :
+- Barre de LED (Grove LED Bar v2.0, MY9221) : niveau 0 a 10, LED n allumee / eteinte. Branchee sur un port Grove a deux
+  broches (P0/P14, P1/P15, P2/P16, P8/P12) : broche jaune = donnees, blanche = horloge (bibliotheque Seeed).
+  Simulateur : barre dessinee (LED 1 rouge, 2 orange, 3 a 10 vertes).
+- Pression BMP280 (I2C 0x77) : pression (hPa), temperature (C), altitude (m, par rapport a 1013,25 hPa). Formules de
+  compensation Bosch en virgule flottante. Simulateur : curseur « Pression » (+ curseur de temperature existant).
+- Qualite de l'air SGP30 (I2C 0x58) : eCO2 (ppm), COV totaux (ppb) ; 400 ppm / 0 ppb pendant les 15 premieres secondes.
+  Simulateur : curseur « COV totaux » (+ curseur CO2 existant pour l'eCO2).
+- Horloge temps reel DS1307 / DS3231 (I2C 0x68) : regler date et heure, lire heure / minute / seconde / jour / mois /
+  annee, heure en texte « hh:mm:ss ». Simulateur : heure du PC decalee de ce que le programme a regle, afficheur
+  qui avance chaque seconde.
+- Pilote 16 servos PCA9685 (I2C 0x7F pour le module Grove, 0x40 pour les autres cartes) : angle (0 a 180) ou rotation
+  continue (-100 a 100 %) du servo de la voie 0 a 15, a 50 Hz. Simulateur : servos S0 a S15 dans la zone « Servomoteurs ».
+DHT20 : deja pris en charge par « Temperature & humidite » (meme puce que l'AHT20, adresse 0x38).
+A verifier avec le materiel : sens des broches de la barre de LED, adresses I2C reelles des modules, et chaque pilote
+(aucun n'a pu etre essaye sur une carte).

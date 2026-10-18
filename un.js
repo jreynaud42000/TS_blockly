@@ -2231,6 +2231,394 @@ try {
         return '_grove_oled().effacer()\n';
     };
 
+    // ======================================================================
+    // DEUXIEME LOT GROVE (oct. 2026) : barre de LED, BMP280, SGP30, horloge
+    // temps reel, pilote 16 servos. Meme principe que le premier lot : chaque
+    // module passe par une classe ou une fonction de pilote a son nom, que le
+    // simulateur remplace par ses commandes (index.html).
+    // ======================================================================
+
+    // Ports Grove a deux broches (carte d'extension Grove pour micro:bit) : broche jaune / broche blanche.
+    const PORTS_GROVE = [
+        ["P0 / P14", "pin0, pin14"], ["P1 / P15", "pin1, pin15"], ["P2 / P16", "pin2, pin16"], ["P8 / P12", "pin8, pin12"]
+    ];
+
+    // --- Barre de 10 LED (Grove LED Bar v2.0, puce MY9221, liaison donnees + horloge) ---
+    //
+    // Protocole repris de la bibliotheque Seeed (Grove_LED_Bar) : 16 bits de commande (0), puis 16 bits par
+    // sortie (10 LED + 2 inutilisees), l'horloge CHANGE d'etat a chaque bit ; verrouillage par 4 impulsions
+    // sur la ligne de donnees apres un temps au repos. Broche jaune = donnees (DI), blanche = horloge (DCKI).
+
+    function piloteBarreLed() {
+        importerMicrobit();
+        piloteRegistre();
+        pilote('barreled', [
+            'class _BarreLED:',
+            '    def __init__(self, donnee, horloge):',
+            '        self.d = donnee',
+            '        self.h = horloge',
+            '        self.etat_h = 0',
+            '        self.h.write_digital(0)',
+            '        self.leds = [0] * 10',
+            '        self._afficher()',
+            '',
+            '    def _envoyer(self, valeur):',
+            '        for i in range(16):',
+            '            self.d.write_digital((valeur >> (15 - i)) & 1)',
+            '            self.etat_h = 1 - self.etat_h',
+            '            self.h.write_digital(self.etat_h)',
+            '',
+            '    def _afficher(self):',
+            '        self._envoyer(0)',
+            '        for i in range(10):',
+            '            self._envoyer(0xFF if self.leds[i] else 0)',
+            '        self._envoyer(0)',
+            '        self._envoyer(0)',
+            '        self.d.write_digital(0)',
+            '        sleep(1)',
+            '        for i in range(4):',
+            '            self.d.write_digital(1)',
+            '            self.d.write_digital(0)',
+            '',
+            '    def niveau(self, n):',
+            '        n = max(0, min(10, int(n)))',
+            '        self.leds = [1 if i < n else 0 for i in range(10)]',
+            '        self._afficher()',
+            '',
+            '    def led(self, numero, etat):',
+            '        numero = int(numero)',
+            '        if 1 <= numero <= 10:',
+            '            self.leds[numero - 1] = 1 if etat else 0',
+            '            self._afficher()',
+            '',
+            'def _grove_barre(donnee, horloge):',
+            '    return _grove_obj("barre" + str(id(donnee)), lambda: _BarreLED(donnee, horloge))',
+        ]);
+    }
+
+    Blockly.Blocks['grove_barre_niveau'] = { init: function() {
+        this.appendValueInput("NIVEAU").setCheck("Number").appendField("barre de LED sur")
+            .appendField(new Blockly.FieldDropdown(PORTS_GROVE), "PORT").appendField("niveau");
+        this.appendDummyInput().appendField("(0 à 10)");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Allume les LED de la barre de 1 jusqu'au niveau indiqué (0 : toutes éteintes, 10 : toutes allumées).");
+    }};
+    P.forBlock['grove_barre_niveau'] = function(block) {
+        piloteBarreLed();
+        return '_grove_barre(' + block.getFieldValue('PORT') + ').niveau(' +
+               (P.valueToCode(block, 'NIVEAU', P.ORDER_NONE) || '0') + ')\n';
+    };
+
+    Blockly.Blocks['grove_barre_led'] = { init: function() {
+        this.appendValueInput("LED").setCheck("Number").appendField("barre de LED sur")
+            .appendField(new Blockly.FieldDropdown(PORTS_GROVE), "PORT").appendField("LED n°");
+        this.appendDummyInput().appendField(new Blockly.FieldDropdown([["allumée", "1"], ["éteinte", "0"]]), "ETAT");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Allume ou éteint une seule LED de la barre (numéro de 1 à 10).");
+    }};
+    P.forBlock['grove_barre_led'] = function(block) {
+        piloteBarreLed();
+        return '_grove_barre(' + block.getFieldValue('PORT') + ').led(' +
+               (P.valueToCode(block, 'LED', P.ORDER_NONE) || '1') + ', ' + block.getFieldValue('ETAT') + ')\n';
+    };
+
+    // --- Pression et temperature (Grove Barometer BMP280, I2C 0x77) ---
+    //
+    // Formules de compensation en virgule flottante de la fiche technique Bosch (BMP280, §8.1).
+
+    function piloteBmp280() {
+        importerMicrobit();
+        piloteRegistre();
+        pilote('bmp280', [
+            'class _CapteurBMP280:',
+            '    ADR = 0x77',
+            '',
+            '    def __init__(self):',
+            '        i2c.init()',
+            '        i2c.write(self.ADR, bytes([0x88]))',
+            '        c = i2c.read(self.ADR, 24)',
+            '        mots = [c[2 * i] | (c[2 * i + 1] << 8) for i in range(12)]',
+            '        s = lambda v: v - 65536 if v > 32767 else v',
+            '        self.t = [mots[0], s(mots[1]), s(mots[2])]',
+            '        self.p = [mots[3]] + [s(v) for v in mots[4:12]]',
+            '        i2c.write(self.ADR, bytes([0xF5, 0x00]))',
+            '        i2c.write(self.ADR, bytes([0xF4, 0x27]))      # x1 temperature, x1 pression, mode normal',
+            '        sleep(10)',
+            '',
+            '    def _lire(self):',
+            '        i2c.write(self.ADR, bytes([0xF7]))',
+            '        d = i2c.read(self.ADR, 6)',
+            '        adc_p = (d[0] << 12) | (d[1] << 4) | (d[2] >> 4)',
+            '        adc_t = (d[3] << 12) | (d[4] << 4) | (d[5] >> 4)',
+            '        T1, T2, T3 = self.t',
+            '        v1 = (adc_t / 16384 - T1 / 1024) * T2',
+            '        v2 = (adc_t / 131072 - T1 / 8192) ** 2 * T3',
+            '        fin = v1 + v2',
+            '        temperature = fin / 5120',
+            '        P1, P2, P3, P4, P5, P6, P7, P8, P9 = self.p',
+            '        v1 = fin / 2 - 64000',
+            '        v2 = v1 * v1 * P6 / 32768 + v1 * P5 * 2',
+            '        v2 = v2 / 4 + P4 * 65536',
+            '        v1 = (P3 * v1 * v1 / 524288 + P2 * v1) / 524288',
+            '        v1 = (1 + v1 / 32768) * P1',
+            '        if v1 == 0:',
+            '            return temperature, 0',
+            '        p = (1048576 - adc_p - v2 / 4096) * 6250 / v1',
+            '        p = p + (P9 * p * p / 2147483648 + p * P8 / 32768 + P7) / 16',
+            '        return temperature, p / 100',
+            '',
+            '    def mesure(self, grandeur):',
+            '        temperature, pression = self._lire()',
+            '        if grandeur == "temperature":',
+            '            return round(temperature, 1)',
+            '        if grandeur == "altitude":',
+            '            return round(44330 * (1 - (pression / 1013.25) ** (1 / 5.255)), 1)',
+            '        return round(pression, 1)',
+            '',
+            'def _grove_bmp280():',
+            '    return _grove_obj("bmp280", _CapteurBMP280)',
+        ]);
+    }
+
+    Blockly.Blocks['grove_bmp280'] = { init: function() {
+        this.appendDummyInput().appendField("BMP280 :").appendField(new Blockly.FieldDropdown([
+            ["pression (hPa)", "pression"], ["température (°C)", "temperature"], ["altitude (m)", "altitude"]
+        ]), "GRANDEUR");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Capteur de pression Grove BMP280 (port I²C) : pression de l'air en hectopascals, température en °C, " +
+                        "ou altitude estimée en mètres (à partir d'une pression de 1013,25 hPa au niveau de la mer).");
+    }};
+    P.forBlock['grove_bmp280'] = function(block) {
+        piloteBmp280();
+        return ['_grove_bmp280().mesure("' + block.getFieldValue('GRANDEUR') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    // --- Qualite de l'air (Grove VOC and eCO2 Gas Sensor, SGP30, I2C 0x58) ---
+    //
+    // Commandes Sensirion : 0x2003 demarre l'algorithme, 0x2008 mesure (reponse apres 12 ms : eCO2, CRC, COV, CRC).
+    // Les 15 premieres secondes, le capteur rend 400 ppm et 0 ppb (chauffe).
+
+    function piloteSgp30() {
+        importerMicrobit();
+        piloteRegistre();
+        pilote('sgp30', [
+            'class _CapteurSGP30:',
+            '    ADR = 0x58',
+            '',
+            '    def __init__(self):',
+            '        i2c.init()',
+            '        i2c.write(self.ADR, bytes([0x20, 0x03]))',
+            '        sleep(10)',
+            '',
+            '    def mesure(self, grandeur):',
+            '        i2c.write(self.ADR, bytes([0x20, 0x08]))',
+            '        sleep(12)',
+            '        d = i2c.read(self.ADR, 6)',
+            '        if grandeur == "cov":',
+            '            return (d[3] << 8) | d[4]',
+            '        return (d[0] << 8) | d[1]',
+            '',
+            'def _grove_sgp30():',
+            '    return _grove_obj("sgp30", _CapteurSGP30)',
+        ]);
+    }
+
+    Blockly.Blocks['grove_sgp30'] = { init: function() {
+        this.appendDummyInput().appendField("qualité de l'air SGP30 :").appendField(new Blockly.FieldDropdown([
+            ["eCO₂ (ppm)", "eco2"], ["COV totaux (ppb)", "cov"]
+        ]), "GRANDEUR");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Capteur de qualité de l'air Grove SGP30 (port I²C) : équivalent CO₂ en ppm ou composés organiques " +
+                        "volatils en ppb. Les 15 premières secondes, il rend 400 ppm et 0 ppb (chauffe).");
+    }};
+    P.forBlock['grove_sgp30'] = function(block) {
+        piloteSgp30();
+        return ['_grove_sgp30().mesure("' + block.getFieldValue('GRANDEUR') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    // --- Horloge temps reel (Grove RTC DS1307 ; le DS3231 a les memes registres), I2C 0x68 ---
+    //
+    // Registres 0 a 6 en BCD : secondes (bit 7 = horloge arretee sur le DS1307), minutes, heures (mode 24 h),
+    // jour de la semaine, jour, mois, annee (00 a 99).
+
+    function piloteRtc() {
+        importerMicrobit();
+        piloteRegistre();
+        pilote('rtc', [
+            'class _HorlogeRTC:',
+            '    ADR = 0x68',
+            '',
+            '    def __init__(self):',
+            '        i2c.init()',
+            '',
+            '    def regler(self, annee, mois, jour, heure, minute, seconde):',
+            '        bcd = lambda v: (int(v) // 10) * 16 + int(v) % 10',
+            '        i2c.write(self.ADR, bytes([0, bcd(seconde) & 0x7F, bcd(minute), bcd(heure) & 0x3F, 1,',
+            '                                   bcd(jour), bcd(mois), bcd(int(annee) % 100)]))',
+            '',
+            '    def _lire(self):',
+            '        i2c.write(self.ADR, bytes([0]))',
+            '        d = i2c.read(self.ADR, 7)',
+            '        dec = lambda v: (v >> 4) * 10 + (v & 0x0F)',
+            '        return {"seconde": dec(d[0] & 0x7F), "minute": dec(d[1]), "heure": dec(d[2] & 0x3F),',
+            '                "jour": dec(d[4]), "mois": dec(d[5] & 0x1F), "annee": 2000 + dec(d[6])}',
+            '',
+            '    def lire(self, champ):',
+            '        return self._lire()[champ]',
+            '',
+            '    def texte(self):',
+            '        t = self._lire()',
+            '        deux = lambda v: ("0" + str(v))[-2:]',
+            '        return deux(t["heure"]) + ":" + deux(t["minute"]) + ":" + deux(t["seconde"])',
+            '',
+            'def _grove_rtc():',
+            '    return _grove_obj("rtc", _HorlogeRTC)',
+        ]);
+    }
+
+    Blockly.Blocks['grove_rtc_regler'] = { init: function() {
+        this.appendDummyInput().appendField("régler l'horloge au");
+        this.appendValueInput("JOUR").setCheck("Number").appendField("jour");
+        this.appendValueInput("MOIS").setCheck("Number").appendField("mois");
+        this.appendValueInput("ANNEE").setCheck("Number").appendField("année");
+        this.appendValueInput("HEURE").setCheck("Number").appendField("à");
+        this.appendValueInput("MINUTE").setCheck("Number").appendField("h");
+        this.appendValueInput("SECONDE").setCheck("Number").appendField("min");
+        this.appendDummyInput().appendField("s");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Met l'horloge temps réel Grove (DS1307 ou DS3231) à la date et à l'heure indiquées. À faire une " +
+                        "seule fois : la pile du module garde l'heure, même carte débranchée.");
+    }};
+    P.forBlock['grove_rtc_regler'] = function(block) {
+        piloteRtc();
+        const v = (nom, defaut) => P.valueToCode(block, nom, P.ORDER_NONE) || defaut;
+        return '_grove_rtc().regler(' + [v('ANNEE', '2026'), v('MOIS', '1'), v('JOUR', '1'), v('HEURE', '0'),
+                                        v('MINUTE', '0'), v('SECONDE', '0')].join(', ') + ')\n';
+    };
+
+    Blockly.Blocks['grove_rtc_lire'] = { init: function() {
+        this.appendDummyInput().appendField("horloge :").appendField(new Blockly.FieldDropdown([
+            ["heure", "heure"], ["minute", "minute"], ["seconde", "seconde"],
+            ["jour", "jour"], ["mois", "mois"], ["année", "annee"]
+        ]), "CHAMP");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Lit l'heure, la minute, la seconde, le jour, le mois ou l'année de l'horloge temps réel Grove.");
+    }};
+    P.forBlock['grove_rtc_lire'] = function(block) {
+        piloteRtc();
+        return ['_grove_rtc().lire("' + block.getFieldValue('CHAMP') + '")', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['grove_rtc_texte'] = { init: function() {
+        this.appendDummyInput().appendField("horloge : heure en texte (hh:mm:ss)");
+        this.setOutput(true, "String");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("L'heure de l'horloge temps réel sous forme de texte, par exemple « 08:05:30 ».");
+    }};
+    P.forBlock['grove_rtc_texte'] = function(block) {
+        piloteRtc();
+        return ['_grove_rtc().texte()', P.ORDER_FUNCTION_CALL];
+    };
+
+    // --- Pilote 16 servos (Grove 16-Channel PWM Driver, PCA9685, I2C 0x7F ; cartes Adafruit et autres : 0x40) ---
+    //
+    // Frequence 50 Hz : prediviseur 25 MHz / (4096 x 50) - 1 = 121. Impulsion de 500 a 2500 us comme les servos
+    // sur broche ; une periode de 20 ms vaut 4096 pas.
+
+    function pilotePca9685() {
+        importerMicrobit();
+        piloteRegistre();
+        pilote('pca9685', [
+            'class _PiloteServos:',
+            '    def __init__(self, adresse=0x7F):',
+            '        self.adr = adresse',
+            '        i2c.init()',
+            '        self._ecrire(0x00, 0x10)          # veille, pour changer la frequence',
+            '        self._ecrire(0xFE, 121)           # 50 Hz',
+            '        self._ecrire(0x00, 0x00)',
+            '        sleep(5)',
+            '        self._ecrire(0x00, 0xA0)          # redemarrage, auto-increment',
+            '',
+            '    def _ecrire(self, registre, valeur):',
+            '        i2c.write(self.adr, bytes([registre, valeur]))',
+            '',
+            '    def _impulsion(self, voie, microsecondes):',
+            '        pas = int(max(500, min(2500, microsecondes)) * 4096 / 20000)',
+            '        i2c.write(self.adr, bytes([0x06 + 4 * voie, 0, 0, pas & 0xFF, pas >> 8]))',
+            '',
+            '    def angle(self, voie, angle):',
+            '        voie = max(0, min(15, int(voie)))',
+            '        angle = max(0, min(180, int(angle)))',
+            '        self._impulsion(voie, 500 + angle * 2000 / 180)',
+            '',
+            '    def continu(self, voie, vitesse):',
+            '        voie = max(0, min(15, int(voie)))',
+            '        vitesse = max(-100, min(100, int(vitesse)))',
+            '        self._impulsion(voie, 1500 + vitesse * 10)',
+            '',
+            'def _grove_servos():',
+            '    return _grove_obj("pca9685", _PiloteServos)',
+        ]);
+    }
+
+    Blockly.Blocks['grove_pca_init'] = { init: function() {
+        this.appendDummyInput().appendField("initialiser le pilote 16 servos à l'adresse")
+            .appendField(new Blockly.FieldDropdown([["0x7F (Grove)", "0x7F"], ["0x40 (autres cartes)", "0x40"]]), "ADRESSE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Pilote 16 servos PCA9685 (port I²C). Facultatif avec le module Grove (adresse 0x7F) ; " +
+                        "indispensable avec une carte à l'adresse 0x40.");
+    }};
+    P.forBlock['grove_pca_init'] = function(block) {
+        pilotePca9685();
+        return '_grove_objets["pca9685"] = _PiloteServos(' + block.getFieldValue('ADRESSE') + ')\n';
+    };
+
+    Blockly.Blocks['grove_pca_angle'] = { init: function() {
+        this.appendValueInput("VOIE").setCheck("Number").appendField("pilote 16 servos : servo n°");
+        this.appendValueInput("ANGLE").setCheck("Number").appendField("à");
+        this.appendDummyInput().appendField("°");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Place le servomoteur branché sur la voie indiquée (0 à 15) à l'angle voulu (0 à 180°).");
+    }};
+    P.forBlock['grove_pca_angle'] = function(block) {
+        pilotePca9685();
+        return '_grove_servos().angle(' + (P.valueToCode(block, 'VOIE', P.ORDER_NONE) || '0') + ', ' +
+               (P.valueToCode(block, 'ANGLE', P.ORDER_NONE) || '90') + ')\n';
+    };
+
+    Blockly.Blocks['grove_pca_continu'] = { init: function() {
+        this.appendValueInput("VOIE").setCheck("Number").appendField("pilote 16 servos : servo continu n°");
+        this.appendValueInput("VITESSE").setCheck("Number").appendField("à");
+        this.appendDummyInput().appendField("%");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Fait tourner le servomoteur à rotation continue de la voie indiquée (0 à 15), de -100 à 100 % ; 0 = arrêt.");
+    }};
+    P.forBlock['grove_pca_continu'] = function(block) {
+        pilotePca9685();
+        return '_grove_servos().continu(' + (P.valueToCode(block, 'VOIE', P.ORDER_NONE) || '0') + ', ' +
+               (P.valueToCode(block, 'VITESSE', P.ORDER_NONE) || '0') + ')\n';
+    };
+
     // --- Capteur de gestes PAJ7620 (I2C) ---
     //
     // Table d'initialisation et registres repris de la bibliotheque Seeed
@@ -5215,6 +5603,13 @@ try {
               ]
             },
             {
+            "kind": "category", "name": "Barre de LED", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_barre_niveau", "inputs": { "NIVEAU": { "shadow": { "type": "math_number", "fields": { "NUM": "5" } } } } },
+              { "kind": "block", "type": "grove_barre_led", "inputs": { "LED": { "shadow": { "type": "math_number", "fields": { "NUM": "1" } } } } }
+              ]
+            },
+            {
             "kind": "category", "name": "Ultrason", "colour": String(COULEUR_GROVE),
             "contents": [
               { "kind": "block", "type": "grove_ultrason_cm" },
@@ -5321,6 +5716,14 @@ try {
               ]
             },
             {
+            "kind": "category", "name": "Pilote 16 servos (PCA9685)", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_pca_init" },
+              { "kind": "block", "type": "grove_pca_angle", "inputs": { "VOIE": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "ANGLE": { "shadow": { "type": "math_number", "fields": { "NUM": "90" } } } } },
+              { "kind": "block", "type": "grove_pca_continu", "inputs": { "VOIE": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "VITESSE": { "shadow": { "type": "math_number", "fields": { "NUM": "50" } } } } }
+              ]
+            },
+            {
             "kind": "category", "name": "CO₂ (SCD30 / SCD41)", "colour": String(COULEUR_GROVE),
             "contents": [
               { "kind": "block", "type": "grove_scd30_init" },
@@ -5328,7 +5731,28 @@ try {
               { "kind": "block", "type": "grove_scd41_init" },
               { "kind": "block", "type": "grove_scd41_lire" }
             ]
+            },
+            {
+            "kind": "category", "name": "Pression (BMP280)", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_bmp280" }
+              ]
+            },
+            {
+            "kind": "category", "name": "Qualité de l'air (SGP30)", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_sgp30" }
+              ]
+            },
+            {
+            "kind": "category", "name": "Horloge (RTC)", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_rtc_regler", "inputs": { "JOUR": { "shadow": { "type": "math_number", "fields": { "NUM": "1" } } }, "MOIS": { "shadow": { "type": "math_number", "fields": { "NUM": "9" } } }, "ANNEE": { "shadow": { "type": "math_number", "fields": { "NUM": "2026" } } }, "HEURE": { "shadow": { "type": "math_number", "fields": { "NUM": "8" } } }, "MINUTE": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "SECONDE": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_rtc_lire" },
+              { "kind": "block", "type": "grove_rtc_texte" }
+              ]
             }
+
             ]
           },
           {
@@ -7294,6 +7718,27 @@ try {
         grove_ultrason_pouces: "Distance mesurée par le capteur à ultrasons branché sur la broche choisie, en pouces.",
         grove_joystick_direction: "Vrai si le joystick est poussé dans la direction choisie (ou au centre). " +
             "Choisir les broches sur lesquelles sont branchés ses axes X et Y.",
+        grove_barre_niveau: "Allume les LED de la barre Grove (10 LED : 1 rouge, 1 orange, 8 vertes) de la première jusqu'au " +
+            "niveau indiqué, de 0 (toutes éteintes) à 10 (toutes allumées). Pratique pour montrer une mesure, par exemple la " +
+            "lumière divisée par 100. Choisir le port Grove où la barre est branchée (deux broches).",
+        grove_barre_led: "Allume ou éteint une seule LED de la barre Grove, numérotée de 1 à 10, sans toucher aux autres.",
+        grove_bmp280: "Mesure du capteur Grove BMP280 (port I²C) : pression de l'air en hectopascals (environ 1013 hPa au " +
+            "niveau de la mer), température en °C, ou altitude estimée en mètres d'après la pression. Dans le simulateur : " +
+            "curseurs « Pression » et « Température » du panneau Grove.",
+        grove_sgp30: "Mesure du capteur de qualité de l'air Grove SGP30 (port I²C) : eCO₂ en ppm (équivalent dioxyde de carbone) " +
+            "ou COV totaux en ppb (composés organiques volatils : solvants, parfums…). Les 15 premières secondes, il rend 400 ppm " +
+            "et 0 ppb pendant qu'il chauffe. Dans le simulateur : curseurs « CO₂ » et « COV totaux ».",
+        grove_rtc_regler: "Met l'horloge temps réel Grove (DS1307 ou DS3231, port I²C) à la date et à l'heure indiquées. À faire " +
+            "une seule fois, puis retirer le bloc : la pile du module garde l'heure, même carte débranchée. Dans le simulateur, " +
+            "l'horloge suit l'heure de l'ordinateur, décalée de ce que le programme a réglé.",
+        grove_rtc_lire: "Lit l'heure (0 à 23), la minute, la seconde, le jour, le mois ou l'année de l'horloge temps réel Grove.",
+        grove_rtc_texte: "L'heure de l'horloge temps réel sous forme de texte « hh:mm:ss », prête à afficher (écran LCD, OLED…).",
+        grove_pca_init: "Prépare le pilote 16 servos PCA9685 (port I²C). Facultatif avec le module Grove (adresse 0x7F) ; " +
+            "indispensable, avec l'adresse 0x40, pour la plupart des autres cartes PCA9685.",
+        grove_pca_angle: "Place le servomoteur branché sur la voie indiquée du pilote 16 servos (0 à 15) à l'angle voulu (0 à 180°). " +
+            "Dans le simulateur, il apparaît dans la zone « Servomoteurs » sous le nom S0 à S15.",
+        grove_pca_continu: "Fait tourner le servomoteur à rotation continue branché sur la voie indiquée (0 à 15), de -100 à 100 % ; " +
+            "0 l'arrête (au réglage près du servo).",
         grove_bouton_appuye: "Vrai tant que le bouton poussoir Grove branché sur la broche choisie est enfoncé. À poser " +
             "dans un « si » d'une boucle. Dans le simulateur : bouton rouge « Appuyer » du panneau Grove (maintenir) ou case " +
             "« maintenu enfoncé ».",
@@ -7783,6 +8228,38 @@ try {
                  exB('grove_4d_nombre', null, { VALEUR: exN(1234) }))]);
     exemple(['grove_joystick_valeur'], 'Valeur de l\'axe X', exTexteMesure,
         exMesure(exB('grove_joystick_valeur', { BROCHE: 'pin0' })));
+    exemple(['grove_barre_niveau'], 'Barre de lumière', "La barre de LED (port P0 / P14) montre la lumière mesurée sur P1 : " +
+        "plus il y a de lumière, plus il y a de LED allumées.",
+        [exLoop(exB('grove_barre_niveau', { PORT: 'pin0, pin14' }, { NIVEAU: exV(exB('math_arithmetic', { OP: 'DIVIDE' },
+            { A: exV(exB('grove_lumiere', { BROCHE: 'pin1', UNITE: 'brut' })), B: exN(100) })) }), exWait(0.2))]);
+    exemple(['grove_barre_led'], 'Chenillard', "Les LED de la barre s'allument l'une après l'autre.",
+        [exLoop(exB('controls_for', { VAR: { name: 'i' } }, { FROM: exN(1), TO: exN(10), BY: exN(1),
+            DO: exDans(exB('grove_barre_led', { PORT: 'pin0, pin14', ETAT: '1' }, { LED: exV(exB('variables_get', { VAR: { name: 'i' } })) }),
+                       exB('attendre_temps', { UNITE: 'ms' }, { TEMPS: exN(100) }),
+                       exB('grove_barre_led', { PORT: 'pin0, pin14', ETAT: '0' }, { LED: exV(exB('variables_get', { VAR: { name: 'i' } })) })) }))]);
+    exemple(['grove_bmp280'], 'Pression atmosphérique', exTexteMesure,
+        exMesure(exB('grove_bmp280', { GRANDEUR: 'pression' })));
+    exemple(['grove_sgp30'], 'Qualité de l\'air', "Un visage triste s'affiche quand les COV dépassent 500 ppb, un visage content sinon.",
+        [exLoop(exB('controls_if', { }, { IF0: exV(exComp('GT', exB('grove_sgp30', { GRANDEUR: 'cov' }), exB('math_number', { NUM: 500 }))),
+            DO0: exDans(exIcone('SAD')) }), exB('controls_if', null, { IF0: exV(exComp('LTE', exB('grove_sgp30', { GRANDEUR: 'cov' }),
+            exB('math_number', { NUM: 500 }))), DO0: exDans(exIcone('HAPPY')) }), exWait(1))]);
+    exemple(['grove_rtc_regler', 'grove_rtc_texte'], 'Afficher l\'heure', "Règle l'horloge une fois, puis fait défiler l'heure " +
+        "toutes les 5 secondes.",
+        [exStart(exB('grove_rtc_regler', null, { JOUR: exN(1), MOIS: exN(9), ANNEE: exN(2026), HEURE: exN(8), MINUTE: exN(0), SECONDE: exN(0) })),
+         exLoop(exB('faire_defiler', null, { VALEUR: exV(exB('grove_rtc_texte')) }), exWait(5))]);
+    exemple(['grove_rtc_lire'], 'Réveil', "Le buzzer (P0) sonne à 7 h 30.",
+        [exLoop(exSi(exB('logic_operation', { OP: 'AND' }, {
+            A: exV(exComp('EQ', exB('grove_rtc_lire', { CHAMP: 'heure' }), exB('math_number', { NUM: 7 }))),
+            B: exV(exComp('EQ', exB('grove_rtc_lire', { CHAMP: 'minute' }), exB('math_number', { NUM: 30 }))) }),
+            exB('grove_buzzer_bip', { BROCHE: 'pin0' }, { DUREE: exN(500) })), exWait(1))]);
+    exemple(['grove_pca_init', 'grove_pca_angle'], 'Balayage d\'un servo', "Le servo branché sur la voie 0 du pilote 16 servos " +
+        "va de 0 à 180° puis revient.",
+        [exStart(exB('grove_pca_init', { ADRESSE: '0x7F' })),
+         exLoop(exB('grove_pca_angle', null, { VOIE: exN(0), ANGLE: exN(0) }), exWait(1),
+                exB('grove_pca_angle', null, { VOIE: exN(0), ANGLE: exN(180) }), exWait(1))]);
+    exemple(['grove_pca_continu'], 'Servo continu', "Le servo continu de la voie 1 tourne 2 secondes dans un sens, puis dans l'autre.",
+        [exLoop(exB('grove_pca_continu', null, { VOIE: exN(1), VITESSE: exN(60) }), exWait(2),
+                exB('grove_pca_continu', null, { VOIE: exN(1), VITESSE: exN(-60) }), exWait(2))]);
     exemple(['grove_bouton_lorsque'], 'Compter les appuis', "Chaque appui sur le bouton poussoir (P0) ajoute 1 au compteur affiché.",
         [exStart(exB('variables_set', { VAR: { name: 'compteur' } }, { VALUE: exN(0) })),
          exWhen('grove_bouton_lorsque', { BROCHE: 'pin0' },
@@ -8870,6 +9347,8 @@ try {
         // n'est pas une simple comparaison.
         const ia = reconstruireExpressionIA(noeud);
         if (ia) return ia;
+        const grove = reconstruireExpressionGrove(noeud);
+        if (grove) return grove;
 
         if (noeud._type === 'Name') {
             // Variable Blockly : le nom sert aussi d'identifiant Blockly, une
@@ -9002,6 +9481,13 @@ try {
         // ---- Assign : reset_chrono, kitrobot_definir_ultrason ----
         if (n._type === 'Assign' && n.targets.length === 1) {
             const cible = n.targets[0];
+            // _grove_objets["pca9685"] = _PiloteServos(0x7F ou 0x40) : bloc « initialiser le pilote 16 servos ».
+            if (cible._type === 'Subscript' && cible.value._type === 'Name' && cible.value.id === '_grove_objets' &&
+                valeurConstante(cible.slice) === 'pca9685' && estAppel(n.value, '_PiloteServos') && n.value.args.length === 1 &&
+                (valeurConstante(n.value.args[0]) === 0x7F || valeurConstante(n.value.args[0]) === 0x40)) {
+                return { bloc: { type: 'grove_pca_init', fields: { ADRESSE: valeurConstante(n.value.args[0]) === 0x40 ? '0x40' : '0x7F' } },
+                         consommees: 1 };
+            }
             // _grove_objets["oled"] = _EcranOLED() : bloc « initialiser l'ecran OLED ».
             if (cible._type === 'Subscript' && cible.value._type === 'Name' && cible.value.id === '_grove_objets' &&
                 valeurConstante(cible.slice) === 'oled' && estAppel(n.value, '_EcranOLED')) {
@@ -9043,6 +9529,31 @@ try {
             appel.args[0]._type === 'Attribute' && appel.args[0].value._type === 'Name' &&
             appel.args[0].value.id === appel.func.value.id && appel.args[0].attr === 'CAPACITIVE') {
             return { bloc: null, consommees: 1 };
+        }
+
+        // ---- Deuxieme lot Grove : barre de LED, horloge, pilote 16 servos ----
+        let mg;
+        if ((mg = appelMethodeGrove(appel, '_grove_barre')) && mg[2].length === 2 &&
+            identifiantNom(mg[2][0]) !== undefined && identifiantNom(mg[2][1]) !== undefined) {
+            const port = identifiantNom(mg[2][0]) + ', ' + identifiantNom(mg[2][1]);
+            if (mg[0] === 'niveau' && mg[1].length === 1) {
+                return { bloc: { type: 'grove_barre_niveau', fields: { PORT: port },
+                                 inputs: { NIVEAU: { block: reconstruireExpression(mg[1][0]) } } }, consommees: 1 };
+            }
+            if (mg[0] === 'led' && mg[1].length === 2 && (valeurConstante(mg[1][1]) === 0 || valeurConstante(mg[1][1]) === 1)) {
+                return { bloc: { type: 'grove_barre_led', fields: { PORT: port, ETAT: String(valeurConstante(mg[1][1])) },
+                                 inputs: { LED: { block: reconstruireExpression(mg[1][0]) } } }, consommees: 1 };
+            }
+        }
+        if ((mg = appelMethodeGrove(appel, '_grove_rtc')) && mg[0] === 'regler' && mg[1].length === 6) {
+            const noms = ['ANNEE', 'MOIS', 'JOUR', 'HEURE', 'MINUTE', 'SECONDE'], inputs = {};
+            noms.forEach((nom, i) => { inputs[nom] = { block: reconstruireExpression(mg[1][i]) }; });
+            return { bloc: { type: 'grove_rtc_regler', inputs }, consommees: 1 };
+        }
+        if ((mg = appelMethodeGrove(appel, '_grove_servos')) && mg[1].length === 2 && (mg[0] === 'angle' || mg[0] === 'continu')) {
+            return { bloc: { type: mg[0] === 'angle' ? 'grove_pca_angle' : 'grove_pca_continu', inputs: {
+                VOIE: { block: reconstruireExpression(mg[1][0]) },
+                [mg[0] === 'angle' ? 'ANGLE' : 'VITESSE']: { block: reconstruireExpression(mg[1][1]) } } }, consommees: 1 };
         }
 
         // ---- Premier lot Grove : _grove_buzzer / _grove_relais(pinX, 0 ou 1), _grove_buzzer_bip(pinX, duree),
@@ -9314,6 +9825,29 @@ try {
         if (noeud.value.id !== '_ia_dernier' && noeud.value.id !== '_ia_proba') return null;
         const genre = valeurConstante(noeud.slice);
         return ['vision', 'son', 'qr'].includes(genre) ? [noeud.value.id, genre] : null;
+    }
+
+    /** `_fabrique().methode(args)` -> [methode, args] si le motif correspond, sinon null. */
+    function appelMethodeGrove(noeud, fabrique) {
+        if (!noeud || noeud._type !== 'Call' || !noeud.func || noeud.func._type !== 'Attribute') return null;
+        if (!estAppel(noeud.func.value, fabrique)) return null;
+        return [noeud.func.attr, noeud.args, noeud.func.value.args];
+    }
+
+    /** Expressions du deuxieme lot Grove (BMP280, SGP30, horloge) -> bloc, sinon null. */
+    function reconstruireExpressionGrove(noeud) {
+        let m;
+        if ((m = appelMethodeGrove(noeud, '_grove_bmp280')) && m[0] === 'mesure' && typeof valeurConstante(m[1][0]) === 'string') {
+            return { type: 'grove_bmp280', fields: { GRANDEUR: valeurConstante(m[1][0]) } };
+        }
+        if ((m = appelMethodeGrove(noeud, '_grove_sgp30')) && m[0] === 'mesure' && typeof valeurConstante(m[1][0]) === 'string') {
+            return { type: 'grove_sgp30', fields: { GRANDEUR: valeurConstante(m[1][0]) } };
+        }
+        if ((m = appelMethodeGrove(noeud, '_grove_rtc'))) {
+            if (m[0] === 'lire' && typeof valeurConstante(m[1][0]) === 'string') return { type: 'grove_rtc_lire', fields: { CHAMP: valeurConstante(m[1][0]) } };
+            if (m[0] === 'texte' && m[1].length === 0) return { type: 'grove_rtc_texte' };
+        }
+        return null;
     }
 
     /** Expressions des blocs IA (generateurs de un.js, section « IA ») -> bloc, sinon null. */
@@ -9960,6 +10494,12 @@ try {
     const zoneRelais = document.getElementById('grove-relais');
     const toileOled = document.getElementById('grove-oled');
     let boutonPoussoirEnfonce = false;
+    // Deuxieme lot Grove
+    const curseurPression = document.getElementById('grove-pression');
+    const curseurCov = document.getElementById('grove-cov');
+    const zoneBarreLed = document.getElementById('grove-barreled');
+    const zoneRtc = document.getElementById('grove-rtc');
+    let decalageRtc = 0;            // ms entre l'horloge simulee et celle du PC (reglee par le programme)
     const valeurPotentiometre = document.getElementById('grove-pot-val');
     const menuGesteGrove = document.getElementById('grove-geste');
     const boutonGesteGrove = document.getElementById('grove-geste-btn');
@@ -10163,11 +10703,15 @@ try {
         ['grove-sec-lcd',      /^grove_lcd(rgb)?_/],
         // Les SCD mesurent aussi température et humidité : leurs curseurs
         // servent donc aux trois capteurs.
-        ['grove-sec-th',       /^grove_(th|scd30|scd41)_/],
-        ['grove-sec-co2',      /^grove_scd(30|41)_/],
+        ['grove-sec-th',       /^grove_(th_|scd30_|scd41_|bmp280$)/],
+        ['grove-sec-co2',      /^grove_(scd(30|41)_|sgp30$)/],
+        ['grove-sec-pression', /^grove_bmp280$/],
+        ['grove-sec-cov',      /^grove_sgp30$/],
+        ['grove-sec-rtc',      /^grove_rtc_/],
+        ['grove-sec-barreled', /^grove_barre_/],
         ['grove-sec-couleur',  /^grove_couleur_/],
         ['grove-sec-moteurs',  /^grove_moteur_/],
-        ['grove-sec-servos',   /^servo_/],
+        ['grove-sec-servos',   /^(servo_|grove_pca_)/],
         ['grove-sec-radio',    /^radio_quand_recu$/],
     ];
 
@@ -10297,6 +10841,8 @@ try {
         tamponOled = tamponOled.map(() => ' '.repeat(21));
         oledActif = false;
         dessinerOled();
+        dessinerBarreLed('');
+        afficherRtc();
     }
 
     window.simu_rubanDefinir = function(nombre) {
@@ -11415,6 +11961,8 @@ try {
         const g = String(grandeur);
         if (g === 'humidite') return curseurHumi ? Number(curseurHumi.value) : 0;
         if (g === 'co2') return curseurCo2 ? Number(curseurCo2.value) : 0;
+        if (g === 'pression') return curseurPression ? Number(curseurPression.value) : 1013;
+        if (g === 'cov') return curseurCov ? Number(curseurCov.value) : 0;
         return curseurTemp ? Number(curseurTemp.value) : 0;
     };
     window.simu_couleurCanal = function(canal) {
@@ -11437,6 +11985,38 @@ try {
         if (id === '1') return curseurJY ? Number(curseurJY.value) : 512;
         return curseurJX ? Number(curseurJX.value) : 512;
     };
+    /** Barre de LED : etat des 10 LED (« 1,1,0,... »), mis en file comme les autres sorties. */
+    window.simu_barreLed = function(leds) {
+        window.simuQueue.push({ type: 'barreLed', leds: String(leds) });
+    };
+    /** Horloge temps reel : heure du PC decalee de ce que le programme a regle (comme la pile du module). */
+    function heureRtc() { return new Date(Date.now() + decalageRtc); }
+    window.simu_rtc = function(champ) {
+        const d = heureRtc(), deux = v => String(v).padStart(2, '0');
+        if (champ === 'texte') return deux(d.getHours()) + ':' + deux(d.getMinutes()) + ':' + deux(d.getSeconds());
+        return { heure: d.getHours(), minute: d.getMinutes(), seconde: d.getSeconds(), jour: d.getDate(),
+                 mois: d.getMonth() + 1, annee: d.getFullYear() }[champ] || 0;
+    };
+    window.simu_rtcRegler = function(annee, mois, jour, heure, minute, seconde) {
+        decalageRtc = new Date(annee, mois - 1, jour, heure, minute, seconde).getTime() - Date.now();
+        afficherRtc();
+    };
+    function afficherRtc() {
+        if (!zoneRtc) return;
+        const d = heureRtc(), deux = v => String(v).padStart(2, '0');
+        zoneRtc.innerHTML = '<span class="rtc-heure">' + window.simu_rtc('texte') + '</span>' +
+            '<span class="rtc-date">' + deux(d.getDate()) + '/' + deux(d.getMonth() + 1) + '/' + d.getFullYear() + '</span>';
+    }
+    setInterval(() => { if (zoneRtc && zoneRtc.offsetParent) afficherRtc(); }, 1000);
+
+    function dessinerBarreLed(leds) {
+        if (!zoneBarreLed) return;
+        const etats = String(leds || '').split(',').map(Number);
+        // Couleurs du module : LED 1 rouge, 2 orange, 3 a 10 vertes.
+        zoneBarreLed.innerHTML = Array.from({ length: 10 }, (_, i) =>
+            '<span class="barre-led' + (i === 0 ? ' rouge' : i === 1 ? ' orange' : '') + (etats[i] ? ' on' : '') + '"></span>').join('');
+    }
+
     /** Premier lot Grove : entrees lues a l'instant ou le programme les demande. */
     window.simu_groveEntree = function(nom) {
         if (nom === 'bouton') return boutonPoussoirEnfonce || (caseBoutonPoussoir && caseBoutonPoussoir.checked) ? 1 : 0;
@@ -11582,6 +12162,12 @@ try {
         casePir.addEventListener('change', majPir);
         majPir();
     }
+    [['grove-pression', 'grove-pression-val'], ['grove-cov', 'grove-cov-val']].forEach(([idCurseur, idValeur]) => {
+        const c = document.getElementById(idCurseur), v = document.getElementById(idValeur);
+        if (c && v) c.addEventListener('input', () => { v.textContent = c.value; });
+    });
+    dessinerBarreLed('');
+    afficherRtc();
     if (curseurLumiere) curseurLumiere.addEventListener('input', () => {
         valeurLumiere.textContent = curseurLumiere.value + ' (' + Math.round(Number(curseurLumiere.value) * 100 / 1023) + ' %)';
     });
@@ -11780,6 +12366,10 @@ try {
         else if (action.type === 'groveSortie') {
             if (etatSortiesGrove[action.nom]) etatSortiesGrove[action.nom][action.broche] = action.valeur ? 1 : 0;
             dessinerSortiesGrove();
+            window.simu_playQueue();
+        }
+        else if (action.type === 'barreLed') {
+            dessinerBarreLed(action.leds);
             window.simu_playQueue();
         }
         else if (action.type === 'oled') {
