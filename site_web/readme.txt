@@ -1384,7 +1384,7 @@ Blocs en contraste eleve : clair = fond blanc, bord noir 3 px, texte noir ; somb
 
 Bandeau du haut : fond ORANGE (clair #ff5501 = charte Technologie Services, sombre #d94700 un peu plus profond), filet bas orange fonce #b33a00 ; en contraste eleve il reste noir. Variables --bandeau / --bandeau-sombre / --accent-fonce (index.html).
 
-Logo (barre d'outils et fenetre d'aide des blocs) et mention « RAJ Editions » retires de index.html ; le bandeau affiche seulement le numero de version. logo.png n'est plus utilise par la page (il reste dans app.spec, sans effet). Les proprietes du fichier .exe (version_info.txt, CompanyName) gardent « RAJ Editions » : a changer separement si besoin.
+Logo (barre d'outils et fenetre d'aide des blocs) et mention « RAJ Editions » retires de index.html ; le numero de version est affiche en derniere ligne du menu Aide (« Version V2.0E »). logo.png n'est plus utilise par la page (il reste dans app.spec, sans effet). Les proprietes du fichier .exe (version_info.txt, CompanyName) gardent « RAJ Editions » : a changer separement si besoin.
 
 31. EXERCICES PAS A PAS ET MODE EVALUATION (copie d'essai)
 Fichiers : exercices.js (moteur, charge apres bandeau.js) et exercices.json (les 16 exercices en 5 niveaux, modifiable a la main : voir le champ « aide_enseignant »).

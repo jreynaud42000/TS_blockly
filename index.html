@@ -231,7 +231,9 @@
     #tb-lancer.running { background: #c0392b; }
     #tb-lancer.running:hover { background: #a5322a; }
 
-    #copyright-toolbar { color: rgba(255,255,255,0.75); font-size: 11px; white-space: nowrap; margin: 0 6px; }
+    /* Version : derniere ligne du menu Aide, discrete, separee des entrees par un filet. */
+    .menu-version { padding: 7px 14px 8px; border-top: 1px solid rgba(128,128,128,0.35); font-size: 11.5px;
+        color: #888; white-space: nowrap; cursor: default; user-select: text; }
 
     /* Voyant de connexion de la carte (bouton Console) : anneau vide = non connectee, disque plein vert = connectee.
        La forme change en plus de la couleur (lisible sans distinguer les teintes). */
@@ -1318,8 +1320,6 @@
 
     <button id="btn-options" class="btn-vue" title="Panneau administrateur">Options</button>
     <span id="etat"></span>
-    <span id="copyright-toolbar">V2.0E</span>
-
     <!-- 19. Aide : tout a droite, s'ouvre vers la gauche -->
     <div id="menu-aide-conteneur" class="tb-dropdown menu-deroulant">
       <button id="menu-aide-btn" class="tb-btn menu-btn" title="Visites guidées">
@@ -1334,6 +1334,9 @@
         <button id="tb-mission" disabled title="Non disponible dans cette version">🚀 Mon premier programme</button>
         <button id="tuto-clicdroit-menu-btn">🖱 Visite guidée clic droit</button>
         <button id="tuto-console-menu-btn">⌨ Visite guidée Console</button>
+        <!-- Numero de version : en dernier dans le menu Aide (texte de #copyright-toolbar, a tenir
+             identique a app.py, app.spec et version_info.txt). Simple mention, pas un bouton. -->
+        <div class="menu-version">Version <span id="copyright-toolbar">V2.0E</span></div>
       </div>
     </div>
   </div>
