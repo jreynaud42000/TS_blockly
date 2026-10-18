@@ -1097,6 +1097,25 @@
        transition. Un servo a rotation continue tourne sans fin : rotation
        animee par des images cles, dont la duree vient de la vitesse. */
     .servo { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px; }
+    /* Premier lot Grove : bouton poussoir, buzzer, relais, ecran OLED. */
+    .grove-bouton-poussoir { width: 56px; height: 56px; border-radius: 50%; border: 4px solid #3b3f46; background: #d93a2b;
+        color: #fff; font-size: 11px; font-weight: 600; cursor: pointer; margin: 4px auto; display: block;
+        box-shadow: 0 3px 0 #8f2419; touch-action: none; user-select: none; }
+    .grove-bouton-poussoir.enfonce { transform: translateY(3px); box-shadow: 0 0 0 #8f2419; background: #b52e21; }
+    .grove-sortie { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 2px 0; }
+    .buzzer-pastille { width: 14px; height: 14px; border-radius: 50%; background: #3b3f46; border: 2px solid #6b7480; box-sizing: border-box; }
+    .buzzer-pastille.on { background: #ffb020; border-color: #ffd27a; animation: buzzer-vibre 0.12s linear infinite; }
+    @keyframes buzzer-vibre { 50% { transform: translateX(1px); } }
+    .relais-contact { position: relative; width: 26px; height: 14px; }
+    .relais-contact::before, .relais-contact::after { content: ''; position: absolute; top: 9px; width: 4px; height: 4px;
+        border-radius: 50%; background: #9aa4ad; }
+    .relais-contact::before { left: 0; } .relais-contact::after { right: 0; }
+    .relais-contact > i { position: absolute; left: 3px; top: 10px; width: 20px; height: 2px; background: #9aa4ad;
+        transform-origin: left center; transform: rotate(-30deg); transition: transform .15s; }
+    .relais-contact.ferme > i { transform: rotate(0deg); background: #2ecc71; }
+    #grove-oled { display: block; width: 100%; max-width: 256px; margin: 4px auto 0; image-rendering: pixelated;
+        border: 6px solid #1f6fb2; border-radius: 4px; box-sizing: border-box; background: #04070b; }
+
     /* Potentiometre Grove (module dessine) : le bouton tourne de -150° a +150° autour de son axe (60, 52). */
     #grove-pot-visuel { display: block; margin: 2px auto 4px; cursor: grab; touch-action: none; }
     #grove-pot-visuel:active { cursor: grabbing; }
@@ -1587,6 +1606,38 @@
             <g id="grove-pot-rotor"><circle class="pot-bouton" cx="60" cy="52" r="18"/><rect class="pot-repere" x="58" y="34" width="4" height="14" rx="2"/></g>
           </svg>
           <input type="range" id="grove-pot" min="0" max="1023" value="512">
+        </div>
+
+        <!-- Premier lot Grove (un.js : simu_groveEntree, simu_groveSortie, simu_oled) -->
+        <div class="grove-bloc" id="grove-sec-bouton">
+          <span class="grove-titre">Bouton poussoir</span>
+          <button id="grove-bouton-appui" class="grove-bouton-poussoir" title="Maintenir enfoncé pour appuyer sur le bouton">Appuyer</button>
+          <label class="grove-case"><input type="checkbox" id="grove-bouton-maintenu"> maintenu enfoncé</label>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-lumiere">
+          <label class="grove-titre" for="grove-lumiere">Lumière : <b id="grove-lumiere-val">512 (50 %)</b></label>
+          <input type="range" id="grove-lumiere" min="0" max="1023" value="512">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-pir">
+          <span class="grove-titre">Détecteur de mouvement</span>
+          <label class="grove-case"><input type="checkbox" id="grove-pir"> mouvement détecté</label>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-buzzer">
+          <span class="grove-titre">Buzzer</span>
+          <div id="grove-buzzer"><span class="grove-vide">aucun</span></div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-relais">
+          <span class="grove-titre">Relais</span>
+          <div id="grove-relais"><span class="grove-vide">aucun</span></div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-oled">
+          <span class="grove-titre">Écran OLED 0,96"</span>
+          <canvas id="grove-oled" width="256" height="128" role="img" aria-label="Écran OLED simulé"></canvas>
         </div>
 
         <div class="grove-bloc" id="grove-sec-gestes">
@@ -2511,6 +2562,29 @@
     def _grove_distance_cm(broche): return int(window.simu_distanceCm())
     def _grove_distance_pouces(broche): return int(int(window.simu_distanceCm()) / 2.54)
     def _grove_joystick(bx, by, direction): return bool(window.simu_joystickDirection(direction))
+    # Premier lot Grove : commandes du panneau a la place des broches.
+    _grove_bouton_avant = {}
+    def _grove_bouton(broche): return bool(window.simu_groveEntree('bouton'))
+    def _grove_bouton_front(broche):
+        etat = bool(window.simu_groveEntree('bouton'))
+        avant = _grove_bouton_avant.get(broche.id_pin, False)
+        _grove_bouton_avant[broche.id_pin] = etat
+        return etat and not avant
+    def _grove_lumiere(broche, unite):
+        v = int(window.simu_groveEntree('lumiere'))
+        return round(v * 100 / 1023) if unite == "pourcent" else v
+    def _grove_pir(broche): return bool(window.simu_groveEntree('pir'))
+    def _grove_buzzer(broche, etat): window.simu_groveSortie('buzzer', broche.id_pin, 1 if etat else 0)
+    def _grove_buzzer_bip(broche, duree):
+        window.simu_groveSortie('buzzer', broche.id_pin, 1)
+        sleep(int(duree))
+        window.simu_groveSortie('buzzer', broche.id_pin, 0)
+    def _grove_relais(broche, etat): window.simu_groveSortie('relais', broche.id_pin, 1 if etat else 0)
+    class _EcranOLEDMock:
+        def __init__(self): window.simu_oled('init', '', 0, 0)
+        def effacer(self): window.simu_oled('effacer', '', 0, 0)
+        def texte(self, message, x, y): window.simu_oled('texte', str(message), int(x), int(y))
+    def _grove_oled(): return _grove_obj('oled', _EcranOLEDMock)
     # Potentiometre : le curseur du panneau Grove remplace la broche analogique.
     def _grove_potentiometre(broche, unite):
         v = int(window.simu_potentiometre())
@@ -2993,6 +3067,7 @@
         # ne doit surtout pas passer par ici : c'est justement ce qui doit
         # persister d'un declenchement au suivant.
         _grove_objets.clear()
+        _grove_bouton_avant.clear()
         _SERVO_ETAT_SIMU.clear()
         # Les pilotes Grove pilotent de vraies broches : on les retire et ce sont
         # les classes ci-dessus, injectees dans env, qui prennent le relais.
@@ -3029,6 +3104,10 @@
             '_grove_distance_pouces': _grove_distance_pouces,
             '_grove_joystick': _grove_joystick,
             '_grove_potentiometre': _grove_potentiometre,
+            '_grove_bouton': _grove_bouton, '_grove_bouton_front': _grove_bouton_front,
+            '_grove_lumiere': _grove_lumiere, '_grove_pir': _grove_pir,
+            '_grove_buzzer': _grove_buzzer, '_grove_buzzer_bip': _grove_buzzer_bip, '_grove_relais': _grove_relais,
+            '_EcranOLED': _EcranOLEDMock, '_grove_oled': _grove_oled,
             '_CapteurGestes': _CapteurGestesMock,
             '_CapteurTH': _CapteurTHMock, '_EcranLCD': _EcranLCDMock, '_EcranLCDRGB': _EcranLCDRGBMock,
             '_CapteurCouleur': _CapteurCouleurMock,

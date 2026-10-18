@@ -1910,6 +1910,327 @@ try {
                 P.ORDER_FUNCTION_CALL];
     };
 
+    // ======================================================================
+    // PREMIER LOT GROVE (oct. 2026) : bouton poussoir, capteur de lumiere,
+    // detecteur de mouvement PIR, buzzer, relais, ecran OLED 0,96".
+    // ======================================================================
+    // Chaque module passe par une fonction de pilote a son nom (_grove_bouton,
+    // _grove_relais...) plutot que par read_digital()/write_digital() directs :
+    // le simulateur remplace ces fonctions par ses commandes (panneau Grove)
+    // sans les confondre avec une LED ou un joystick sur la meme broche.
+
+    // --- Bouton poussoir (Grove Button : niveau haut quand il est enfonce) ---
+
+    function piloteBouton() {
+        importerMicrobit();
+        pilote('bouton', [
+            '_grove_bouton_avant = {}',
+            '',
+            'def _grove_bouton(broche):',
+            '    return broche.read_digital() == 1',
+            '',
+            '# Vrai une seule fois par appui (front montant) : pour « lorsque le bouton est appuye ».',
+            'def _grove_bouton_front(broche):',
+            '    etat = broche.read_digital() == 1',
+            '    avant = _grove_bouton_avant.get(id(broche), False)',
+            '    _grove_bouton_avant[id(broche)] = etat',
+            '    return etat and not avant',
+        ]);
+    }
+
+    Blockly.Blocks['grove_bouton_appuye'] = { init: function() {
+        this.appendDummyInput().appendField("bouton poussoir sur").appendField(menuBroche(), "BROCHE")
+            .appendField("appuyé");
+        this.setOutput(true, "Boolean");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Vrai tant que le bouton poussoir Grove est enfoncé.");
+    }};
+    P.forBlock['grove_bouton_appuye'] = function(block) {
+        piloteBouton();
+        return ['_grove_bouton(' + block.getFieldValue('BROCHE') + ')', P.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['grove_bouton_lorsque'] = { init: function() {
+        this.appendDummyInput().appendField("lorsque le bouton poussoir sur").appendField(menuBroche(), "BROCHE")
+            .appendField("est appuyé");
+        this.appendStatementInput("DO").setCheck(null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("S'exécute une fois à chaque appui sur le bouton poussoir Grove.");
+    }};
+    P.forBlock['grove_bouton_lorsque'] = function(block) {
+        piloteBouton();
+        return declarerGestionnaire('on_grove_bouton_' + block.getFieldValue('BROCHE'), P.statementToCode(block, 'DO'));
+    };
+
+    // --- Capteur de lumiere (Grove Light Sensor : tension plus haute quand il y a plus de lumiere) ---
+
+    function piloteLumiere() {
+        importerMicrobit();
+        pilote('lumiere', [
+            'def _grove_lumiere(broche, unite):',
+            '    v = broche.read_analog()',
+            '    if unite == "pourcent":',
+            '        return round(v * 100 / 1023)',
+            '    return v',
+        ]);
+    }
+
+    Blockly.Blocks['grove_lumiere'] = { init: function() {
+        this.appendDummyInput().appendField("luminosité sur").appendField(menuBroche(), "BROCHE")
+            .appendField("en").appendField(new Blockly.FieldDropdown([
+                ["valeur (0 à 1023)", "brut"], ["pourcentage (0 à 100 %)", "pourcent"]
+            ]), "UNITE");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Lumière reçue par le capteur de lumière Grove : plus il y a de lumière, plus la valeur " +
+                        "est grande. À brancher sur P0, P1 ou P2 (entrées analogiques).");
+    }};
+    P.forBlock['grove_lumiere'] = function(block) {
+        piloteLumiere();
+        return ['_grove_lumiere(' + block.getFieldValue('BROCHE') + ', "' + block.getFieldValue('UNITE') + '")',
+                P.ORDER_FUNCTION_CALL];
+    };
+
+    // --- Detecteur de mouvement PIR (Grove mini PIR : niveau haut quand un mouvement est vu) ---
+
+    function pilotePir() {
+        importerMicrobit();
+        pilote('pir', [
+            'def _grove_pir(broche):',
+            '    return broche.read_digital() == 1',
+        ]);
+    }
+
+    Blockly.Blocks['grove_pir'] = { init: function() {
+        this.appendDummyInput().appendField("mouvement détecté sur").appendField(menuBroche(), "BROCHE");
+        this.setOutput(true, "Boolean");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Vrai quand le détecteur de mouvement PIR Grove voit bouger une personne ou un animal.");
+    }};
+    P.forBlock['grove_pir'] = function(block) {
+        pilotePir();
+        return ['_grove_pir(' + block.getFieldValue('BROCHE') + ')', P.ORDER_FUNCTION_CALL];
+    };
+
+    // --- Buzzer (Grove Buzzer, actif : il sonne tant que sa broche est au niveau haut) ---
+
+    function piloteBuzzer() {
+        importerMicrobit();
+        pilote('buzzer', [
+            'def _grove_buzzer(broche, etat):',
+            '    broche.write_digital(1 if etat else 0)',
+            '',
+            'def _grove_buzzer_bip(broche, duree):',
+            '    broche.write_digital(1)',
+            '    sleep(int(duree))',
+            '    broche.write_digital(0)',
+        ]);
+    }
+
+    Blockly.Blocks['grove_buzzer_etat'] = { init: function() {
+        this.appendDummyInput().appendField("buzzer sur").appendField(menuBroche(), "BROCHE")
+            .appendField(new Blockly.FieldDropdown([["marche", "1"], ["arrêt", "0"]]), "ETAT");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Fait sonner le buzzer Grove (marche) ou le fait taire (arrêt).");
+    }};
+    P.forBlock['grove_buzzer_etat'] = function(block) {
+        piloteBuzzer();
+        return '_grove_buzzer(' + block.getFieldValue('BROCHE') + ', ' + block.getFieldValue('ETAT') + ')\n';
+    };
+
+    Blockly.Blocks['grove_buzzer_bip'] = { init: function() {
+        this.appendValueInput("DUREE").setCheck("Number").appendField("bip du buzzer sur")
+            .appendField(menuBroche(), "BROCHE").appendField("pendant");
+        this.appendDummyInput().appendField("ms");
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Fait sonner le buzzer Grove pendant la durée indiquée (en millisecondes), puis l'arrête.");
+    }};
+    P.forBlock['grove_buzzer_bip'] = function(block) {
+        piloteBuzzer();
+        return '_grove_buzzer_bip(' + block.getFieldValue('BROCHE') + ', ' +
+               (P.valueToCode(block, 'DUREE', P.ORDER_NONE) || '200') + ')\n';
+    };
+
+    // --- Relais (Grove Relay : contact ferme tant que la broche est au niveau haut) ---
+
+    function piloteRelais() {
+        importerMicrobit();
+        pilote('relais', [
+            'def _grove_relais(broche, etat):',
+            '    broche.write_digital(1 if etat else 0)',
+        ]);
+    }
+
+    Blockly.Blocks['grove_relais'] = { init: function() {
+        this.appendDummyInput().appendField("relais sur").appendField(menuBroche(), "BROCHE")
+            .appendField(new Blockly.FieldDropdown([["fermé (marche)", "1"], ["ouvert (arrêt)", "0"]]), "ETAT");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Ferme le contact du relais Grove (l'appareil branché dessus fonctionne) ou l'ouvre (arrêt).");
+    }};
+    P.forBlock['grove_relais'] = function(block) {
+        piloteRelais();
+        return '_grove_relais(' + block.getFieldValue('BROCHE') + ', ' + block.getFieldValue('ETAT') + ')\n';
+    };
+
+    // --- Ecran OLED 0,96" 128x64 (Grove OLED Display 0.96", SSD1315 / SSD1306, I2C 0x3C) ---
+    //
+    // Mode texte, sans memoire d'image (la carte V1 n'a que 16 Ko) : chaque caractere est
+    // ecrit directement dans l'ecran, 21 colonnes de 6 points sur 8 lignes de 8 points.
+    // Police 5x7 classique (ASCII 32 a 126), la meme que le simulateur dessine (POLICE_OLED).
+    // Les accents courants sont ramenes a la lettre simple, le reste devient « ? ».
+
+    const POLICE_OLED = [
+        0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x5F,0x00,0x00, 0x00,0x07,0x00,0x07,0x00, 0x14,0x7F,0x14,0x7F,0x14,
+        0x24,0x2A,0x7F,0x2A,0x12, 0x23,0x13,0x08,0x64,0x62, 0x36,0x49,0x56,0x20,0x50, 0x00,0x05,0x03,0x00,0x00,
+        0x00,0x1C,0x22,0x41,0x00, 0x00,0x41,0x22,0x1C,0x00, 0x14,0x08,0x3E,0x08,0x14, 0x08,0x08,0x3E,0x08,0x08,
+        0x00,0x50,0x30,0x00,0x00, 0x08,0x08,0x08,0x08,0x08, 0x00,0x60,0x60,0x00,0x00, 0x20,0x10,0x08,0x04,0x02,
+        0x3E,0x51,0x49,0x45,0x3E, 0x00,0x42,0x7F,0x40,0x00, 0x42,0x61,0x51,0x49,0x46, 0x21,0x41,0x45,0x4B,0x31,
+        0x18,0x14,0x12,0x7F,0x10, 0x27,0x45,0x45,0x45,0x39, 0x3C,0x4A,0x49,0x49,0x30, 0x01,0x71,0x09,0x05,0x03,
+        0x36,0x49,0x49,0x49,0x36, 0x06,0x49,0x49,0x29,0x1E, 0x00,0x36,0x36,0x00,0x00, 0x00,0x56,0x36,0x00,0x00,
+        0x08,0x14,0x22,0x41,0x00, 0x14,0x14,0x14,0x14,0x14, 0x00,0x41,0x22,0x14,0x08, 0x02,0x01,0x51,0x09,0x06,
+        0x32,0x49,0x79,0x41,0x3E, 0x7E,0x11,0x11,0x11,0x7E, 0x7F,0x49,0x49,0x49,0x36, 0x3E,0x41,0x41,0x41,0x22,
+        0x7F,0x41,0x41,0x22,0x1C, 0x7F,0x49,0x49,0x49,0x41, 0x7F,0x09,0x09,0x09,0x01, 0x3E,0x41,0x49,0x49,0x7A,
+        0x7F,0x08,0x08,0x08,0x7F, 0x00,0x41,0x7F,0x41,0x00, 0x20,0x40,0x41,0x3F,0x01, 0x7F,0x08,0x14,0x22,0x41,
+        0x7F,0x40,0x40,0x40,0x40, 0x7F,0x02,0x0C,0x02,0x7F, 0x7F,0x04,0x08,0x10,0x7F, 0x3E,0x41,0x41,0x41,0x3E,
+        0x7F,0x09,0x09,0x09,0x06, 0x3E,0x41,0x51,0x21,0x5E, 0x7F,0x09,0x19,0x29,0x46, 0x46,0x49,0x49,0x49,0x31,
+        0x01,0x01,0x7F,0x01,0x01, 0x3F,0x40,0x40,0x40,0x3F, 0x1F,0x20,0x40,0x20,0x1F, 0x3F,0x40,0x38,0x40,0x3F,
+        0x63,0x14,0x08,0x14,0x63, 0x07,0x08,0x70,0x08,0x07, 0x61,0x51,0x49,0x45,0x43, 0x00,0x7F,0x41,0x41,0x00,
+        0x02,0x04,0x08,0x10,0x20, 0x00,0x41,0x41,0x7F,0x00, 0x04,0x02,0x01,0x02,0x04, 0x40,0x40,0x40,0x40,0x40,
+        0x00,0x01,0x02,0x04,0x00, 0x20,0x54,0x54,0x54,0x78, 0x7F,0x48,0x44,0x44,0x38, 0x38,0x44,0x44,0x44,0x20,
+        0x38,0x44,0x44,0x48,0x7F, 0x38,0x54,0x54,0x54,0x18, 0x08,0x7E,0x09,0x01,0x02, 0x0C,0x52,0x52,0x52,0x3E,
+        0x7F,0x08,0x04,0x04,0x78, 0x00,0x44,0x7D,0x40,0x00, 0x20,0x40,0x44,0x3D,0x00, 0x7F,0x10,0x28,0x44,0x00,
+        0x00,0x41,0x7F,0x40,0x00, 0x7C,0x04,0x18,0x04,0x78, 0x7C,0x08,0x04,0x04,0x78, 0x38,0x44,0x44,0x44,0x38,
+        0x7C,0x14,0x14,0x14,0x08, 0x08,0x14,0x14,0x18,0x7C, 0x7C,0x08,0x04,0x04,0x08, 0x48,0x54,0x54,0x54,0x20,
+        0x04,0x3F,0x44,0x40,0x20, 0x3C,0x40,0x40,0x20,0x7C, 0x1C,0x20,0x40,0x20,0x1C, 0x3C,0x40,0x30,0x40,0x3C,
+        0x44,0x28,0x10,0x28,0x44, 0x0C,0x50,0x50,0x50,0x3C, 0x44,0x64,0x54,0x4C,0x44, 0x00,0x08,0x36,0x41,0x00,
+        0x00,0x00,0x7F,0x00,0x00, 0x00,0x41,0x36,0x08,0x00, 0x10,0x08,0x08,0x10,0x08,
+    ];
+    window.POLICE_OLED = POLICE_OLED;
+    // Accents courants -> lettre simple (meme table dans le pilote et dans le simulateur).
+    const OLED_ACCENTS = 'àâäéèêëîïôöùûüçÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ';
+    const OLED_SANS_ACCENTS = 'aaaeeeeiioouuucAAAEEEEIIOOUUUC';
+    window.oledAscii = function (texte) {
+        return Array.from(String(texte)).map(c => {
+            const i = OLED_ACCENTS.indexOf(c);
+            if (i >= 0) c = OLED_SANS_ACCENTS[i];
+            const o = c.charCodeAt(0);
+            return o >= 32 && o <= 126 ? c : '?';
+        }).join('');
+    };
+
+    function piloteOled() {
+        importerMicrobit();
+        piloteRegistre();
+        const octets = POLICE_OLED.map(o => '\\x' + o.toString(16).padStart(2, '0')).join('');
+        const lignesPolice = [];
+        for (let i = 0; i < octets.length; i += 80) lignesPolice.push("    b'" + octets.slice(i, i + 80) + "'");
+        pilote('oled', [
+            '_OLED_POLICE = (',
+            ...lignesPolice,
+            ')',
+            '_OLED_ACCENTS = "' + OLED_ACCENTS + '"',
+            '_OLED_SANS = "' + OLED_SANS_ACCENTS + '"',
+            '',
+            'def _oled_ascii(texte):',
+            '    r = ""',
+            '    for c in texte:',
+            '        i = _OLED_ACCENTS.find(c)',
+            '        if i >= 0:',
+            '            c = _OLED_SANS[i]',
+            '        r += c if 32 <= ord(c) <= 126 else "?"',
+            '    return r',
+            '',
+            'class _EcranOLED:',
+            '    ADR = 0x3C',
+            '',
+            '    def __init__(self):',
+            '        i2c.init()',
+            '        for c in (0xAE, 0xD5, 0x80, 0xA8, 0x3F, 0xD3, 0x00, 0x40, 0x8D, 0x14, 0x20, 0x00,',
+            '                  0xA1, 0xC8, 0xDA, 0x12, 0x81, 0xCF, 0xD9, 0xF1, 0xDB, 0x40, 0xA4, 0xA6, 0xAF):',
+            '            self._commande(c)',
+            '        self.effacer()',
+            '',
+            '    def _commande(self, valeur):',
+            '        i2c.write(self.ADR, bytes([0x00, valeur]))',
+            '',
+            '    def _zone(self, x0, x1, page0, page1):',
+            '        for c in (0x21, x0, x1, 0x22, page0, page1):',
+            '            self._commande(c)',
+            '',
+            '    def effacer(self):',
+            '        self._zone(0, 127, 0, 7)',
+            '        vide = bytearray(17)',
+            '        vide[0] = 0x40',
+            '        for i in range(64):',
+            '            i2c.write(self.ADR, vide)',
+            '',
+            '    def texte(self, message, x, y):',
+            '        x = max(0, min(20, int(x)))',
+            '        y = max(0, min(7, int(y)))',
+            '        s = _oled_ascii(str(message))[:21 - x]',
+            '        if not s:',
+            '            return',
+            '        self._zone(x * 6, x * 6 + len(s) * 6 - 1, y, y)',
+            '        d = bytearray(1 + 6 * len(s))',
+            '        d[0] = 0x40',
+            '        for i in range(len(s)):',
+            '            o = (ord(s[i]) - 32) * 5',
+            '            for k in range(5):',
+            '                d[1 + 6 * i + k] = _OLED_POLICE[o + k]',
+            '        i2c.write(self.ADR, d)',
+            '',
+            'def _grove_oled():',
+            '    return _grove_obj("oled", _EcranOLED)',
+        ]);
+    }
+
+    Blockly.Blocks['grove_oled_init'] = { init: function() {
+        this.appendDummyInput().appendField("initialiser l'écran OLED 0,96\"");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Adresse I²C 0x3C. Facultatif : l'écran s'initialise à la première utilisation.");
+    }};
+    P.forBlock['grove_oled_init'] = function(block) {
+        piloteOled();
+        return '_grove_objets["oled"] = _EcranOLED()\n';
+    };
+
+    Blockly.Blocks['grove_oled_texte'] = { init: function() {
+        this.appendValueInput("TEXTE").appendField("OLED : afficher");
+        this.appendValueInput("X").setCheck("Number").appendField("en colonne");
+        this.appendValueInput("Y").setCheck("Number").appendField("ligne");
+        this.setInputsInline(false);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Colonne de 0 à 20, ligne de 0 à 7 (21 caractères sur 8 lignes).");
+    }};
+    P.forBlock['grove_oled_texte'] = function(block) {
+        piloteOled();
+        const x = P.valueToCode(block, 'X', P.ORDER_NONE) || '0';
+        const y = P.valueToCode(block, 'Y', P.ORDER_NONE) || '0';
+        return '_grove_oled().texte(' + versTexte(block, 'TEXTE') + ', ' + x + ', ' + y + ')\n';
+    };
+
+    Blockly.Blocks['grove_oled_effacer'] = { init: function() {
+        this.appendDummyInput().appendField("OLED : effacer l'écran");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COULEUR_GROVE);
+    }};
+    P.forBlock['grove_oled_effacer'] = function(block) {
+        piloteOled();
+        return '_grove_oled().effacer()\n';
+    };
+
     // --- Capteur de gestes PAJ7620 (I2C) ---
     //
     // Table d'initialisation et registres repris de la bibliotheque Seeed
@@ -4855,6 +5176,19 @@ try {
             ]
             },
             {
+            "kind": "category", "name": "Buzzer", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_buzzer_etat" },
+              { "kind": "block", "type": "grove_buzzer_bip", "inputs": { "DUREE": { "shadow": { "type": "math_number", "fields": { "NUM": "200" } } } } }
+              ]
+            },
+            {
+            "kind": "category", "name": "Relais", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_relais" }
+              ]
+            },
+            {
             "kind": "category", "name": "Ruban RGB (WS2813)", "colour": String(COULEUR_GROVE),
             "contents": [
               { "kind": "block", "type": "grove_ruban_definir" },
@@ -4905,6 +5239,25 @@ try {
               ]
             },
             {
+            "kind": "category", "name": "Bouton poussoir", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_bouton_lorsque" },
+              { "kind": "block", "type": "grove_bouton_appuye" }
+              ]
+            },
+            {
+            "kind": "category", "name": "Capteur de lumière", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_lumiere" }
+              ]
+            },
+            {
+            "kind": "category", "name": "Détecteur de mouvement (PIR)", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_pir" }
+              ]
+            },
+            {
             "kind": "category", "name": "Capteur de gestes", "colour": String(COULEUR_GROVE),
             "contents": [
               { "kind": "block", "type": "grove_gestes_init" },
@@ -4940,6 +5293,14 @@ try {
               { "kind": "block", "type": "grove_lcdrgb_fond_rvb", "inputs": { "R": { "shadow": { "type": "math_number", "fields": { "NUM": "255" } } }, "V": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "B": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
               { "kind": "block", "type": "grove_lcdrgb_retro" },
 
+              ]
+            },
+            {
+            "kind": "category", "name": "Écran OLED 0,96″", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_oled_init" },
+              { "kind": "block", "type": "grove_oled_texte", "inputs": { "TEXTE": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour" } } }, "X": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "Y": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_oled_effacer" }
               ]
             },
             {
@@ -6933,6 +7294,28 @@ try {
         grove_ultrason_pouces: "Distance mesurée par le capteur à ultrasons branché sur la broche choisie, en pouces.",
         grove_joystick_direction: "Vrai si le joystick est poussé dans la direction choisie (ou au centre). " +
             "Choisir les broches sur lesquelles sont branchés ses axes X et Y.",
+        grove_bouton_appuye: "Vrai tant que le bouton poussoir Grove branché sur la broche choisie est enfoncé. À poser " +
+            "dans un « si » d'une boucle. Dans le simulateur : bouton rouge « Appuyer » du panneau Grove (maintenir) ou case " +
+            "« maintenu enfoncé ».",
+        grove_bouton_lorsque: "Exécute les blocs une fois à chaque appui sur le bouton poussoir Grove (pas en continu " +
+            "tant qu'il reste enfoncé). Marche dans le simulateur et sur la vraie carte.",
+        grove_lumiere: "Lumière reçue par le capteur de lumière Grove, branché sur une entrée analogique (P0, P1 ou P2) : " +
+            "valeur de 0 à 1023 ou pourcentage. Plus il y a de lumière, plus la valeur est grande. Dans le simulateur, " +
+            "curseur « Lumière » du panneau Grove.",
+        grove_pir: "Vrai quand le détecteur de mouvement PIR Grove voit bouger une personne ou un animal (il reste vrai " +
+            "quelques secondes après le mouvement). Dans le simulateur, case « mouvement détecté » du panneau Grove.",
+        grove_buzzer_etat: "Fait sonner le buzzer Grove (marche) ou le fait taire (arrêt). Il sonne tant qu'on ne l'arrête " +
+            "pas. Dans le simulateur, une pastille orange vibre et un bip retentit.",
+        grove_buzzer_bip: "Fait sonner le buzzer Grove pendant la durée indiquée en millisecondes (1000 ms = 1 s), puis " +
+            "l'arrête. Le programme attend la fin du bip avant de continuer.",
+        grove_relais: "Commande le relais Grove : fermé, l'appareil branché sur le relais (lampe, moteur, pompe…) fonctionne ; " +
+            "ouvert, il s'arrête. Le relais permet de commander un circuit séparé de la carte. Dans le simulateur, le " +
+            "contact dessiné se ferme ou s'ouvre.",
+        grove_oled_init: "Prépare l'écran OLED 0,96\" (Grove, branché sur un port I²C). Facultatif : l'écran s'initialise " +
+            "à la première utilisation.",
+        grove_oled_texte: "Écrit un texte (ou un nombre) sur l'écran OLED, à partir de la colonne (0 à 20) et de la ligne " +
+            "(0 à 7) indiquées : 21 caractères sur 8 lignes. Les accents sont remplacés par la lettre simple (é devient e).",
+        grove_oled_effacer: "Efface tout l'écran OLED.",
         grove_potentiometre: "Position du bouton du potentiomètre Grove (Rotary Angle Sensor), branché sur une entrée " +
             "analogique (P0, P1 ou P2). Au choix : valeur brute de 0 à 1023, angle de 0 à 300° (la course du bouton) ou " +
             "pourcentage de 0 à 100 %. Dans le simulateur, tournez le bouton avec le curseur « Potentiomètre » du panneau Grove.",
@@ -7400,6 +7783,29 @@ try {
                  exB('grove_4d_nombre', null, { VALEUR: exN(1234) }))]);
     exemple(['grove_joystick_valeur'], 'Valeur de l\'axe X', exTexteMesure,
         exMesure(exB('grove_joystick_valeur', { BROCHE: 'pin0' })));
+    exemple(['grove_bouton_lorsque'], 'Compter les appuis', "Chaque appui sur le bouton poussoir (P0) ajoute 1 au compteur affiché.",
+        [exStart(exB('variables_set', { VAR: { name: 'compteur' } }, { VALUE: exN(0) })),
+         exWhen('grove_bouton_lorsque', { BROCHE: 'pin0' },
+             exB('math_change', { VAR: { name: 'compteur' } }, { DELTA: exN(1) }),
+             exB('afficher_valeur', null, { VALEUR: { block: exB('variables_get', { VAR: { name: 'compteur' } }) } }))]);
+    exemple(['grove_bouton_appuye'], 'Bouton appuyé', "Un cœur s'affiche tant que le bouton poussoir (P0) est enfoncé.",
+        [exLoop(exSi(exB('grove_bouton_appuye', { BROCHE: 'pin0' }), exIcone('HEART')))]);
+    exemple(['grove_lumiere'], 'Mesurer la lumière', exTexteMesure,
+        exMesure(exB('grove_lumiere', { BROCHE: 'pin1', UNITE: 'pourcent' })));
+    exemple(['grove_pir', 'grove_buzzer_bip'], 'Alarme', "Le buzzer (P1) bipe quand le détecteur de mouvement (P0) voit bouger.",
+        [exLoop(exSi(exB('grove_pir', { BROCHE: 'pin0' }), exB('grove_buzzer_bip', { BROCHE: 'pin1' }, { DUREE: exN(300) })))]);
+    exemple(['grove_buzzer_etat'], 'Bip toutes les secondes', "Le buzzer (P0) sonne une seconde, se tait une seconde, et ainsi de suite.",
+        [exLoop(exB('grove_buzzer_etat', { BROCHE: 'pin0', ETAT: '1' }), exWait(1),
+                exB('grove_buzzer_etat', { BROCHE: 'pin0', ETAT: '0' }), exWait(1))]);
+    exemple(['grove_relais'], 'Lampe commandée', "Le relais (P0) allume la lampe 2 secondes, puis l'éteint 2 secondes.",
+        [exLoop(exB('grove_relais', { BROCHE: 'pin0', ETAT: '1' }), exWait(2),
+                exB('grove_relais', { BROCHE: 'pin0', ETAT: '0' }), exWait(2))]);
+    exemple(['grove_oled_init', 'grove_oled_texte', 'grove_oled_effacer'], 'Bonjour sur l\'écran OLED',
+        "Écrit deux lignes sur l'écran OLED, attend 2 secondes, puis l'efface.",
+        [exStart(exB('grove_oled_init'),
+                 exB('grove_oled_texte', null, { TEXTE: exT('Bonjour'), X: exN(0), Y: exN(0) }),
+                 exB('grove_oled_texte', null, { TEXTE: exT('micro:bit'), X: exN(0), Y: exN(2) }),
+                 exWait(2), exB('grove_oled_effacer'))]);
     exemple(['grove_potentiometre'], 'Angle du potentiomètre', exTexteMesure,
         exMesure(exB('grove_potentiometre', { BROCHE: 'pin0', UNITE: 'angle' })));
     exemple(['grove_joystick_bouton'], 'Appui sur le joystick', "Un cœur s'affiche quand on appuie sur le manche du joystick.",
@@ -7950,6 +8356,9 @@ try {
         // Meme principe que la radio : pas d'interruption materielle non plus
         // pour l'infrarouge, une seule fonction de tri appelee a chaque tour.
         ['def on_ir_',                '_ir_traiter()'],
+        // Bouton poussoir Grove : front montant (un declenchement par appui), une ligne par broche.
+        ...BROCHES_GROVE.map(([, broche]) =>
+            ['def on_grove_bouton_' + broche + '(', 'if _grove_bouton_front(' + broche + '): on_grove_bouton_' + broche + '()']),
         // Capteurs de ligne du Maqueen Lite : condition directement
         // calculable a chaque tour, comme les boutons/broches ci-dessus —
         // pas besoin d'un dispatcher dedie.
@@ -8522,10 +8931,16 @@ try {
                 });
                 return { type: typeBloc, inputs };
             }
-            // _grove_potentiometre(pinX, "unite") : deux champs (broche nue, unite en texte).
-            if (nomFonction === '_grove_potentiometre' && noeud.args.length === 2 &&
+            // _grove_potentiometre(pinX, "unite"), _grove_lumiere(pinX, "unite") : broche nue et unite en texte.
+            const AVEC_UNITE = { '_grove_potentiometre': 'grove_potentiometre', '_grove_lumiere': 'grove_lumiere' };
+            if (AVEC_UNITE[nomFonction] && noeud.args.length === 2 &&
                 identifiantNom(noeud.args[0]) !== undefined && typeof valeurConstante(noeud.args[1]) === 'string') {
-                return { type: 'grove_potentiometre', fields: { BROCHE: identifiantNom(noeud.args[0]), UNITE: valeurConstante(noeud.args[1]) } };
+                return { type: AVEC_UNITE[nomFonction], fields: { BROCHE: identifiantNom(noeud.args[0]), UNITE: valeurConstante(noeud.args[1]) } };
+            }
+            // _grove_bouton(pinX), _grove_pir(pinX) : une broche nue.
+            const SUR_BROCHE = { '_grove_bouton': 'grove_bouton_appuye', '_grove_pir': 'grove_pir' };
+            if (SUR_BROCHE[nomFonction] && noeud.args.length === 1 && identifiantNom(noeud.args[0]) !== undefined) {
+                return { type: SUR_BROCHE[nomFonction], fields: { BROCHE: identifiantNom(noeud.args[0]) } };
             }
             if (APPELS_VALEUR_AVEC_CHAMP[nomFonction] && noeud.args.length === 1) {
                 const [typeBloc, nomChamp] = APPELS_VALEUR_AVEC_CHAMP[nomFonction];
@@ -8587,6 +9002,11 @@ try {
         // ---- Assign : reset_chrono, kitrobot_definir_ultrason ----
         if (n._type === 'Assign' && n.targets.length === 1) {
             const cible = n.targets[0];
+            // _grove_objets["oled"] = _EcranOLED() : bloc « initialiser l'ecran OLED ».
+            if (cible._type === 'Subscript' && cible.value._type === 'Name' && cible.value.id === '_grove_objets' &&
+                valeurConstante(cible.slice) === 'oled' && estAppel(n.value, '_EcranOLED')) {
+                return { bloc: { type: 'grove_oled_init' }, consommees: 1 };
+            }
             if (cible._type === 'Name' && cible.id === '_timer_start' &&
                 estAppel(n.value, 'running_time')) {
                 return { bloc: { type: 'reset_chrono' }, consommees: 1 };
@@ -8623,6 +9043,32 @@ try {
             appel.args[0]._type === 'Attribute' && appel.args[0].value._type === 'Name' &&
             appel.args[0].value.id === appel.func.value.id && appel.args[0].attr === 'CAPACITIVE') {
             return { bloc: null, consommees: 1 };
+        }
+
+        // ---- Premier lot Grove : _grove_buzzer / _grove_relais(pinX, 0 ou 1), _grove_buzzer_bip(pinX, duree),
+        // _grove_oled().texte(texte, x, y) et _grove_oled().effacer(). ----
+        if (appel._type === 'Call' && appel.func._type === 'Attribute' && estAppel(appel.func.value, '_grove_oled')) {
+            if (appel.func.attr === 'effacer' && appel.args.length === 0) {
+                return { bloc: { type: 'grove_oled_effacer' }, consommees: 1 };
+            }
+            if (appel.func.attr === 'texte' && appel.args.length === 3) {
+                return { bloc: { type: 'grove_oled_texte', inputs: {
+                    TEXTE: { block: reconstruireExpression(sansStr(appel.args[0])) },
+                    X: { block: reconstruireExpression(appel.args[1]) },
+                    Y: { block: reconstruireExpression(appel.args[2]) } } }, consommees: 1 };
+            }
+        }
+        if (appel._type === 'Call' && appel.func._type === 'Name' && appel.args.length === 2 &&
+            identifiantNom(appel.args[0]) !== undefined) {
+            const broche = identifiantNom(appel.args[0]), etat = valeurConstante(appel.args[1]);
+            if ((appel.func.id === '_grove_buzzer' || appel.func.id === '_grove_relais') && (etat === 0 || etat === 1)) {
+                return { bloc: { type: appel.func.id === '_grove_buzzer' ? 'grove_buzzer_etat' : 'grove_relais',
+                                 fields: { BROCHE: broche, ETAT: String(etat) } }, consommees: 1 };
+            }
+            if (appel.func.id === '_grove_buzzer_bip') {
+                return { bloc: { type: 'grove_buzzer_bip', fields: { BROCHE: broche },
+                                 inputs: { DUREE: { block: reconstruireExpression(appel.args[1]) } } }, consommees: 1 };
+            }
         }
 
         // ---- attendre_temps : sleep(x) ou sleep(x * 1000) ----
@@ -8844,6 +9290,9 @@ try {
         // IA : le nom de la fonction ne garde que la classe passee par slugIA() ; on retrouve
         // son vrai nom (accents, majuscules) parmi les classes connues du panneau IA, dont
         // l'apprentissage relu dans le meme .py (lireAnnexePy passe AVANT la reconstruction).
+        if ((m = /^on_grove_bouton_(pin\d+)$/.exec(nom))) {
+            return { type: 'grove_bouton_lorsque', fields: { BROCHE: m[1] }, corps: noeud.body };
+        }
         if (nom === 'on_ia_qr_lu') {
             return { type: 'ia_qr_lorsque_lu', fields: {}, corps: noeud.body };
         }
@@ -8995,6 +9444,7 @@ try {
                 if (g.type === 'lorsque_son_detecte') return 'on_sound_' + g.fields.SON;
                 if (g.type === 'lorsque_logo') return 'on_logo_' + g.fields.ACTION;
                 if (g.type === 'radio_quand_recu') return 'on_radio_' + g.fields.TYPE;
+                if (g.type === 'grove_bouton_lorsque') return 'on_grove_bouton_' + g.fields.BROCHE;
                 return '';
             }));
             const corpsBoucleFiltre = boucleNoeud.body.filter(n => !(
@@ -9250,7 +9700,10 @@ try {
 
     // Relancer la simulation coupe ce qui jouait encore : sinon deux exécutions
     // se superposent.
-    window.simu_clearQueue = function() { window.simuQueue = []; jetonSimulation++; arreterSon(); };
+    window.simu_clearQueue = function() {
+        window.simuQueue = []; jetonSimulation++; arreterSon();
+        if (window.arreterBuzzerGrove) window.arreterBuzzerGrove();
+    };
     // Lu par index.html (_executer_morceaux) pour savoir si une attente en
     // cours a ete interrompue (reinitialisation, nouveau declenchement).
     window.simu_jeton = function() { return jetonSimulation; };
@@ -9497,6 +9950,16 @@ try {
     const valeurJY = document.getElementById('grove-jy-val');
     const caseBoutonJoystick = document.getElementById('grove-jbtn');
     const curseurPotentiometre = document.getElementById('grove-pot');
+    // Premier lot Grove : commandes et zones d'affichage du panneau.
+    const boutonPoussoirGrove = document.getElementById('grove-bouton-appui');
+    const caseBoutonPoussoir = document.getElementById('grove-bouton-maintenu');
+    const curseurLumiere = document.getElementById('grove-lumiere');
+    const valeurLumiere = document.getElementById('grove-lumiere-val');
+    const casePir = document.getElementById('grove-pir');
+    const zoneBuzzer = document.getElementById('grove-buzzer');
+    const zoneRelais = document.getElementById('grove-relais');
+    const toileOled = document.getElementById('grove-oled');
+    let boutonPoussoirEnfonce = false;
     const valeurPotentiometre = document.getElementById('grove-pot-val');
     const menuGesteGrove = document.getElementById('grove-geste');
     const boutonGesteGrove = document.getElementById('grove-geste-btn');
@@ -9690,6 +10153,12 @@ try {
         ['grove-sec-ultrason', /^grove_ultrason_/],
         ['grove-sec-joystick', /^grove_joystick_/],
         ['grove-sec-potentiometre', /^grove_potentiometre$/],
+        ['grove-sec-bouton',   /^grove_bouton_/],
+        ['grove-sec-lumiere',  /^grove_lumiere$/],
+        ['grove-sec-pir',      /^grove_pir$/],
+        ['grove-sec-buzzer',   /^grove_buzzer_/],
+        ['grove-sec-relais',   /^grove_relais$/],
+        ['grove-sec-oled',     /^grove_oled_/],
         ['grove-sec-gestes',   /^grove_gestes_/],
         ['grove-sec-lcd',      /^grove_lcd(rgb)?_/],
         // Les SCD mesurent aussi température et humidité : leurs curseurs
@@ -9723,6 +10192,78 @@ try {
         Blockly.svgResize(window.workspace);
     }
 
+    // ---- Premier lot Grove : buzzer, relais, ecran OLED ----
+    let etatSortiesGrove = { buzzer: {}, relais: {} };
+    let tamponOled = new Array(8).fill(' '.repeat(21));
+    let oledActif = false;
+
+    // Son du buzzer actif : un seul oscillateur (2,3 kHz, faible volume) tant qu'au moins un buzzer sonne.
+    let sonBuzzer = null;
+    function majSonBuzzer() {
+        const sonne = Object.values(etatSortiesGrove.buzzer).some(v => v);
+        if (sonne && !sonBuzzer) {
+            try {
+                const Contexte = window.AudioContext || window.webkitAudioContext;
+                const contexte = new Contexte();
+                const osc = contexte.createOscillator(), gain = contexte.createGain();
+                osc.type = 'square'; osc.frequency.value = 2300; gain.gain.value = 0.03;
+                osc.connect(gain); gain.connect(contexte.destination); osc.start();
+                sonBuzzer = contexte;
+            } catch (erreur) { sonBuzzer = null; }
+        } else if (!sonne && sonBuzzer) {
+            sonBuzzer.close().catch(() => {});
+            sonBuzzer = null;
+        }
+    }
+    // Arret de la simulation : le buzzer se tait (appele par simu_clearQueue).
+    window.arreterBuzzerGrove = function() {
+        etatSortiesGrove.buzzer = {};
+        majSonBuzzer();
+        dessinerSortiesGrove();
+    };
+
+    function dessinerSortiesGrove() {
+        const lignes = (etat, dessin) => {
+            const broches = Object.keys(etat).sort();
+            return broches.length ? broches.map(b => dessin(b.replace(/^pin/, 'P').replace(/^(\d)/, 'P$1'), etat[b])).join('')
+                                  : '<span class="grove-vide">aucun</span>';
+        };
+        if (zoneBuzzer) {
+            zoneBuzzer.innerHTML = lignes(etatSortiesGrove.buzzer, (nom, on) =>
+                '<div class="grove-sortie"><span class="buzzer-pastille' + (on ? ' on' : '') + '"></span>' + nom + ' : ' +
+                (on ? 'sonne' : 'silencieux') + '</div>');
+        }
+        if (zoneRelais) {
+            zoneRelais.innerHTML = lignes(etatSortiesGrove.relais, (nom, on) =>
+                '<div class="grove-sortie"><span class="relais-contact' + (on ? ' ferme' : '') + '"><i></i></span>' + nom +
+                ' : ' + (on ? 'fermé (marche)' : 'ouvert (arrêt)') + '</div>');
+        }
+        majSonBuzzer();
+    }
+
+    // Ecran OLED 128 x 64 dessine point par point avec la meme police que le pilote (POLICE_OLED).
+    function dessinerOled() {
+        if (!toileOled) return;
+        const ctx = toileOled.getContext('2d');
+        const p = toileOled.width / 128;
+        ctx.fillStyle = '#04070b';
+        ctx.fillRect(0, 0, toileOled.width, toileOled.height);
+        if (!oledActif) return;
+        ctx.fillStyle = '#d6f1ff';
+        tamponOled.forEach((ligne, y) => {
+            for (let x = 0; x < ligne.length; x++) {
+                const o = (ligne.charCodeAt(x) - 32) * 5;
+                if (o <= 0) continue;
+                for (let k = 0; k < 5; k++) {
+                    const colonne = window.POLICE_OLED[o + k];
+                    for (let b = 0; b < 8; b++) {
+                        if (colonne & (1 << b)) ctx.fillRect((x * 6 + k) * p, (y * 8 + b) * p, p, p);
+                    }
+                }
+            }
+        });
+    }
+
     function reinitialiserGrove() {
         if (zoneRuban) {
             zoneRuban.innerHTML = '<span class="grove-vide">non défini</span>';
@@ -9742,6 +10283,11 @@ try {
         dessinerLeds();
         etatServos = {};
         dessinerServos();
+        etatSortiesGrove = { buzzer: {}, relais: {} };
+        dessinerSortiesGrove();
+        tamponOled = tamponOled.map(() => ' '.repeat(21));
+        oledActif = false;
+        dessinerOled();
     }
 
     window.simu_rubanDefinir = function(nombre) {
@@ -10882,6 +11428,21 @@ try {
         if (id === '1') return curseurJY ? Number(curseurJY.value) : 512;
         return curseurJX ? Number(curseurJX.value) : 512;
     };
+    /** Premier lot Grove : entrees lues a l'instant ou le programme les demande. */
+    window.simu_groveEntree = function(nom) {
+        if (nom === 'bouton') return boutonPoussoirEnfonce || (caseBoutonPoussoir && caseBoutonPoussoir.checked) ? 1 : 0;
+        if (nom === 'lumiere') return curseurLumiere ? Number(curseurLumiere.value) : 512;
+        if (nom === 'pir') return casePir && casePir.checked ? 1 : 0;
+        return 0;
+    };
+    /** Buzzer et relais : etat mis en file, comme les LED, pour suivre le rythme du programme. */
+    window.simu_groveSortie = function(nom, broche, valeur) {
+        window.simuQueue.push({ type: 'groveSortie', nom: String(nom), broche: String(broche), valeur: Number(valeur) });
+    };
+    window.simu_oled = function(action, texte, x, y) {
+        window.simuQueue.push({ type: 'oled', action: String(action), texte: String(texte), x: Number(x), y: Number(y) });
+    };
+
     /** Potentiometre Grove : position du curseur du panneau (0 a 1023), quelle que soit la broche. */
     window.simu_potentiometre = function() {
         return curseurPotentiometre ? Number(curseurPotentiometre.value) : 512;
@@ -10997,6 +11558,15 @@ try {
     }
     if (curseurJX) curseurJX.addEventListener('input', () => { valeurJX.textContent = curseurJX.value; });
     if (curseurJY) curseurJY.addEventListener('input', () => { valeurJY.textContent = curseurJY.value; });
+    // Bouton poussoir Grove : enfonce tant que le pointeur (souris, doigt) appuie dessus.
+    if (boutonPoussoirGrove) {
+        const regler = enfonce => () => { boutonPoussoirEnfonce = enfonce; boutonPoussoirGrove.classList.toggle('enfonce', enfonce); };
+        boutonPoussoirGrove.addEventListener('pointerdown', regler(true));
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => boutonPoussoirGrove.addEventListener(t, regler(false)));
+    }
+    if (curseurLumiere) curseurLumiere.addEventListener('input', () => {
+        valeurLumiere.textContent = curseurLumiere.value + ' (' + Math.round(Number(curseurLumiere.value) * 100 / 1023) + ' %)';
+    });
     // Potentiometre : valeur brute et angle correspondant (300° de course), bouton du module
     // dessine tourne d'autant (-150° a gauche, +150° a droite).
     const rotorPotentiometre = document.getElementById('grove-pot-rotor');
@@ -11187,6 +11757,24 @@ try {
                                 tamponLcd[y].slice(x + morceau.length)).slice(0, 16);
             }
             dessinerLcd();
+            window.simu_playQueue();
+        }
+        else if (action.type === 'groveSortie') {
+            if (etatSortiesGrove[action.nom]) etatSortiesGrove[action.nom][action.broche] = action.valeur ? 1 : 0;
+            dessinerSortiesGrove();
+            window.simu_playQueue();
+        }
+        else if (action.type === 'oled') {
+            if (action.action === 'init' || action.action === 'effacer') {
+                tamponOled = tamponOled.map(() => ' '.repeat(21));
+                oledActif = true;
+            } else if (action.action === 'texte') {
+                const y = Math.max(0, Math.min(7, action.y)), x = Math.max(0, Math.min(20, action.x));
+                const morceau = window.oledAscii(action.texte).slice(0, 21 - x);
+                tamponOled[y] = (tamponOled[y].slice(0, x) + morceau + tamponOled[y].slice(x + morceau.length)).slice(0, 21);
+                oledActif = true;
+            }
+            dessinerOled();
             window.simu_playQueue();
         }
         else if (action.type === 'servo') {

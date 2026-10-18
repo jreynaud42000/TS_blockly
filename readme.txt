@@ -1473,3 +1473,20 @@ conversion). Simulateur : module Grove dessine (modele A, choisi parmi 4 proposi
 blanc) dont on tourne le bouton a la souris (butees a 0 et 300 deg), plus un curseur dessous (clavier, reglage fin) ;
 valeur et angle affiches ; substitut
 _grove_potentiometre dans index.html. Aide du bloc, exemple « Angle du potentiometre », reconstruction a l'import d'un .py.
+
+39. GROVE : PREMIER LOT DE MODULES (oct. 2026)
+Six modules ajoutes au menu Grove, chacun dans sa sous-categorie, avec aide (clic droit), exemple, section du panneau
+Grove du simulateur et reconstruction en blocs a l'import d'un .py :
+- Bouton poussoir (numerique) : « bouton poussoir sur Px appuye » et « lorsque le bouton poussoir sur Px est appuye »
+  (une fois par appui, front montant : _grove_bouton_front, scrute a chaque tour comme les autres « lorsque »).
+  Simulateur : bouton rouge « Appuyer » (enfonce tant qu'on le maintient) et case « maintenu enfonce ».
+- Capteur de lumiere (analogique, P0/P1/P2) : valeur 0 a 1023 ou pourcentage. Simulateur : curseur.
+- Detecteur de mouvement PIR (numerique) : « mouvement detecte sur Px ». Simulateur : case a cocher.
+- Buzzer (actif, numerique) : marche / arret, et « bip pendant ... ms ». Simulateur : pastille orange qui vibre et bip
+  de 2,3 kHz a faible volume ; le buzzer se tait a l'arret de la simulation.
+- Relais (numerique) : ferme (marche) / ouvert (arret). Simulateur : contact dessine ouvert ou ferme.
+- Ecran OLED 0,96" 128 x 64 (I2C 0x3C, SSD1315 / SSD1306) : initialiser, afficher un texte en colonne (0 a 20) et ligne
+  (0 a 7), effacer. Mode texte sans memoire d'image (compatible V1) : police 5 x 7 (ASCII 32 a 126) envoyee caractere
+  par caractere ; accents ramenes a la lettre simple. Le simulateur dessine l'ecran avec la meme police (POLICE_OLED).
+A verifier avec le materiel : niveaux logiques des modules reels (bouton et PIR actifs a l'etat haut, buzzer actif),
+et l'ecran OLED (sequence d'initialisation SSD1306 ; la version SSD1308 plus ancienne n'a pas ete testee).

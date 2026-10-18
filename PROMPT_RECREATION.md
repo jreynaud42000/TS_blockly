@@ -3394,4 +3394,19 @@ sans `]`) : reconnaître les expressions IA sur l'arbre, jamais sur ce texte. Sa
 scrutation, sinon ils deviennent des blocs « code ». Lire l'annexe d'apprentissage **avant** la reconstruction, pour
 retrouver le vrai nom des classes (accents, majuscules) derrière leur identifiant.
 
-Fournis le code complet des fichiers du §1 (et les modules des §22 à §27), prêt à être posé dans un dossier.
+## 28. Grove : potentiomètre et premier lot (bouton, lumière, PIR, buzzer, relais, OLED)
+
+Chaque module passe par une fonction de pilote à son nom (`_grove_potentiometre`, `_grove_bouton`, `_grove_bouton_front`,
+`_grove_lumiere`, `_grove_pir`, `_grove_buzzer`, `_grove_buzzer_bip`, `_grove_relais`, `_EcranOLED` / `_grove_oled`) plutôt
+que par `read_digital()` / `write_digital()` directs : le simulateur retire les pilotes et injecte ses substituts (index.html)
+sans confondre ces modules avec une LED ou un joystick sur la même broche. Entrées : `simu_groveEntree(nom)` lit le panneau ;
+sorties : `simu_groveSortie(nom, broche, valeur)` et `simu_oled(...)` passent par la file (rythme du programme).
+« lorsque le bouton poussoir est appuyé » : entrées de `GESTIONNAIRES` générées pour chaque broche de `BROCHES_GROVE`.
+
+**PIÈGE nº 77 — guillemet dans un nom de catégorie** : `"Écran OLED 0,96""` casse tout `un.js` (la page reste vide). Utiliser
+le signe pouce ″ (U+2033). Vérifier la syntaxe d'un module avec `node --check` sur une copie en `.mjs`.
+
+**PIÈGE nº 78 — MicroPython de la V1** : pas d'affectation par tranche dans un `bytearray`, et `str(pin0)` donne le même texte
+pour toutes les broches : écrire octet par octet, et indexer l'état des boutons par `id(broche)`.
+
+Fournis le code complet des fichiers du §1 (et les modules des §22 à §28), prêt à être posé dans un dossier.
