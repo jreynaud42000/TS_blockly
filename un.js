@@ -6772,6 +6772,7 @@ try {
         afficher_valeur: "Affiche une valeur (texte ou nombre) sur la matrice de LED 5×5. Un texte de plusieurs " +
             "caractères est montré caractère par caractère ; pour le faire défiler, utiliser « faire défiler ».",
         ia_lorsque_reconnu: "Exécute les blocs quand l'IA (caméra ou micro, panneau IA) passe à la classe indiquée. " +
+            "« vision » : objets, gestes, positions ; « son » : sons et mots. " +
             "Choisissez la classe dans la liste (classes du panneau IA : modèle chargé ou apprentissage immédiat), ou " +
             "« ✎ autre nom… » pour un modèle pas encore chargé ; accents et majuscules sont sans importance. " +
             "Le bloc ne se redéclenche pas tant que la classe reste la même ; il repart quand l'IA a reconnu autre chose " +
@@ -7642,50 +7643,49 @@ try {
 
     // ---- Aide sur l'IA (bouton « ? » du panneau IA) ----
     const TEXTE_AIDE_IA =
-        "Le panneau IA reconnaît des images (caméra) ou des sons (micro) avec un modèle créé sur " +
-        "Teachable Machine (teachablemachine.withgoogle.com). Le résultat pilote le programme par les blocs " +
-        "de la catégorie « IA », au choix dans le simulateur ou sur la vraie carte.\n\n" +
-        "1. OBTENIR UN MODÈLE (deux possibilités)\n" +
-        "A. Le créer ici, sans Internet. Images : colonne « ⚡ Apprentissage immédiat » (voir le point 5). Son : dans la " +
-        "colonne Son, ouvrez « ✚ Créer un modèle », cliquez « ● 1 s » pour enregistrer 1 seconde de son (au moins 5 par " +
-        "classe, et une classe « Bruit de fond » pour le silence), renommez les classes, ajoutez-en avec « + Classe », puis " +
-        "« 🏋 Entraîner ». Le modèle entraîné devient aussitôt le modèle actif : « Démarrer » pour le tester. " +
-        "« 💾 Enregistrer » télécharge model.json, metadata.json et weights.bin ; les exemples de son ne sont pas conservés " +
-        "si vous rechargez la page : enregistrez le modèle avant.\n" +
-        "B. En importer un fait sur Teachable Machine (teachablemachine.withgoogle.com) : « Exporter le modèle », onglet " +
-        "Tensorflow.js, copiez l'adresse (après « Importer ») ou téléchargez les 3 fichiers.\n\n" +
-        "2. CHARGER UN MODÈLE EXISTANT\n" +
-        "• Collez l'adresse puis « Charger » (nécessite Internet), ou « Fichiers… » et sélectionnez les 3 fichiers à la fois " +
-        "(fonctionne sans Internet).\n" +
-        "• Les classes du modèle s'affichent. Cliquez « Démarrer » : le navigateur demande l'autorisation d'utiliser la " +
-        "caméra ou le micro. L'image et le son restent dans le navigateur ; seul le nom de la classe est transmis.\n\n" +
+        "Le panneau IA reconnaît des images (caméra), des gestes, des positions, des sons (micro) et des QR codes. " +
+        "Le résultat pilote le programme par les blocs de la catégorie « IA », au choix dans le simulateur ou sur la " +
+        "vraie carte. L'image et le son restent dans le navigateur : seul le nom de la classe est transmis.\n\n" +
+        "1. APPRENDRE SES CLASSES : « ⚡ Apprentissage immédiat » (sans entraînement, sans Internet)\n" +
+        "• Choisissez ce que l'IA reconnaît : objets et images, gestes de la main, positions des bras (caméra), ou sons et " +
+        "mots (micro).\n" +
+        "• Allumez « 📷 Caméra » (ou « 🎤 Micro »), puis maintenez « Maintenir » en face d'une classe : des exemples sont " +
+        "ajoutés en rafale. Pour les sons, faites le son (ou dites le mot) plusieurs fois avec un court silence entre deux : " +
+        "chaque son détecté devient un exemple. 🖼 ajoute des exemples depuis des images.\n" +
+        "• Chaque exemple a sa vignette sous sa classe (photo pour les objets, squelette pour les gestes et positions, " +
+        "dessin du timbre pour les sons). Cliquer sur une vignette supprime cet exemple seulement ; 🗑 supprime la classe.\n" +
+        "• Chaque exemple compte aussitôt : « ▶ Démarrer » dès que 2 classes ont des exemples. Renommer une classe met à " +
+        "jour les blocs qui l'utilisent.\n" +
+        "• Images, gestes et positions pilotent les blocs « vision » ; les sons pilotent les blocs « son ». Un son reconnu " +
+        "le reste 1 seconde.\n" +
+        "• L'apprentissage (des nombres, jamais d'images ni de sons) est rangé dans le .py téléchargé et relu à son " +
+        "ouverture ; « 💾 Exporter » le met dans un fichier .json à part. Il n'est pas dans le .hex. Les photos des " +
+        "vignettes ne sont pas enregistrées (▣ après réouverture) ; squelettes et timbres se redessinent.\n\n" +
+        "2. OU CHARGER UN MODÈLE TEACHABLE MACHINE (colonnes « Vision » et « Son »)\n" +
+        "• Sur teachablemachine.withgoogle.com : « Exporter le modèle », onglet Tensorflow.js. Collez l'adresse puis " +
+        "« Charger » (nécessite Internet), ou « Fichiers… » et sélectionnez les 3 fichiers à la fois (model.json, " +
+        "metadata.json, weights.bin : fonctionne sans Internet).\n" +
+        "• « Démarrer » : le navigateur demande l'autorisation d'utiliser la caméra ou le micro. Démarrer une colonne " +
+        "arrête l'apprentissage immédiat du même genre, et inversement.\n\n" +
         "3. PROGRAMMER\n" +
-        "• « lorsque l'IA reconnaît <classe> » : exécute les blocs quand cette classe est reconnue. " +
-        "Écrivez la classe exactement comme dans le modèle (majuscules et accents sont ignorés).\n" +
-        "• « la classe reconnue est … », « dernière classe reconnue », « confiance de l'IA » : à utiliser dans des conditions.\n" +
+        "• « lorsque l'IA reconnaît <classe> » : exécute les blocs quand cette classe est reconnue. Choisissez la classe dans " +
+        "la liste, ou « ✎ autre nom… » (majuscules et accents sont ignorés).\n" +
+        "• « l'IA reconnaît … », « dernière classe reconnue », « confiance de l'IA » : à utiliser dans des conditions.\n" +
         "• Seuil de confiance : en dessous, aucune classe n'est retenue.\n\n" +
         "4. SIMULATEUR OU VRAIE CARTE\n" +
-        "• Simulateur : lancez la simulation, puis démarrez la caméra ou le micro. Les classes reconnues déclenchent les blocs.\n" +
+        "• Simulateur : lancez la simulation, puis démarrez la reconnaissance. Les classes reconnues déclenchent les blocs.\n" +
         "• Vraie carte : connectez-la avec le bouton « Connecter » de la console, envoyez le programme, " +
-        "cochez « Envoyer à la carte » puis démarrez la caméra ou le micro. Le navigateur doit rester ouvert : " +
+        "cochez « Envoyer à la carte » puis démarrez la reconnaissance. Le navigateur doit rester ouvert : " +
         "c'est lui qui reconnaît, la carte reçoit seulement le résultat par le câble USB.\n" +
         "• Le programme doit contenir au moins un bloc IA, sinon la carte n'écoute pas le port USB.\n" +
         "• Le résultat est renvoyé deux fois par seconde ; la carte oublie un résultat de plus de 1,5 s " +
         "(navigateur fermé, câble débranché).\n\n" +
-        "5. APPRENTISSAGE IMMÉDIAT (sans entraînement)\n" +
-        "• Colonne « ⚡ Apprentissage immédiat » : choisissez ce que l'IA reconnaît (objets et images, gestes de la main, " +
-        "positions des bras), allumez « 📷 Caméra » et maintenez « Maintenir » en face de chaque classe, ou ajoutez des " +
-        "images avec 🖼. Chaque exemple compte aussitôt : « ▶ Démarrer » dès que 2 classes ont des exemples.\n" +
-        "• Les résultats pilotent les blocs « vision ». Renommer une classe met à jour les blocs qui l'utilisent.\n" +
-        "• Gestes et positions : seul le squelette repéré est gardé, jamais la photo.\n" +
-        "• L'apprentissage (des nombres, pas des images) est rangé dans le .py téléchargé et relu à son ouverture ; " +
-        "« 💾 Exporter » le met dans un fichier .json à part. Il n'est pas dans le .hex.\n\n" +
-        "6. QR CODES ET CODES-BARRES\n" +
+        "5. QR CODES ET CODES-BARRES\n" +
         "• Colonne « 🔳 QR codes » : « ▶ Lire les codes », puis les blocs « lorsqu'un code QR est lu », " +
         "« un code QR est visible », « texte du dernier code QR lu ». « Créer un QR code » en fabrique un à imprimer.\n\n" +
         "LIMITES\n" +
         "• Chrome ou Edge conseillé. La caméra et le micro demandent une page en localhost ou en HTTPS.\n" +
-        "• Un son est reconnu sur environ 1 seconde : la classe « Background Noise » correspond au bruit de fond.\n" +
+        "• Sons : la pièce doit être assez calme ; un bruit continu de plus de 1,5 s est ignoré.\n" +
         "• « Charger » une adresse Teachable Machine télécharge le modèle depuis les serveurs de Google (aucune image " +
         "ni aucun son n'y est envoyé). Sans Internet, utilisez « Fichiers… ».";
 
@@ -8406,6 +8406,11 @@ try {
         const litteral = reconstruireLitteral(noeud);
         if (litteral) return litteral;
 
+        // Avant les cas generiques : `_ia_qr_texte` n'est pas une variable, `_ia_dernier[...] == "x"`
+        // n'est pas une simple comparaison.
+        const ia = reconstruireExpressionIA(noeud);
+        if (ia) return ia;
+
         if (noeud._type === 'Name') {
             // Variable Blockly : le nom sert aussi d'identifiant Blockly, une
             // variable de meme nom deja existante est reutilisee sinon creee.
@@ -8517,6 +8522,11 @@ try {
         if (n._type === 'Import' || n._type === 'ImportFrom') {
             return { bloc: null, consommees: 1 };
         }
+        // ---- pass : ecrit par le generateur pour un corps de bloc VIDE (« lorsque… » sans
+        // rien dedans, « si » vide) ; un corps vide le redonne tout seul. ----
+        if (n._type === 'Pass') {
+            return { bloc: null, consommees: 1 };
+        }
 
         // ---- Assign : reset_chrono, kitrobot_definir_ultrason ----
         if (n._type === 'Assign' && n.targets.length === 1) {
@@ -8537,6 +8547,14 @@ try {
 
         if (n._type !== 'Expr') return null;
         const appel = n.value;
+
+        // ---- _ia_traiter(), _radio_traiter(), _ir_traiter() : scrutation injectee
+        // automatiquement en tete de « Répéter indéfiniment » (voir GESTIONNAIRES),
+        // jamais posee par l'utilisateur : sautee, comme les imports. ----
+        if (appel._type === 'Call' && appel.func._type === 'Name' && appel.args.length === 0 &&
+            ['_ia_traiter', '_radio_traiter', '_ir_traiter'].includes(appel.func.id)) {
+            return { bloc: null, consommees: 1 };
+        }
 
         // ---- pinX.set_touch_mode(pinX.CAPACITIVE) : pur passe-partout
         // injecte automatiquement par lorsque_broche/broche_est_pressee
@@ -8766,6 +8784,47 @@ try {
         }
         if ((m = /^on_radio_(nombre|valeur|texte)$/.exec(nom))) {
             return { type: 'radio_quand_recu', fields: { TYPE: m[1] }, corps: noeud.body };
+        }
+        // IA : le nom de la fonction ne garde que la classe passee par slugIA() ; on retrouve
+        // son vrai nom (accents, majuscules) parmi les classes connues du panneau IA, dont
+        // l'apprentissage relu dans le meme .py (lireAnnexePy passe AVANT la reconstruction).
+        if (nom === 'on_ia_qr_lu') {
+            return { type: 'ia_qr_lorsque_lu', fields: {}, corps: noeud.body };
+        }
+        if ((m = /^on_ia_(vision|son)_([a-z0-9_]+)$/.exec(nom))) {
+            return { type: 'ia_lorsque_reconnu', fields: { TYPE: m[1], CLASSE: nomClasseIA(m[1], m[2]) }, corps: noeud.body };
+        }
+        return null;
+    }
+
+    /** Classe IA d'apres son identifiant slugIA : vrai nom si le panneau IA la connait, sinon l'identifiant. */
+    function nomClasseIA(genre, identifiant) {
+        const connues = typeof window.iaClassesConnues === 'function' ? window.iaClassesConnues(genre) : [];
+        return connues.find(n => window.slugIA(n) === identifiant) || identifiant;
+    }
+
+    /** `_ia_dernier["vision"]`, `_ia_proba["son"]`... -> [table, genre], sinon null. */
+    function lectureIA(noeud) {
+        if (!noeud || noeud._type !== 'Subscript' || !noeud.value || noeud.value._type !== 'Name') return null;
+        if (noeud.value.id !== '_ia_dernier' && noeud.value.id !== '_ia_proba') return null;
+        const genre = valeurConstante(noeud.slice);
+        return ['vision', 'son', 'qr'].includes(genre) ? [noeud.value.id, genre] : null;
+    }
+
+    /** Expressions des blocs IA (generateurs de un.js, section « IA ») -> bloc, sinon null. */
+    function reconstruireExpressionIA(noeud) {
+        if (noeud._type === 'Name' && noeud.id === '_ia_qr_texte') return { type: 'ia_qr_texte' };
+        const lecture = lectureIA(noeud);
+        if (lecture && lecture[1] !== 'qr') {
+            return { type: lecture[0] === '_ia_dernier' ? 'ia_derniere_classe' : 'ia_confiance', fields: { TYPE: lecture[1] } };
+        }
+        if (noeud._type === 'Compare' && noeud.ops.length === 1 && typeof valeurConstante(noeud.comparators[0]) === 'string') {
+            const gauche = lectureIA(noeud.left), texte = valeurConstante(noeud.comparators[0]);
+            if (!gauche || gauche[0] !== '_ia_dernier') return null;
+            if (gauche[1] === 'qr' && noeud.ops[0]._type === 'NotEq' && texte === '') return { type: 'ia_qr_visible' };
+            if (gauche[1] !== 'qr' && noeud.ops[0]._type === 'Eq') {
+                return { type: 'ia_classe_est', fields: { TYPE: gauche[1], CLASSE: nomClasseIA(gauche[1], texte) } };
+            }
         }
         return null;
     }

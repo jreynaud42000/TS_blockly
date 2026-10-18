@@ -3323,7 +3323,7 @@ envoyer `lib/` par lots ou utiliser GitHub Desktop. L'appel `/_vie` (cœur de l'
 renvoie 404 sur un site statique : sans conséquence. Respecter la casse des noms de fichiers.
 
 **Exécutable** : `python -m PyInstaller app.spec --noconfirm`. `datas` : `index.html`, `un.js`, `deux.js`, `trois.js`, `ia.js`, `tuto.js`,
-`ia-immediat.js`, `bandeau.js`, `exercices.js`, `exercices.json`, `firmware.hex`, `logo.png`, `readme.txt`, `lib` — **tout nouveau fichier utilisé par la page doit y être
+`ia-son-immediat.js`, `ia-immediat.js`, `bandeau.js`, `exercices.js`, `exercices.json`, `firmware.hex`, `logo.png`, `readme.txt`, `lib` — **tout nouveau fichier utilisé par la page doit y être
 ajouté**. Le numéro de version est à tenir identique à **quatre** endroits : `VERSION` (`app.py`), `version_info.txt` (nombres + chaînes),
 `name=` (`app.spec`) et `#copyright-toolbar` (`index.html`). Vérifier l'archive sans lancer l'exe :
 `from PyInstaller.archive.readers import CArchiveReader; CArchiveReader(chemin).toc`. Port 8000 : si un autre serveur l'occupe, l'exe risque de ne pas démarrer
@@ -3358,6 +3358,17 @@ Reprise des points forts de l'IA d'EasyBloc TS (Arduino R4), **réécrits** : se
   images quantifiées en octets signés (×127) puis renormalisées, squelettes en Float32. Ajouté à la fin du `.py` en lignes
   `# ` de 100 caractères entre `# >>> apprentissage-ia` et `# <<< apprentissage-ia`, retiré avant la reconstruction en blocs.
 
+- **Sons sans entraînement** (`ia-son-immediat.js`) : micro ramené à 16 kHz, fenêtres de 25 ms tous les 10 ms, 12 MFCC
+  (26 filtres de Mel de 64 à 7 600 Hz, coefficient 0 écarté : indépendant du volume) ; un son commence à 14 dB au-dessus
+  du bruit de fond (3 fenêtres), finit après 250 ms sous 8 dB ; 50 ms à 1,5 s ; empreinte de 30 instants × 12 ; distance
+  DTW (bande de 10). Un son reconnu le reste 1 s (genre `son`). L'entraînement du son (colonne Son) et `lib/tm/base` sont
+  retirés : **une seule façon de créer des classes**, l'apprentissage immédiat.
+- **Vignettes** : `ex = [{ v, vignette }]` ; photo JPEG 48×36 (objets, en mémoire seulement), squelette redessiné depuis
+  l'empreinte (gestes, positions), dessin du timbre (sons). Un clic sur une vignette supprime l'exemple.
+- **Reconstruction** : `reconstruireGestionnaire` reconnaît `on_ia_<genre>_<slug>` et `on_ia_qr_lu` (nom de classe
+  retrouvé par `iaClassesConnues`) ; `reconstruireExpressionIA` reconnaît `_ia_dernier[…]`, `_ia_proba[…]`,
+  `_ia_qr_texte`, `… == "classe"` et `_ia_dernier["qr"] != ""`.
+
 **PIÈGE nº 71 — `.mjs` servi en `text/plain`** : Python 3.8 sous Windows ne connaît pas `.mjs` ; le navigateur refuse alors
 d'importer MediaPipe comme module. `app.py` fixe `extensions_map` (`.mjs` → `text/javascript`, `.wasm` → `application/wasm`) ;
 `ia-immediat.js` retombe sur `fetch` + `Blob` + `import()` pour un autre serveur.
@@ -3372,5 +3383,15 @@ oublierait sinon à tort une classe toujours reconnue.
 
 **PIÈGE nº 74 — annexe du `.py`** : ne jamais la mettre dans le `.hex` (place du système de fichiers comptée). Écrire les espaces
 du JSON en `\u0020` : un éditeur qui retire les espaces de fin de ligne abîmerait un nom de classe coupé à cet endroit.
+
+**PIÈGE nº 75 — micro par `ScriptProcessorNode`** : Chrome n'appelle `onaudioprocess` que si le nœud est relié à
+`contexte.destination` ; `new AudioContext({ sampleRate: 16000 })` peut être refusé : retomber sur le contexte par défaut
+et rééchantillonner soi-même. Le volume ne doit pas changer l'empreinte : écarter le coefficient cepstral 0, ne pas
+soustraire la moyenne des autres (un son court et stable perdrait tout son timbre).
+
+**PIÈGE nº 76 — reconstruction des blocs IA** : le texte `_source` d'un `Subscript` sort tronqué (`_ia_dernier["son"`
+sans `]`) : reconnaître les expressions IA sur l'arbre, jamais sur ce texte. Sauter `pass` (corps vide) et les appels de
+scrutation, sinon ils deviennent des blocs « code ». Lire l'annexe d'apprentissage **avant** la reconstruction, pour
+retrouver le vrai nom des classes (accents, majuscules) derrière leur identifiant.
 
 Fournis le code complet des fichiers du §1 (et les modules des §22 à §27), prêt à être posé dans un dossier.

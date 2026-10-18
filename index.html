@@ -526,6 +526,21 @@
     .ia-creer-statut { margin-top: 6px; font-size: 11px; color: #b8b8b8; min-height: 1.2em; }
     /* Apprentissage immediat et QR codes (ia-immediat.js) */
     .ia-imm-ex { grid-template-columns: 1fr 34px auto auto auto; }
+    .ia-imm-ex.sans-images { grid-template-columns: 1fr 34px auto auto; }
+    /* Vignettes des exemples, sous la ligne de leur classe ; un clic supprime l'exemple. */
+    .ia-imm-vignettes { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 3px; max-height: 82px; overflow-y: auto; }
+    .ia-imm-vignettes:empty { display: none; }
+    .ia-imm-vignette { position: relative; width: 48px; height: 36px; padding: 0; margin: 0; border: 1px solid var(--bordure-chrome);
+        border-radius: 3px; background: #1b1d21; color: #888; font-size: 16px; line-height: 34px; cursor: pointer; overflow: hidden; }
+    .ia-imm-vignette > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .ia-imm-vignette:hover::after, .ia-imm-vignette:focus-visible::after { content: '✕'; position: absolute; inset: 0;
+        background: rgba(192, 57, 43, 0.75); color: #fff; font-size: 18px; line-height: 34px; text-align: center; }
+    /* Jauge du micro (sons et mots) */
+    .ia-imm-niveau { width: 160px; height: 10px; margin-bottom: 6px; border-radius: 5px; overflow: hidden;
+        background: var(--fond-saisie); border: 1px solid var(--bordure-chrome); }
+    .ia-imm-niveau.replie { display: none; }
+    .ia-imm-niveau > i { display: block; height: 100%; width: 0; background: #5d6d7e; transition: width 60ms linear; }
+    .ia-imm-niveau.son > i { background: #2ecc71; }
     .ia-imm-type-label { font-size: 12px; display: flex; align-items: center; gap: 6px; flex: 1 1 auto; }
     .ia-imm-type { font-size: 12px; padding: 3px 6px; border-radius: 4px;
         background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome); }
@@ -1941,6 +1956,7 @@
               <option value="images">objets et images</option>
               <option value="mains">gestes de la main</option>
               <option value="bras">positions des bras</option>
+              <option value="sons">sons et mots (micro)</option>
             </select>
           </label>
           <button class="btn-vue ia-imm-camera" title="Allumer la caméra pour ajouter des exemples">📷 Caméra</button>
@@ -1950,6 +1966,7 @@
           <span class="ia-statut">Ajoutez des exemples à au moins 2 classes.</span>
         </div>
         <div class="ia-imm-cadre replie"><video class="ia-imm-video" autoplay muted playsinline></video><canvas class="ia-imm-calque"></canvas></div>
+        <div class="ia-imm-niveau replie" title="Volume du micro au-dessus du bruit de fond (vert : son détecté)"><i></i></div>
         <div class="ia-classes"></div>
         <details class="ia-creer" open>
           <summary>✚ Exemples (aucun entraînement : chaque exemple compte aussitôt)</summary>
@@ -1983,7 +2000,7 @@
         <p class="ia-creer-aide">Pour créer vos propres classes d'images, utilisez « ⚡ Apprentissage immédiat ».</p>
       </div>
       <div class="ia-colonne" data-genre="son">
-        <h4>🎤 Son (micro)</h4>
+        <h4>🎤 Son : modèle Teachable Machine (micro)</h4>
         <div class="ia-modele">
           <input type="text" class="ia-url" placeholder="https://teachablemachine.withgoogle.com/models/…/" spellcheck="false">
           <button class="btn-vue ia-charger-url" title="Charger le modèle depuis son adresse (nécessite Internet : le modèle est téléchargé depuis les serveurs de Google ; aucune image ni aucun son n'y est envoyé). Sans Internet, utilisez « Fichiers… ».">Charger</button>
@@ -1995,18 +2012,7 @@
           <span class="ia-statut">Aucun modèle chargé.</span>
         </div>
         <div class="ia-classes"></div>
-        <details class="ia-creer">
-          <summary>✚ Créer un modèle (entraînement)</summary>
-          <p class="ia-creer-aide">Cliquer le bouton de chaque classe : 1 seconde de son est enregistrée. Créez une classe « Bruit de fond » (silence).</p>
-          <div class="ia-creer-classes"></div>
-          <div class="ia-creer-actions">
-            <button class="btn-vue ia-ajouter-classe">+ Classe</button>
-            <button class="btn-vue ia-entrainer">🏋 Entraîner</button>
-            <button class="btn-vue ia-enregistrer" disabled title="Télécharger model.json, metadata.json et weights.bin (à recharger avec « Fichiers… »)">💾 Enregistrer</button>
-            <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
-          </div>
-          <div class="ia-creer-statut"></div>
-        </details>
+        <p class="ia-creer-aide">Pour créer vos propres classes de sons, utilisez « ⚡ Apprentissage immédiat » (sons et mots).</p>
       </div>
       <div class="ia-colonne" data-genre="qr">
         <h4>🔳 QR codes et codes-barres (caméra)</h4>
@@ -2047,6 +2053,7 @@
   <script type="module" src="deux.js"></script>
   <script type="module" src="un.js"></script>
   <script type="module" src="ia.js"></script>
+  <script type="module" src="ia-son-immediat.js"></script>
   <script type="module" src="ia-immediat.js"></script>
   <script type="module" src="tuto.js"></script>
   <script type="module" src="bandeau.js"></script>
