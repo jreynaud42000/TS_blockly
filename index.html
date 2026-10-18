@@ -637,6 +637,9 @@
        de la barre s'influencent l'une l'autre : une carte plus petite fait
        disparaitre la barre, ce qui elargit le cadre, ce qui reagrandit la
        carte, ce qui ramene la barre. */
+    /* Code masque (etat de depart) : simulateur plus large, boutons a droite de la carte. La poignee
+       (#simulateur-redimensionneur) fixe ensuite une largeur en pixels, qui l'emporte. */
+    #code-container.replie ~ #simulator-container { flex-basis: 37%; }
     #simulator-container { flex: 0 0 24%; min-width: 250px; min-height: 0; height: 100%; background: var(--fond-chrome); display: flex; flex-direction: column; align-items: center; padding: 20px; box-sizing: border-box; border-left: 2px solid var(--fond-chrome-profond); overflow-y: auto; scrollbar-gutter: stable;}
     #simulator-container h3 { margin-top: 0; color: #ff7a33; font-size: 14px; text-transform: uppercase; width: 100%; text-align: left;}
 
@@ -1304,9 +1307,10 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
       <span id="lib-simulation">Masquer la simulation</span>
     </button>
-    <button id="btn-vue-code" class="tb-btn" title="Afficher ou masquer le code MicroPython, à gauche de la simulation" aria-label="Afficher ou masquer la transcription MicroPython">
+    <!-- Au lancement, le code est masque (classe inactif ici, replie sur #code-container) : demande de l'utilisateur. -->
+    <button id="btn-vue-code" class="tb-btn inactif" title="Afficher ou masquer le code MicroPython, à gauche de la simulation" aria-label="Afficher ou masquer la transcription MicroPython">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-      <span id="lib-code">Masquer le code</span>
+      <span id="lib-code">Afficher le code</span>
     </button>
     <!-- Specifique a ce logiciel (absent du modele) : panneau IA, apres Code -->
     <button id="btn-vue-ia" class="tb-btn inactif" title="IA : reconnaissance d'images et de sons (caméra, micro)" aria-label="Afficher ou masquer le panneau IA">
@@ -1366,7 +1370,7 @@
       <div id="blocklyDiv"></div>
       <div id="voile-blocs-figes"><span>✎ Blocs figés — édition manuelle du code en cours</span></div>
     </div>
-    <div id="code-container">
+    <div id="code-container" class="replie">
       <div class="code-entete">
         <h3>Transcription MicroPython</h3>
         <button id="btn-editer-code" class="btn-vue" title="Saisir du code MicroPython à la main">✎ Éditer</button>
