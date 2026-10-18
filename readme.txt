@@ -1445,3 +1445,15 @@ Le logo de Technologie Services (logo_ts.png, 360 x 100 px, telecharge de techno
 gauche du bandeau, sur une pastille blanche (texte noir et icone orange illisibles directement sur l'orange), 24 px de
 haut. Pour lui laisser la place sans repasser sur deux lignes a 1536 px, Defaire et Refaire n'ont plus que leur icone
 (fleches ; le libelle reste dans l'info-bulle et pour les lecteurs d'ecran). logo_ts.png est dans app.spec et site_web.
+
+35. UN SEUL BOUTON « LANCER LA SIMULATION » (oct. 2026)
+Le bouton orange du panneau de simulation (#run-sim) faisait doublon avec le bouton vert du bandeau (#tb-lancer) : il est
+masque (display: none), pas supprime, car c'est lui que le bandeau clique (bandeau.js) et que le simulateur Brython ecoute.
+Restent sous la carte : « Secouer la carte » et « Reinitialiser la simulation ». Les visites guidees visent le bouton vert.
+
+36. DISPOSITION AU LANCEMENT (oct. 2026)
+L'application s'ouvre avec : simulation affichee, code MicroPython MASQUE (bouton « Afficher le code »), console et IA
+masquees. Code masque, le simulateur occupe 37 % de la largeur (au lieu de 24 %) : les boutons « Secouer la carte » et
+« Reinitialiser la simulation » se placent a droite de la carte, et la poignee de redimensionnement est active d'emblee.
+Reglage : classes inactif / replie dans index.html (#btn-vue-code, #code-container), regle CSS
+#code-container.replie ~ #simulator-container, et synchroniserResizerSimulateur() appele au demarrage (un.js).

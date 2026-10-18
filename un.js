@@ -5735,6 +5735,8 @@ try {
             basculerPanneau(btnVueSimu, conteneurSimulateur));
     }
     window.addEventListener('resize', () => Blockly.svgResize(window.workspace));
+    // Le code est masque des le lancement (index.html) : la poignee du simulateur doit deja etre active.
+    synchroniserResizerSimulateur();
 
     // ------------------------------------------
     // MASQUER LA COLONNE DE CATEGORIES PENDANT UN GLISSER DE BLOC
