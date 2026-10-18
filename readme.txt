@@ -1464,3 +1464,10 @@ boitier bleu type SG90 a deux oreilles, palonnier blanc qui tourne autour de l'a
 0 deg a gauche, 180 deg a droite). Rotation continue : le palonnier tourne sans fin (sens et vitesse selon la vitesse).
 Arret : boitier et palonnier gris. Dessin SVG cree par cadranServo() (un.js), styles .servo-* (index.html) ; le rotor
 tourne avec transform-box: view-box et transform-origin: 42px 52px (unites du dessin).
+
+38. GROVE : POTENTIOMETRE (oct. 2026)
+Nouvelle sous-categorie Grove « Potentiometre » (Grove Rotary Angle Sensor), apres « Joystick ». Un bloc :
+« potentiometre sur [broche] en [valeur 0 a 1023 / angle 0 a 300 deg / pourcentage 0 a 100 %] ». A brancher sur P0, P1
+ou P2 (entrees analogiques). Code : pilote « potentiometre » (_grove_potentiometre(broche, unite), read_analog() puis
+conversion). Simulateur : curseur « Potentiometre » du panneau Grove (valeur et angle affiches), substitut
+_grove_potentiometre dans index.html. Aide du bloc, exemple « Angle du potentiometre », reconstruction a l'import d'un .py.

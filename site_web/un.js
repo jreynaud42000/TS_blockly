@@ -1873,6 +1873,43 @@ try {
         return ['(' + block.getFieldValue('BROCHE') + '.read_analog() < 250)', P.ORDER_ATOMIC];
     };
 
+    // --- Potentiometre (Grove Rotary Angle Sensor) : une tension sur une broche analogique ---
+    //
+    // Le module donne 0 a 3,3 V sur 300° de course : read_analog() rend 0 a 1023.
+    // Une fonction a part (et pas read_analog() directement) pour que le simulateur
+    // la remplace par son curseur sans la confondre avec le joystick.
+
+    function pilotePotentiometre() {
+        importerMicrobit();
+        pilote('potentiometre', [
+            'def _grove_potentiometre(broche, unite):',
+            '    v = broche.read_analog()',
+            '    if unite == "angle":',
+            '        return round(v * 300 / 1023)',
+            '    if unite == "pourcent":',
+            '        return round(v * 100 / 1023)',
+            '    return v',
+        ]);
+    }
+
+    const UNITES_POTENTIOMETRE = [
+        ["valeur (0 à 1023)", "brut"], ["angle (0 à 300°)", "angle"], ["pourcentage (0 à 100 %)", "pourcent"]
+    ];
+
+    Blockly.Blocks['grove_potentiometre'] = { init: function() {
+        this.appendDummyInput().appendField("potentiomètre sur").appendField(menuBroche(), "BROCHE")
+            .appendField("en").appendField(new Blockly.FieldDropdown(UNITES_POTENTIOMETRE), "UNITE");
+        this.setOutput(true, "Number");
+        this.setColour(COULEUR_GROVE);
+        this.setTooltip("Position du bouton du potentiomètre Grove : valeur brute de 0 à 1023, angle de 0 à 300° " +
+                        "ou pourcentage de 0 à 100 %. À brancher sur P0, P1 ou P2 (entrées analogiques).");
+    }};
+    P.forBlock['grove_potentiometre'] = function(block) {
+        pilotePotentiometre();
+        return ['_grove_potentiometre(' + block.getFieldValue('BROCHE') + ', "' + block.getFieldValue('UNITE') + '")',
+                P.ORDER_FUNCTION_CALL];
+    };
+
     // --- Capteur de gestes PAJ7620 (I2C) ---
     //
     // Table d'initialisation et registres repris de la bibliotheque Seeed
@@ -4861,6 +4898,13 @@ try {
               ]
             },
             {
+            "kind": "category", "name": "Potentiomètre", "colour": String(COULEUR_GROVE),
+            "contents": [
+              { "kind": "block", "type": "grove_potentiometre" },
+              { "kind": "block", "type": "grove_potentiometre", "fields": { "UNITE": "angle" } }
+              ]
+            },
+            {
             "kind": "category", "name": "Capteur de gestes", "colour": String(COULEUR_GROVE),
             "contents": [
               { "kind": "block", "type": "grove_gestes_init" },
@@ -6889,6 +6933,9 @@ try {
         grove_ultrason_pouces: "Distance mesurée par le capteur à ultrasons branché sur la broche choisie, en pouces.",
         grove_joystick_direction: "Vrai si le joystick est poussé dans la direction choisie (ou au centre). " +
             "Choisir les broches sur lesquelles sont branchés ses axes X et Y.",
+        grove_potentiometre: "Position du bouton du potentiomètre Grove (Rotary Angle Sensor), branché sur une entrée " +
+            "analogique (P0, P1 ou P2). Au choix : valeur brute de 0 à 1023, angle de 0 à 300° (la course du bouton) ou " +
+            "pourcentage de 0 à 100 %. Dans le simulateur, tournez le bouton avec le curseur « Potentiomètre » du panneau Grove.",
         grove_gestes_est: "Vrai si le capteur de gestes vient de détecter le geste choisi (haut, bas, gauche, " +
             "droite, avant, arrière, rotation ou vague).",
         grove_th_mesure: "Mesure du capteur de température et d'humidité : température en °C ou °F, ou humidité en %.",
@@ -7353,6 +7400,8 @@ try {
                  exB('grove_4d_nombre', null, { VALEUR: exN(1234) }))]);
     exemple(['grove_joystick_valeur'], 'Valeur de l\'axe X', exTexteMesure,
         exMesure(exB('grove_joystick_valeur', { BROCHE: 'pin0' })));
+    exemple(['grove_potentiometre'], 'Angle du potentiomètre', exTexteMesure,
+        exMesure(exB('grove_potentiometre', { BROCHE: 'pin0', UNITE: 'angle' })));
     exemple(['grove_joystick_bouton'], 'Appui sur le joystick', "Un cœur s'affiche quand on appuie sur le manche du joystick.",
         [exLoop(exSi(exB('grove_joystick_bouton', { BROCHE: 'pin0' }), exIcone('HEART')))]);
     exemple(['grove_gestes_init', 'grove_gestes_lire'], 'Lire le geste détecté',
@@ -8473,6 +8522,11 @@ try {
                 });
                 return { type: typeBloc, inputs };
             }
+            // _grove_potentiometre(pinX, "unite") : deux champs (broche nue, unite en texte).
+            if (nomFonction === '_grove_potentiometre' && noeud.args.length === 2 &&
+                identifiantNom(noeud.args[0]) !== undefined && typeof valeurConstante(noeud.args[1]) === 'string') {
+                return { type: 'grove_potentiometre', fields: { BROCHE: identifiantNom(noeud.args[0]), UNITE: valeurConstante(noeud.args[1]) } };
+            }
             if (APPELS_VALEUR_AVEC_CHAMP[nomFonction] && noeud.args.length === 1) {
                 const [typeBloc, nomChamp] = APPELS_VALEUR_AVEC_CHAMP[nomFonction];
                 const v = valeurConstante(noeud.args[0]);
@@ -9442,6 +9496,8 @@ try {
     const valeurJX = document.getElementById('grove-jx-val');
     const valeurJY = document.getElementById('grove-jy-val');
     const caseBoutonJoystick = document.getElementById('grove-jbtn');
+    const curseurPotentiometre = document.getElementById('grove-pot');
+    const valeurPotentiometre = document.getElementById('grove-pot-val');
     const menuGesteGrove = document.getElementById('grove-geste');
     const boutonGesteGrove = document.getElementById('grove-geste-btn');
 
@@ -9633,6 +9689,7 @@ try {
         ['grove-sec-4digit',   /^grove_4d_/],
         ['grove-sec-ultrason', /^grove_ultrason_/],
         ['grove-sec-joystick', /^grove_joystick_/],
+        ['grove-sec-potentiometre', /^grove_potentiometre$/],
         ['grove-sec-gestes',   /^grove_gestes_/],
         ['grove-sec-lcd',      /^grove_lcd(rgb)?_/],
         // Les SCD mesurent aussi température et humidité : leurs curseurs
@@ -10825,6 +10882,10 @@ try {
         if (id === '1') return curseurJY ? Number(curseurJY.value) : 512;
         return curseurJX ? Number(curseurJX.value) : 512;
     };
+    /** Potentiometre Grove : position du curseur du panneau (0 a 1023), quelle que soit la broche. */
+    window.simu_potentiometre = function() {
+        return curseurPotentiometre ? Number(curseurPotentiometre.value) : 512;
+    };
     window.simu_joystickDirection = function(direction) {
         const x = caseBoutonJoystick && caseBoutonJoystick.checked ? 0 : Number(curseurJX.value);
         const y = Number(curseurJY.value);
@@ -10936,6 +10997,11 @@ try {
     }
     if (curseurJX) curseurJX.addEventListener('input', () => { valeurJX.textContent = curseurJX.value; });
     if (curseurJY) curseurJY.addEventListener('input', () => { valeurJY.textContent = curseurJY.value; });
+    // Potentiometre : valeur brute et angle correspondant (300° de course).
+    if (curseurPotentiometre) curseurPotentiometre.addEventListener('input', () => {
+        const v = Number(curseurPotentiometre.value);
+        valeurPotentiometre.textContent = v + ' (' + Math.round(v * 300 / 1023) + '°)';
+    });
     [['grove-temp', 'grove-temp-val'], ['grove-humi', 'grove-humi-val'],
      ['grove-co2', 'grove-co2-val']].forEach(([idCurseur, idValeur]) => {
         const c = document.getElementById(idCurseur);

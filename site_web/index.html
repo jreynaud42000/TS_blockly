@@ -1562,6 +1562,11 @@
           <label class="grove-case"><input type="checkbox" id="grove-jbtn"> bouton enfoncé</label>
         </div>
 
+        <div class="grove-bloc" id="grove-sec-potentiometre">
+          <label class="grove-titre" for="grove-pot">Potentiomètre : <b id="grove-pot-val">512 (150°)</b></label>
+          <input type="range" id="grove-pot" min="0" max="1023" value="512">
+        </div>
+
         <div class="grove-bloc" id="grove-sec-gestes">
           <span class="grove-titre">Capteur de gestes</span>
           <select id="grove-geste">
@@ -2484,6 +2489,12 @@
     def _grove_distance_cm(broche): return int(window.simu_distanceCm())
     def _grove_distance_pouces(broche): return int(int(window.simu_distanceCm()) / 2.54)
     def _grove_joystick(bx, by, direction): return bool(window.simu_joystickDirection(direction))
+    # Potentiometre : le curseur du panneau Grove remplace la broche analogique.
+    def _grove_potentiometre(broche, unite):
+        v = int(window.simu_potentiometre())
+        if unite == "angle": return round(v * 300 / 1023)
+        if unite == "pourcent": return round(v * 100 / 1023)
+        return v
 
     class _CapteurGestesMock:
         def __init__(self): pass
@@ -2995,6 +3006,7 @@
             '_grove_distance_cm': _grove_distance_cm,
             '_grove_distance_pouces': _grove_distance_pouces,
             '_grove_joystick': _grove_joystick,
+            '_grove_potentiometre': _grove_potentiometre,
             '_CapteurGestes': _CapteurGestesMock,
             '_CapteurTH': _CapteurTHMock, '_EcranLCD': _EcranLCDMock, '_EcranLCDRGB': _EcranLCDRGBMock,
             '_CapteurCouleur': _CapteurCouleurMock,
