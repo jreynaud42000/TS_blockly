@@ -133,7 +133,7 @@ const ETAPES_GENERAL = [
         titre: '12. De l\'aide partout',
         texte: 'Clic droit sur un bloc de l\'espace de travail → « Aide sur ce bloc » : explication, code MicroPython ' +
             'généré et un exemple à insérer d\'un clic. Les boutons « ? » des panneaux console et IA ouvrent leur aide. ' +
-            'Annuler/Refaire sont dans la barre du haut ; la molette et les boutons ronds en bas à droite de la zone de blocs zooment ; le menu « Affichage » règle le thème clair/sombre et le contraste élevé. ' +
+            'Défaire/Refaire sont les deux flèches de la barre du haut ; la molette et les boutons ronds en bas à droite de la zone de blocs zooment ; le menu « Affichage » règle le thème clair/sombre et le contraste élevé. ' +
             'Le menu « Aide » relance les visites guidées.',
         cible: '#btn-annuler',
     },
@@ -486,7 +486,7 @@ const ETAPES_CLIC_DROIT = [
     {
         titre: '8. Supprimer, c\'est rattrapable',
         texte: 'Supprimer un bloc : clic droit → « Supprimer le bloc », ou sélectionnez-le et appuyez sur Suppr. En cas d\'erreur, ' +
-            'le bouton « Annuler » (ou Ctrl+Z) le ramène ; « Refaire » (Ctrl+Maj+Z) rejoue l\'action. Faites glisser un bloc sur ' +
+            'la flèche « Défaire » de la barre du haut (ou Ctrl+Z) le ramène ; la flèche « Refaire » (Ctrl+Maj+Z) rejoue l\'action. Faites glisser un bloc sur ' +
             'la corbeille pour le supprimer aussi.',
         cible: '#btn-annuler',
     },

@@ -1432,3 +1432,16 @@ MicroPython, blocs, aide, .py), index.html (deux colonnes du panneau IA), app.py
     classes connues, sinon l'identifiant), « lorsqu'un code QR est lu », et les expressions IA (l'IA reconnait,
     derniere classe, confiance, code QR visible, texte du QR). Les lignes de scrutation (_ia_traiter(), _radio_traiter(),
     _ir_traiter()) et les « pass » des corps vides ne deviennent plus des blocs « code ».
+
+33. BANDEAU SUR UNE LIGNE (oct. 2026)
+Le bandeau tient sur une seule ligne des 1536 px de large (ecran 1920 px avec affichage Windows a 125 %, zoom du
+navigateur 100 %), y compris dans le cas le plus long (console, simulation et code affiches : 39 px de reserve).
+Reglages (index.html) : boutons 5 x 6 px de marge interieure, ecart 2 px, separateurs 2 px, nom du programme 84 px,
+Televerser et Lancer la simulation un peu moins larges. En dessous (1366, 1280 px), il passe sur deux lignes sans
+couper de bouton. Aucun bouton ni libelle retire.
+
+34. LOGO TECHNOLOGIE SERVICES (oct. 2026)
+Le logo de Technologie Services (logo_ts.png, 360 x 100 px, telecharge de technologieservices.fr) est affiche en haut a
+gauche du bandeau, sur une pastille blanche (texte noir et icone orange illisibles directement sur l'orange), 24 px de
+haut. Pour lui laisser la place sans repasser sur deux lignes a 1536 px, Defaire et Refaire n'ont plus que leur icone
+(fleches ; le libelle reste dans l'info-bulle et pour les lecteurs d'ecran). logo_ts.png est dans app.spec et site_web.
