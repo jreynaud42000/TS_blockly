@@ -10997,11 +10997,41 @@ try {
     }
     if (curseurJX) curseurJX.addEventListener('input', () => { valeurJX.textContent = curseurJX.value; });
     if (curseurJY) curseurJY.addEventListener('input', () => { valeurJY.textContent = curseurJY.value; });
-    // Potentiometre : valeur brute et angle correspondant (300° de course).
-    if (curseurPotentiometre) curseurPotentiometre.addEventListener('input', () => {
+    // Potentiometre : valeur brute et angle correspondant (300° de course), bouton du module
+    // dessine tourne d'autant (-150° a gauche, +150° a droite).
+    const rotorPotentiometre = document.getElementById('grove-pot-rotor');
+    const visuelPotentiometre = document.getElementById('grove-pot-visuel');
+    function majPotentiometre() {
         const v = Number(curseurPotentiometre.value);
-        valeurPotentiometre.textContent = v + ' (' + Math.round(v * 300 / 1023) + '°)';
-    });
+        const angle = v * 300 / 1023;
+        valeurPotentiometre.textContent = v + ' (' + Math.round(angle) + '°)';
+        if (rotorPotentiometre) rotorPotentiometre.style.transform = 'rotate(' + (angle - 150).toFixed(1) + 'deg)';
+    }
+    if (curseurPotentiometre) {
+        curseurPotentiometre.addEventListener('input', majPotentiometre);
+        majPotentiometre();
+    }
+    // Tourner le bouton a la souris : l'angle du pointeur autour de l'axe donne la position.
+    // Au-dela des butees (zone morte en bas), le bouton reste a 0 ou a 300°.
+    if (visuelPotentiometre && curseurPotentiometre) {
+        const viser = evenement => {
+            const r = visuelPotentiometre.getBoundingClientRect();
+            const x = (evenement.clientX - r.left) * 120 / r.width - 60;
+            const y = (evenement.clientY - r.top) * 100 / r.height - 52;
+            let angle = Math.atan2(x, -y) * 180 / Math.PI + 150;       // 0 = butee gauche
+            if (angle < 0) angle += 360;
+            if (angle > 300) angle = angle > 330 ? 0 : 300;
+            curseurPotentiometre.value = String(Math.round(angle * 1023 / 300));
+            majPotentiometre();
+        };
+        visuelPotentiometre.addEventListener('pointerdown', evenement => {
+            visuelPotentiometre.setPointerCapture(evenement.pointerId);
+            viser(evenement);
+        });
+        visuelPotentiometre.addEventListener('pointermove', evenement => {
+            if (visuelPotentiometre.hasPointerCapture(evenement.pointerId)) viser(evenement);
+        });
+    }
     [['grove-temp', 'grove-temp-val'], ['grove-humi', 'grove-humi-val'],
      ['grove-co2', 'grove-co2-val']].forEach(([idCurseur, idValeur]) => {
         const c = document.getElementById(idCurseur);

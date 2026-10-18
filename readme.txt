@@ -1469,5 +1469,7 @@ tourne avec transform-box: view-box et transform-origin: 42px 52px (unites du de
 Nouvelle sous-categorie Grove « Potentiometre » (Grove Rotary Angle Sensor), apres « Joystick ». Un bloc :
 « potentiometre sur [broche] en [valeur 0 a 1023 / angle 0 a 300 deg / pourcentage 0 a 100 %] ». A brancher sur P0, P1
 ou P2 (entrees analogiques). Code : pilote « potentiometre » (_grove_potentiometre(broche, unite), read_analog() puis
-conversion). Simulateur : curseur « Potentiometre » du panneau Grove (valeur et angle affiches), substitut
+conversion). Simulateur : module Grove dessine (modele A, choisi parmi 4 propositions : carte bleue, bouton gris a repere
+blanc) dont on tourne le bouton a la souris (butees a 0 et 300 deg), plus un curseur dessous (clavier, reglage fin) ;
+valeur et angle affiches ; substitut
 _grove_potentiometre dans index.html. Aide du bloc, exemple « Angle du potentiometre », reconstruction a l'import d'un .py.
