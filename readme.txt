@@ -1432,3 +1432,10 @@ MicroPython, blocs, aide, .py), index.html (deux colonnes du panneau IA), app.py
     classes connues, sinon l'identifiant), « lorsqu'un code QR est lu », et les expressions IA (l'IA reconnait,
     derniere classe, confiance, code QR visible, texte du QR). Les lignes de scrutation (_ia_traiter(), _radio_traiter(),
     _ir_traiter()) et les « pass » des corps vides ne deviennent plus des blocs « code ».
+
+33. BANDEAU SUR UNE LIGNE (oct. 2026)
+Le bandeau tient sur une seule ligne des 1536 px de large (ecran 1920 px avec affichage Windows a 125 %, zoom du
+navigateur 100 %), y compris dans le cas le plus long (console, simulation et code affiches : 39 px de reserve).
+Reglages (index.html) : boutons 5 x 6 px de marge interieure, ecart 2 px, separateurs 2 px, nom du programme 84 px,
+Televerser et Lancer la simulation un peu moins larges. En dessous (1366, 1280 px), il passe sur deux lignes sans
+couper de bouton. Aucun bouton ni libelle retire.
