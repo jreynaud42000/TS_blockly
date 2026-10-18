@@ -1,0 +1,3197 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Programmation Micro:bit V2</title>
+  <!-- Applique le theme et le contraste sauvegardes AVANT le <style> qui
+       suit : un script posé plus bas (apres le premier rendu) provoquerait
+       un flash visible de l'etat par defaut (sombre, contraste normal)
+       avant de basculer vers le choix memorise. -->
+  <script>
+    try {
+      if (localStorage.getItem('themeApp') === 'light') {
+        document.documentElement.dataset.theme = 'light';
+      }
+      if (localStorage.getItem('contrasteApp') === 'high') {
+        document.documentElement.dataset.contrast = 'high';
+      }
+    } catch (erreur) { /* localStorage indisponible (navigation privee...) : tant pis, etat par defaut */ }
+  </script>
+
+  <!-- Bibliotheques EMBARQUEES dans lib/ (plus aucun CDN) : l'application et l'exe
+       marchent hors ligne. Versions figees : Blockly 10.4.3, Brython 3.11.2,
+       microbit-fs 0.10.1 et microbit-universal-hex 0.2.2 (voir readme.txt). -->
+  <script src="lib/blockly/blockly_compressed.js"></script>
+  <script src="lib/blockly/blocks_compressed.js"></script>
+  <script src="lib/blockly/python_compressed.js"></script>
+  <script src="lib/blockly/msg/fr.js"></script>
+  
+  <script src="lib/brython/brython.min.js"></script>
+  <script src="lib/brython/brython_stdlib.min.js"></script>
+  
+  <style>
+    /* Theme clair/sombre : variables pour les grandes surfaces (barre d'outils,
+       panneaux lateraux, panneau de code, champs de saisie sur fond sombre) —
+       pas pour les couleurs "d'appareil" (sprites de robots, carte micro:bit,
+       DEL, bezel du joystick...), qui representent quelque chose de reel et
+       restent donc fixes quel que soit le theme, comme les couleurs des
+       boutons d'action. Sombre par defaut (etat actuel du projet) ; le clair
+       est le nouveau venu, applique via [data-theme="light"] sur <html>.
+       Choix persiste en localStorage, applique avant le premier rendu (voir
+       le petit <script> juste avant </head>) pour eviter un flash. */
+    :root {
+      --fond-page: #f4f4f4;
+      --fond-chrome: #303030;
+      --fond-chrome-profond: #1c1c1c;
+      --texte-chrome: #ffffff;
+      --fond-saisie: #202020;
+      --texte-saisie: #e6e6e6;
+      --bordure-chrome: #555555;
+      --fond-code: #1e1e1e;
+      --texte-code: #d4d4d4;
+    }
+    :root[data-theme="light"] {
+      --fond-page: #f4f4f4;
+      --fond-chrome: #ececec;
+      --fond-chrome-profond: #cfcfcf;
+      --texte-chrome: #1c1c1c;
+      --fond-saisie: #ffffff;
+      --texte-saisie: #303030;
+      --bordure-chrome: #c8c8c8;
+      --fond-code: #ffffff;
+      --texte-code: #24292e;
+    }
+    /* Contraste eleve : meme principe que le theme clair/sombre, en plus —
+       orthogonal (les deux se combinent : sombre+eleve, clair+eleve). Pousse
+       les memes variables vers le noir/blanc pur plutot que des teintes
+       intermediaires, et epaissit les bordures pour qu'elles restent
+       visibles une fois les nuances aplaties. Toujours pas les couleurs
+       "d'appareil" : un robot ou la carte micro:bit ne devient pas plus
+       "accessible" en changeant sa couleur, ce n'est pas du texte a lire. */
+    :root[data-contrast="high"] {
+      --fond-chrome: #000000;
+      --fond-chrome-profond: #000000;
+      --texte-chrome: #ffffff;
+      --fond-saisie: #000000;
+      --texte-saisie: #ffffff;
+      --bordure-chrome: #ffffff;
+      --fond-code: #000000;
+      --texte-code: #ffffff;
+    }
+    :root[data-theme="light"][data-contrast="high"] {
+      --fond-chrome: #ffffff;
+      --fond-chrome-profond: #ffffff;
+      --texte-chrome: #000000;
+      --fond-saisie: #ffffff;
+      --texte-saisie: #000000;
+      --bordure-chrome: #000000;
+      --fond-code: #ffffff;
+      --texte-code: #000000;
+    }
+    :root[data-contrast="high"] #toolbar,
+    :root[data-contrast="high"] .menu-panneau,
+    :root[data-contrast="high"] #panneau-options {
+      border-color: var(--bordure-chrome);
+      border-style: solid;
+      border-width: 2px;
+    }
+    :root[data-contrast="high"] #toolbar { border-width: 0 0 2px 0; }
+    /* Contraste eleve, suite : les blocs eux-memes (image de reference
+       fournie par l'utilisateur) — noir avec un simple contour blanc, plutot
+       que remplis de la couleur de leur categorie. Blockly peint chaque bloc
+       avec des attributs SVG directs (fill="...", stroke="none" poses par
+       bloc, pas des classes ou des variables) : une regle CSS l'emporte quand
+       meme, un attribut de presentation SVG etant la source de plus basse
+       priorite de la cascade — inutile de toucher au JS qui construit les
+       blocs. .blocklyPathDark/.blocklyPathLight sont les couches de relief
+       (ombre/reflet) qui donnent l'effet 3D habituel ; en contraste eleve,
+       cet effet est justement ce qui doit disparaitre au profit d'un simple
+       contour net. */
+    :root[data-contrast="high"] .blocklyPath {
+      fill: #000000 !important;
+      stroke: #ffffff !important;
+      stroke-width: 3px !important;
+    }
+    :root[data-contrast="high"] .blocklyPathDark { fill: #000000 !important; }
+    :root[data-contrast="high"] .blocklyPathLight { stroke: #ffffff !important; fill: none !important; }
+    :root[data-contrast="high"] .blocklyText { fill: #ffffff !important; }
+    :root[data-contrast="high"] .blocklyEditableText > .blocklyPath,
+    :root[data-contrast="high"] .blocklyNonEditableText > .blocklyPath {
+      fill: #000000 !important; stroke: #ffffff !important;
+    }
+    :root[data-contrast="high"] .blocklyEditableText > .blocklyText,
+    :root[data-contrast="high"] .blocklyNonEditableText > .blocklyText { fill: #ffffff !important; }
+    body { margin: 0; padding: 0; font-family: var(--font, 'Segoe UI', Arial, sans-serif); display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--fond-page);}
+    /* Police unique de l'interface : Segoe UI (repli Arial). Les boutons, champs et listes ne l'heritent pas tout seuls ;
+       le code (Consolas / monospace) et les dessins de la carte micro:bit gardent leurs polices propres (regles plus precises). */
+    button, input, select, textarea { font-family: inherit; }
+    /* ═══════════════════════════════════════════════════════════════════════
+       BANDEAU DU HAUT — identique a celui de la version Arduino R4 (EasyBloc / Technologie Services).
+       Seule l'apparence change : les id et les fonctions de ce logiciel sont conserves
+       (#toolbar, #btn-annuler, #btn-envoyer, menu-*-btn...). Le comportement des boutons
+       a etiquette variable (Afficher / Masquer...) est assure par bandeau.js.
+       Couleurs : turquoise (clair), turquoise fonce (sombre), noir (contraste eleve).
+       ═══════════════════════════════════════════════════════════════════════ */
+    :root {
+      --bandeau: #ff5501; --bandeau-sombre: #d94700; --accent: #ff5501; --accent-fonce: #b33a00; --top-h: 44px;   /* charte Technologie Services : bandeau orange (clair #ff5501, sombre un peu plus profond), filet bas orange fonce */
+      --font: 'Segoe UI', Arial, sans-serif;
+      --btn-green: #4caa3c; --btn-green-h: #3d8e2f;
+      --couleur-bandeau: var(--bandeau);
+    }
+    :root:not([data-theme="light"]) { --couleur-bandeau: var(--bandeau-sombre); }
+    :root[data-contrast="high"] { --couleur-bandeau: #000; }
+
+    #toolbar {
+      min-height: var(--top-h); box-sizing: border-box; position: relative;
+      background: var(--bandeau); color: #fff; border-bottom: 3px solid var(--accent-fonce);
+      display: flex; align-items: center; flex-wrap: wrap; gap: 4px 4px;
+      padding: 3px 8px; flex-shrink: 0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.25); z-index: 100; font-family: var(--font);
+    }
+    :root:not([data-theme="light"]) #toolbar { background: var(--bandeau-sombre); }
+    :root[data-contrast="high"] #toolbar { background: #000; }
+
+    .tb-btn {
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 10px; margin: 0; border: none; background: transparent; color: #fff;
+      cursor: pointer; border-radius: 4px; font-size: 13px; font-weight: normal;
+      font-family: var(--font); white-space: nowrap; transition: background 0.15s;
+    }
+    .tb-btn:hover { background: rgba(255,255,255,0.15); }
+    .tb-btn svg { flex-shrink: 0; }
+    .tb-btn:disabled, .tb-btn:disabled:hover { opacity: 0.45; cursor: not-allowed; background: transparent; }
+    /* Fonction activee (console, simulation, code, IA affiches : classe .inactif absente) : liseré blanc sous le bouton. */
+    #btn-vue-console:not(.inactif), #btn-vue-simu:not(.inactif), #btn-vue-code:not(.inactif), #btn-vue-ia:not(.inactif) {
+      box-shadow: inset 0 -3px 0 #fff; border-radius: 4px 4px 0 0; }
+    .tb-sep { width: 1px; height: 24px; background: rgba(255,255,255,0.25); margin: 0 4px; }
+
+    /* Logo (accessoire : le fichier logo.png actuel est conserve) */
+    #tb-logo { display: flex; align-items: center; padding: 0 6px 0 2px; margin-right: 2px; flex-shrink: 0; }
+    #tb-logo img { height: 30px; width: auto; display: block; }
+
+    /* Nom du fichier : encadre blanc, texte de la couleur du bandeau (champ de saisie : un clic permet de le renommer) */
+    #tb-nomfichier {
+      max-width: 240px; background: #fff; color: var(--couleur-bandeau); font-weight: 700;
+      padding: 4px 10px; margin: 0 2px; border: 2px solid #fff; border-radius: 5px;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); cursor: text;
+    }
+    #tb-nomfichier:hover { background: #eef7f7; border-color: #eef7f7; }
+    #nom-fichier {
+      width: 96px; min-width: 0; border: none; outline: none; background: transparent;
+      color: inherit; font: inherit; font-weight: 700; padding: 0; margin: 0; text-overflow: ellipsis;
+    }
+    #nom-fichier::placeholder { color: var(--couleur-bandeau); opacity: 0.6; font-weight: 600; }
+
+    /* Menus deroulants */
+    .tb-dropdown { position: relative; }
+    .tb-dropdown-menu {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0;
+      background: #fff; color: #333; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      min-width: 160px; z-index: 1000; overflow: hidden;
+    }
+    .tb-dropdown-menu.visible, .tb-dropdown-menu.open { display: block; }
+    .tb-dropdown-menu button {
+      display: block; width: 100%; text-align: left; padding: 8px 14px; margin: 0; border: none; background: none;
+      cursor: pointer; font-size: 13px; font-weight: normal; font-family: var(--font); color: #333; border-radius: 0; white-space: nowrap;
+    }
+    .tb-dropdown-menu button:hover { background: #f0f0f0; }
+    .tb-dropdown-menu button:disabled, .tb-dropdown-menu button:disabled:hover { color: #999; background: none; cursor: not-allowed; }
+    .menu-titre { padding: 8px 14px 3px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #888; }
+    .tb-dropdown-menu button.choisi { font-weight: 700; color: var(--accent-fonce); }
+    .tb-dropdown-menu button.choisi::after { content: '  ✓'; }
+    #menu-affichage-panneau { left: 0; min-width: 190px; }
+    #menu-aide-panneau { left: auto; right: 0; min-width: 230px; }     /* Aide : tout a droite, s'ouvre vers la gauche */
+
+    /* Selecteur de carte (non disponible sur micro:bit : grise), pousse a droite */
+    #port-group {
+      margin-left: auto; display: flex; align-items: center; gap: 4px; padding: 3px 6px;
+      background: rgba(255,255,255,0.12); border-radius: 4px; color: #fff;
+    }
+    #port-select {
+      background: #fff; color: #333; border: none; border-radius: 3px; padding: 4px 6px;
+      font-family: var(--font); font-size: 12px; max-width: 90px; text-overflow: ellipsis; cursor: pointer;
+    }
+    #port-select:disabled, #port-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+    #port-refresh { display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: #fff;
+      cursor: pointer; padding: 3px; margin: 0; border-radius: 3px; }
+
+    #port-refresh.occupe svg { animation: tb-tourne 0.8s linear infinite; }
+    @keyframes tb-tourne { to { transform: rotate(360deg); } }
+    /* Televerser (= « Envoyer sur la carte ») : bouton plein bleu */
+    #btn-envoyer { margin-left: 4px; background: #1c7ed6; color: #fff; padding: 6px 14px; font-size: 14px; font-weight: 700; }
+    #btn-envoyer:hover { background: #1864ab; }
+    #btn-envoyer:disabled, #btn-envoyer:disabled:hover { background: #1c7ed6; }
+
+    /* Lancer la simulation : bouton plein vert, rouge « Arreter » pendant la simulation */
+    #tb-lancer {
+      margin-left: 4px; background: var(--btn-green); padding: 6px 16px; border-radius: 4px; font-weight: 600; font-size: 14px;
+      border: none; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s;
+    }
+    #tb-lancer:hover { background: var(--btn-green-h); }
+    #tb-lancer.running { background: #c0392b; }
+    #tb-lancer.running:hover { background: #a5322a; }
+
+    #copyright-toolbar { color: rgba(255,255,255,0.75); font-size: 11px; white-space: nowrap; margin: 0 6px; }
+
+    /* Voyant de connexion de la carte (bouton Console) : anneau vide = non connectee, disque plein vert = connectee.
+       La forme change en plus de la couleur (lisible sans distinguer les teintes). */
+    .voyant { display: inline-block; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%;
+              border: 2px solid rgba(255,255,255,0.75); background: transparent; flex-shrink: 0; }
+    .voyant.connecte { background: #4cd964; border-color: #fff; box-shadow: 0 0 0 2px #1a7a2e; }
+    /* Theme sombre / contraste eleve (regles du bandeau) */
+    :root:not([data-theme="light"]) .tb-dropdown-menu { background: #2a2c31; color: #e6e6e6; }
+    :root:not([data-theme="light"]) .tb-dropdown-menu button { color: #e6e6e6; }
+    :root:not([data-theme="light"]) .tb-dropdown-menu button:hover { background: #3a3d43; }
+    :root:not([data-theme="light"]) .tb-dropdown-menu button.choisi { color: #ff7a33; }
+    :root:not([data-theme="light"]) .tb-dropdown-menu button:disabled { color: #777; background: none; }
+    :root[data-contrast="high"] .tb-btn { font-weight: 600; }
+    :root[data-contrast="high"] .tb-btn:hover { background: #fff; color: #000; }
+    :root[data-contrast="high"] #tb-nomfichier { box-shadow: none; }
+    :root[data-contrast="high"] #btn-envoyer { background: #fff; color: #000; border: 2px solid #fff; }
+    :root[data-contrast="high"] #btn-envoyer:hover { background: #ddd; }
+    button { padding: 8px 16px; cursor: pointer; font-weight: bold; border-radius: 4px; border: none; background: #cf4400; color: white; transition: 0.2s; margin-right: 10px;}
+    button:hover { background: #b33a00; }
+    /* Zone de message : on y lit la cause réelle d'un échec, plutôt qu'une
+       alerte générique qui masquerait le vrai problème. */
+    /* Replier un panneau rend sa largeur a la zone de blocs : c'est le remede
+       le plus direct quand le tiroir de la boite a outils prend toute la place. */
+    .btn-vue { background: #4a4a4a; font-weight: normal; font-size: 13px; padding: 7px 12px; }
+    .btn-vue:hover { background: #5e5e5e; }
+    .btn-vue.inactif { background: #2a2a2a; color: #8c8c8c; }
+    .btn-vue.actif { background: #cf4400; color: #fff; }
+    .btn-vue.actif:hover { background: #b33a00; }
+    .btn-vue:disabled, .btn-vue:disabled:hover { background: #2a2a2a; color: #8c8c8c; cursor: not-allowed; }
+    /* Le bouton du panneau administrateur reste cache tant que le raccourci
+       secret (Ctrl+Alt+Maj+A) n'a pas ete utilise : voir activerAdmin() dans
+       un.js. Pas une vraie protection, juste evite qu'un eleve tombe dessus. */
+    /* Rouge et non le gris des autres boutons btn-vue : puisqu'il ne
+       s'affiche que pour l'administrateur, autant qu'il saute aux yeux plutot
+       que de se fondre avec le reste de la barre. */
+    #btn-options { font-size: 16px; padding: 5px 11px; display: none; background: #e74c3c; }
+    #btn-options:hover { background: #c0392b; }
+
+    /* Panneau administrateur : categories, sous-menus, libelles de blocs. */
+    #voile-options { position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+                     display: none; align-items: center; justify-content: center; z-index: 1000; }
+    #voile-options.ouvert { display: flex; }
+    #panneau-options { background: var(--fond-code); color: var(--texte-chrome); border-radius: 8px;
+                       padding: 18px 20px; min-width: 380px; max-width: 460px; max-height: 80vh;
+                       overflow-y: auto; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
+    #panneau-options h3 { margin: 0 0 10px 0; color: #ff7a33; font-size: 14px;
+                          text-transform: uppercase; }
+    #panneau-options p { margin: 0 0 12px 0; font-size: 12px; color: #b8b8b8; max-width: 40ch; }
+    #panneau-options .actions { display: flex; gap: 8px; }
+    #panneau-options .actions button { margin: 0; font-size: 13px; padding: 7px 12px; }
+    /* Fenetre d'envoi sur la carte : au-dessus de tout (le z-index de Blockly
+       pour ses menus deroulants monte tres haut), bloque les clics tant que
+       le transfert dure. */
+    #voile-envoi { position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+                   display: none; align-items: center; justify-content: center; z-index: 200000; }
+    #voile-envoi.ouvert { display: flex; }
+    #fenetre-envoi { background: var(--fond-code); color: var(--texte-chrome); border-radius: 10px;
+                     padding: 22px 26px; width: 360px; max-width: 90vw; text-align: center;
+                     box-shadow: 0 8px 30px rgba(0,0,0,0.5); border: 1px solid var(--bordure-chrome); }
+    #fenetre-envoi h3 { margin: 0 0 6px 0; color: #ff7a33; font-size: 15px; text-transform: uppercase; }
+    #envoi-phase { margin: 0 0 14px 0; font-size: 13px; min-height: 1.3em; }
+    #envoi-barre { height: 14px; background: var(--fond-saisie); border: 1px solid var(--bordure-chrome);
+                   border-radius: 7px; overflow: hidden; }
+    #envoi-remplissage { height: 100%; width: 0%; background: #ff5501; transition: width 0.12s linear; }
+    #envoi-pourcent { margin: 10px 0 0 0; font-size: 22px; font-weight: bold; }
+    /* Fenetre d'aide d'un bloc (clic droit > "Aide sur ce bloc"). Au-dessus
+       du menu contextuel de Blockly. */
+    #voile-aide { position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+                  display: none; align-items: center; justify-content: center; z-index: 200100; }
+    #voile-aide.ouvert { display: flex; }
+    #fenetre-aide { background: var(--fond-code); color: var(--texte-chrome); border-radius: 10px;
+                    padding: 20px 24px; width: 460px; max-width: 92vw; max-height: 85vh; overflow-y: auto;
+                    box-shadow: 0 8px 30px rgba(0,0,0,0.5); border: 1px solid var(--bordure-chrome); }
+    #aide-entete { display: flex; align-items: center; gap: 10px; margin: 0 0 10px 0; }
+    #aide-logo { height: 30px; width: auto; flex: 0 0 auto; }
+    #fenetre-aide h3 { margin: 0; color: #ff7a33; font-size: 12px; text-transform: uppercase; }
+    #aide-bloc-nom { margin: 0 0 12px 0; font-size: 16px; font-weight: bold; word-break: break-word; }
+    #aide-bloc-texte { margin: 0 0 12px 0; font-size: 13px; line-height: 1.45; white-space: pre-wrap; }
+    #aide-bloc-code-titre { margin: 0 0 4px 0; font-size: 11px; color: #b8b8b8; text-transform: uppercase; }
+    #aide-bloc-code { margin: 0 0 14px 0; padding: 8px 10px; font-size: 12px; background: var(--fond-saisie);
+                      color: var(--texte-saisie); border-radius: 5px; overflow-x: auto; white-space: pre; }
+    #aide-exemple { margin: 0 0 14px 0; padding: 10px 12px; border-radius: 6px;
+                    border: 1px solid var(--bordure-chrome); }
+    #aide-exemple-titre { margin: 0 0 4px 0; font-size: 13px; font-weight: bold; color: #ff7a33; }
+    #aide-exemple-desc { margin: 0 0 8px 0; font-size: 12px; line-height: 1.4; }
+    /* Petit espace Blockly en lecture seule : le programme d'exemple en blocs. */
+    #aide-exemple-blocs { position: relative; height: 230px; margin: 0 0 10px 0; border-radius: 5px;
+                          overflow: hidden; border: 1px solid var(--bordure-chrome); }
+    #aide-exemple-blocs .blocklyMainBackground { fill: var(--fond-saisie); stroke: none; }
+    #aide-exemple-details { margin: 0 0 10px 0; font-size: 12px; }
+    #aide-exemple-details summary { cursor: pointer; margin-bottom: 6px; }
+    #aide-exemple-code { margin: 0; padding: 8px 10px; font-size: 12px; background: var(--fond-saisie);
+                         color: var(--texte-saisie); border-radius: 5px; overflow-x: auto; white-space: pre; }
+    #aide-inserer { margin: 0; font-size: 12px; padding: 6px 12px; }
+    #aide-fermer { margin: 0; font-size: 13px; padding: 7px 14px; }
+    #btn-ordre-defaut { background: #8c8c8c; }
+    #btn-ordre-defaut:hover { background: #6e6e6e; }
+
+    .onglets-admin { display: flex; gap: 6px; margin-bottom: 12px; }
+    .onglet-admin { background: #4a4a4a; font-size: 12px; padding: 6px 10px; margin: 0; }
+    .onglet-admin:hover { background: #5e5e5e; }
+    .onglet-admin.actif { background: #ff5501; color: #1b1b1b; }
+    .vue-admin { display: none; }
+    .vue-admin.active { display: block; }
+
+    .panneau-admin-liste { list-style: none; margin: 0 0 14px 0; padding: 0; }
+    .panneau-admin-liste li { background: var(--fond-chrome); border: 1px solid var(--bordure-chrome); border-radius: 4px;
+                           padding: 7px 10px; margin-bottom: 4px; font-size: 13px;
+                           display: flex; align-items: center; gap: 8px; user-select: none; }
+    .panneau-admin-liste li[draggable="true"] { cursor: grab; }
+    .panneau-admin-liste li::before { content: '\2261'; color: #8c8c8c; }
+    .panneau-admin-liste li.sans-poignee::before { content: ''; }
+    .panneau-admin-liste li.attrape { opacity: 0.35; }
+    .panneau-admin-liste li.survol { border-color: #ff5501; }
+    .panneau-admin-liste li.masquee { opacity: 0.45; }
+    .panneau-admin-liste li .nom-ligne { flex: 1; }
+    .panneau-admin-liste li input[type="text"] { flex: 1; background: var(--fond-saisie); border: 1px solid var(--bordure-chrome);
+        color: var(--texte-saisie); border-radius: 3px; padding: 4px 6px; font-size: 13px; }
+    /* Le picker natif dessine un rectangle avec sa propre marge interne :
+       on la retire pour obtenir une pastille carree nette, au pas des icones. */
+    .panneau-admin-liste li input.pastille-couleur { flex: 0 0 auto; width: 22px; height: 22px;
+        padding: 0; border: 1px solid var(--bordure-chrome); border-radius: 4px; background: none; cursor: pointer; }
+    .panneau-admin-liste li input.pastille-couleur::-webkit-color-swatch-wrapper { padding: 0; }
+    .panneau-admin-liste li input.pastille-couleur::-webkit-color-swatch { border: none; border-radius: 3px; }
+    .panneau-admin-liste li input.pastille-couleur::-moz-color-swatch { border: none; border-radius: 3px; }
+    .icone-admin { background: none; border: none; color: #b8b8b8; cursor: pointer; padding: 2px 5px;
+                   font-size: 14px; margin: 0; border-radius: 3px; }
+    .icone-admin:hover { background: var(--bordure-chrome); color: #fff; }
+
+    #selecteur-parent-sousmenu, #recherche-libelles, #champ-nom-sousmenu {
+        width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 6px; border-radius: 4px;
+        background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome); font-size: 13px; }
+    .bloc-libelle { background: var(--fond-chrome); border: 1px solid var(--bordure-chrome); border-radius: 4px; padding: 8px 10px;
+        margin-bottom: 6px; }
+    .bloc-libelle .type-bloc { font-size: 11px; color: #8c8c8c; margin-bottom: 5px; font-family: monospace; }
+    .bloc-libelle .champ-libelle { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+
+    #lien-readme { display: inline-block; margin-bottom: 10px; color: #ff7a33; font-size: 12px; }
+    #lien-readme:hover { color: #ffa066; }
+    #zone-aide { white-space: pre-wrap; font-family: Consolas, monospace; font-size: 12px; line-height: 1.5;
+        background: var(--fond-saisie); border: 1px solid var(--bordure-chrome); border-radius: 4px; padding: 10px 12px;
+        max-height: 55vh; overflow-y: auto; margin: 0; color: var(--texte-saisie); }
+
+    #toast-admin { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+        background: #2ecc71; color: #12281e; padding: 8px 16px; border-radius: 4px; font-size: 13px;
+        font-weight: bold; opacity: 0; pointer-events: none; transition: opacity 0.25s; z-index: 1100; }
+    #toast-admin.visible { opacity: 1; }
+
+    /* Le zoom vit dans la barre, pas dans le canevas : les controles internes de
+       Blockly sont dessines a l'interieur de l'espace de travail, ou ils peuvent
+       etre rognes par le bord ou recouverts par la corbeille. */
+    #zoom-groupe { display: inline-flex; align-items: center; gap: 3px; margin-right: 2px;
+                   background: #2a2a2a; border-radius: 4px; padding: 3px 6px; }
+    .btn-zoom { background: #4a4a4a; font-weight: bold; font-size: 15px; line-height: 1;
+                padding: 5px 7px; margin: 0; min-width: 24px; }
+    .btn-zoom:hover { background: #5e5e5e; }
+    .btn-zoom-large { font-size: 12px; font-weight: normal; padding: 6px 8px; }
+    #zoom-valeur { font-size: 12px; color: #bdc3c7; min-width: 5ch; text-align: center; }
+    /* Message d'etat : sous le bord droit de la barre, par-dessus le contenu (sans pointer-events), pour ne jamais
+       decaler les boutons ni se tronquer ; invisible quand il est vide. */
+    #toolbar { position: relative; }
+    #etat { position: absolute; top: 100%; right: 8px; z-index: 60; max-width: min(70ch, 60vw); pointer-events: none;
+            font-size: 13px; padding: 5px 12px; border-radius: 0 0 6px 6px; background: var(--fond-chrome); color: var(--texte-chrome);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.35); }
+    #etat:empty { display: none; }
+    #etat.erreur { color: #ff8a80; opacity: 1; font-weight: bold; }
+
+    /* min-height: 0 est indispensable : sans lui, un enfant flex ne peut pas
+       devenir plus petit que son contenu. Le panneau du simulateur, une fois
+       garni de sections Grove, poussait la rangee bien au-dela de la fenetre —
+       le canevas Blockly se retrouvait haut de 4754 px, et sa corbeille tres
+       loin sous la ligne de flottaison. */
+    #main-container { display: flex; flex-grow: 1; width: 100%; min-width: 0; min-height: 0; }
+    /* La zone de blocs prend tout ce que les deux panneaux laissent, au lieu
+       d'une part fixe de 50 % : en zoomant, ou en repliant un panneau, elle
+       s'elargit au lieu d'etre etranglee par le tiroir de la boite a outils. */
+    /* Enrobe blocklyDiv pour pouvoir poser un voile par-dessus (édition
+       manuelle du code) sans toucher au conteneur que Blockly gère lui-même. */
+    #blockly-wrapper { position: relative; flex: 1 1 auto; min-width: 260px; min-height: 0; height: 100%; }
+    #blocklyDiv { width: 100%; height: 100%; }
+    .replie { display: none !important; }
+
+    /* Les blocs et le code tapé à la main ne peuvent pas rester synchronisés
+       (voir editerCode() dans un.js) : geler le canevas pendant l'édition
+       manuelle l'annonce clairement plutôt que de laisser dériver l'un des
+       deux sans le dire. */
+    #voile-blocs-figes { position: absolute; inset: 0; background: rgba(20, 30, 40, 0.55);
+                          display: none; align-items: center; justify-content: center; z-index: 50; }
+    #voile-blocs-figes.visible { display: flex; }
+    #voile-blocs-figes span { background: #2a2a2a; color: #ffcc80; padding: 10px 18px; border-radius: 6px;
+                               font-size: 13px; font-weight: bold; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+
+    #code-container { flex: 0 0 24%; min-width: 240px; min-height: 0; height: 100%; background: var(--fond-code); color: var(--texte-code); padding: 15px; box-sizing: border-box; overflow-y: auto; border-left: 2px solid var(--fond-chrome); display: flex; flex-direction: column;}
+    #code-container h3 { margin-top: 0; color: #ff7a33; font-size: 14px; text-transform: uppercase; }
+    .code-entete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .code-entete h3 { margin: 0; }
+    #btn-editer-code { font-size: 12px; padding: 5px 10px; margin: 0; background: #4a4a4a; flex: 0 0 auto; }
+    #btn-editer-code:hover { background: #5e5e5e; }
+    #btn-editer-code.actif { background: #cf4400; }
+    #btn-editer-code.actif:hover { background: #b33a00; }
+    #code-display { white-space: pre-wrap; font-family: Consolas, monospace; font-size: 13px; line-height: 1.5; }
+
+    /* Console : barre en bas de l'application (frere de #main-container dans
+       le body en colonne). print() du simulateur et sortie serie de la carte.
+       Masquee par defaut : la classe .replie est posee dans le HTML. */
+    #console-panneau { flex: 0 0 auto; display: flex; flex-direction: column; box-sizing: border-box;
+        padding: 8px 12px 10px; background: var(--fond-code); color: var(--texte-code);
+        border-top: 2px solid var(--fond-chrome); }
+    :root[data-contrast="high"] #console-panneau { border-top-width: 2px; border-top-color: #ffffff; }
+    #console-entete { display: flex; align-items: center; gap: 12px; }
+    #console-entete h3 { margin: 0; color: #ff7a33; font-size: 13px; text-transform: uppercase; flex: 0 0 auto; }
+    #console-boutons { display: flex; gap: 6px; white-space: nowrap; flex: 0 0 auto; }
+    #console-boutons button { font-size: 12px; padding: 4px 10px; margin: 0; background: #4a4a4a; }
+    #console-boutons button:hover { background: #5e5e5e; }
+    #btn-console-carte.connecte { background: #27ae60; }
+    #console-etat { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 11px; color: #b8b8b8;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* resize: vertical = poignee en bas a droite pour agrandir la zone de sortie ;
+       la barre grandit alors et l'espace de blocs se reduit (voir ResizeObserver, un.js). */
+    #console-sortie { height: 130px; min-height: 50px; max-height: 60vh; overflow: auto; resize: vertical;
+        margin: 6px 0; padding: 8px;
+        background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome);
+        border-radius: 4px; font: 12px/1.45 Consolas, "DejaVu Sans Mono", monospace; white-space: pre-wrap;
+        word-break: break-all; }
+    #console-onglets { display: flex; gap: 4px; flex: 0 0 auto; }
+    #console-onglets button { font-size: 12px; padding: 4px 10px; margin: 0; background: #303030; }
+    #console-onglets button:hover { background: #5e5e5e; }
+    #console-onglets button.actif { background: #cf4400; }
+    /* Vue graphique : meme gabarit et meme poignee de redimensionnement que la sortie texte. */
+    #console-graphique { height: 130px; min-height: 50px; max-height: 60vh; resize: vertical; overflow: hidden;
+        margin: 6px 0; position: relative; background: var(--fond-saisie);
+        border: 1px solid var(--bordure-chrome); border-radius: 4px; }
+    #console-canevas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .console-ligne { display: block; min-height: 1.45em; }
+    .console-ligne[data-src="carte"] { color: #7ee787; }
+    .console-ligne[data-src="info"] { color: #b8b8b8; font-style: italic; }
+    #console-saisie { display: flex; gap: 6px; }
+    #console-entree { flex: 1 1 auto; min-width: 0; padding: 5px 8px; font-size: 12px; border-radius: 4px;
+        background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome); }
+    #console-entree:disabled { opacity: 0.5; }
+    #console-envoyer { font-size: 12px; padding: 5px 10px; margin: 0; background: #4a4a4a; }
+    #console-envoyer:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* IA : barre en bas, meme gabarit que la console (frere de #main-container). */
+    #ia-panneau { flex: 0 0 auto; display: flex; flex-direction: column; box-sizing: border-box;
+        padding: 8px 12px 10px; max-height: 42vh; overflow: auto;
+        background: var(--fond-code); color: var(--texte-code); border-top: 2px solid var(--fond-chrome); }
+    :root[data-contrast="high"] #ia-panneau { border-top-color: #ffffff; }
+    #ia-entete { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    #ia-entete h3 { margin: 0; color: #ff7a33; font-size: 13px; text-transform: uppercase; flex: 0 0 auto; }
+    #ia-seuil-groupe { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    #ia-seuil { width: 120px; }
+    #ia-carte-label { font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+    #ia-etat-carte { flex: 1 1 auto; min-width: 0; font-size: 11px; color: #b8b8b8; }
+    #ia-boutons { display: flex; gap: 6px; flex: 0 0 auto; }
+    #ia-boutons button { font-size: 12px; padding: 4px 10px; margin: 0; background: #4a4a4a; }
+    #ia-boutons button:hover { background: #5e5e5e; }
+    #ia-colonnes { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+    .ia-colonne { flex: 1 1 320px; min-width: 280px; }
+    .ia-colonne h4 { margin: 0 0 6px; font-size: 13px; color: #b8b8b8; }
+    .ia-modele, .ia-actions { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .ia-url { flex: 1 1 auto; min-width: 0; padding: 5px 8px; font-size: 12px; border-radius: 4px;
+        background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome); }
+    .ia-colonne button { font-size: 12px; padding: 4px 10px; margin: 0; background: #4a4a4a; }
+    .ia-colonne button:hover:not(:disabled) { background: #5e5e5e; }
+    .ia-colonne button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ia-colonne button.en-marche { background: #c0392b; }
+    .ia-statut { flex: 1 1 auto; min-width: 0; font-size: 11px; color: #b8b8b8; }
+    .ia-apercu { width: 160px; height: 120px; object-fit: cover; transform: scaleX(-1); border-radius: 4px;
+        background: #000; display: block; margin-bottom: 6px; }
+    .ia-classe { display: grid; grid-template-columns: minmax(80px, 30%) 1fr 42px; gap: 8px; align-items: center;
+        font-size: 12px; margin: 3px 0; }
+    .ia-classe-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ia-classe-barre { height: 10px; background: var(--fond-saisie); border: 1px solid var(--bordure-chrome);
+        border-radius: 5px; overflow: hidden; }
+    .ia-classe-barre > i { display: block; height: 100%; width: 0; background: #5d6d7e; }
+    .ia-classe.retenue .ia-classe-barre > i { background: #2ecc71; }
+    .ia-classe.retenue .ia-classe-nom { font-weight: bold; color: #2ecc71; }
+    .ia-classe-pct { text-align: right; color: #b8b8b8; }
+    .ia-creer { margin-top: 8px; font-size: 12px; }
+    .ia-creer > summary { cursor: pointer; color: #b8b8b8; user-select: none; }
+    .ia-creer-aide { margin: 6px 0; color: #b8b8b8; font-size: 11px; }
+    .ia-ex { display: grid; grid-template-columns: 1fr 34px auto auto; gap: 6px; align-items: center; margin: 4px 0; }
+    .ia-ex-nom { min-width: 0; padding: 4px 8px; font-size: 12px; border-radius: 4px;
+        background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome); }
+    .ia-ex-nom:disabled { opacity: 0.7; }
+    .ia-ex-n { text-align: right; color: #b8b8b8; }
+    .ia-ex-capt.enregistre { background: #c0392b; }
+    .ia-creer-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .ia-creer-statut { margin-top: 6px; font-size: 11px; color: #b8b8b8; min-height: 1.2em; }
+    .ia-colonne button.ia-camera-capture.en-marche { background: #c0392b; }
+    /* Boutons de zoom ronds et corbeille de Blockly : leurs icones sont gris fonce, quasi invisibles sur fond sombre.
+       On les inverse (clair sur sombre) dans les themes sombres ; le theme clair garde les icones d'origine. */
+    :root:not([data-theme="light"]) .blocklyZoom > image { filter: invert(1) brightness(1.15); opacity: 1; }
+    :root:not([data-theme="light"]) .blocklyTrash > image { filter: invert(1) brightness(1.1); opacity: 1; }
+    :root:not([data-theme="light"]) .blocklyZoom > image:hover, :root:not([data-theme="light"]) .blocklyTrash > image:hover { filter: invert(1) brightness(1.5); }
+    /* Bande de couleur de la colonne de categories : plus large, pour se voir d'un coup d'oeil. */
+    /* Police de la colonne de categories : meme famille que le reste de l'interface (Segoe UI, repli Arial). */
+    .blocklyToolboxDiv, .blocklyToolboxCategory, .blocklyTreeLabel { font-family: var(--font, 'Segoe UI', Arial, sans-serif) !important; }
+    /* Puces rondes (au lieu de la bande rectangulaire) : Blockly pose la couleur de la categorie en bordure gauche
+       de la ligne ; bandeau.js la copie dans --puce, la bordure est supprimee et la puce est dessinee en rond. */
+    .blocklyToolboxCategory .blocklyTreeRow { border-left-width: 0 !important; position: relative; padding-left: 33px !important; }
+    .blocklyToolboxCategory .blocklyTreeRow::before {
+        content: ''; position: absolute; left: 6px; top: 50%; width: 18px; height: 18px; margin-top: -9px; border-radius: 50%;
+        background: var(--puce, #888); box-shadow: 0 0 0 1.5px rgba(255,255,255,0.55); }
+    /* Zone de recherche de blocs (bandeau.js), collee en haut de la colonne de categories pendant son defilement. */
+    #recherche-blocs { position: sticky; top: 0; z-index: 5; padding: 8px 8px 6px; background: inherit; }
+    #recherche-blocs svg { position: absolute; left: 17px; top: 50%; margin-top: -4px; color: #9a9a9a; pointer-events: none; }
+    #recherche-blocs input { width: 100%; box-sizing: border-box; padding: 6px 8px 6px 28px; font-size: 13px; font-family: var(--font, sans-serif);
+        border-radius: 4px; border: 1px solid var(--bordure-chrome); background: var(--fond-saisie); color: var(--texte-saisie); }
+    #recherche-blocs input::placeholder { color: #8a8a8a; }
+    #recherche-blocs input:focus { outline: 2px solid #ff5501; outline-offset: 0; }
+    /* Sous-categories (Radio > Groupe..., Grove > LED..., Robots > Maqueen...) : puce et texte decales de 14 px vers la droite. */
+    .blocklyToolboxCategory .blocklyToolboxCategory .blocklyTreeRow { padding-left: 47px !important; }
+    .blocklyToolboxCategory .blocklyToolboxCategory .blocklyTreeRow::before { left: 20px; }
+    /* Visite guidee (tuto.js) : le voile ne bloque pas les clics, l'utilisateur manipule les vrais outils. */
+    #tuto-voile { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); z-index: 9000; pointer-events: none; }
+    #tuto-spot { display: none; position: fixed; z-index: 9001; pointer-events: none; border-radius: 6px;
+        border: 2px solid #ff5501; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); transition: all 0.2s ease; }
+    #tuto-bulle { display: none; position: fixed; z-index: 9002; width: 340px; max-width: calc(100vw - 16px); box-sizing: border-box;
+        padding: 14px 16px; background: #fffdf5; color: #1b2733; border: 2px solid #ff5501; border-radius: 10px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45); font-size: 13px; line-height: 1.45; }
+    #tuto-bulle h4 { margin: 0 0 6px; font-size: 15px; color: #1b2733; }
+    #tuto-bulle p { margin: 0 0 8px; }
+    #tuto-compteur { font-size: 11px; color: #8a3a10; margin-bottom: 2px; }
+    #tuto-consigne { font-weight: bold; color: #8a4b00; }
+    #tuto-fait { display: none; font-weight: bold; color: #1e8449; }
+    #tuto-boutons { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
+    #tuto-nav { display: flex; gap: 6px; }
+    #tuto-bulle button { font-size: 12px; padding: 5px 10px; margin: 0; background: #4a4a4a; color: #fff; }
+    #tuto-bulle button:hover { background: #5e5e5e; }
+    #tuto-bulle #tuto-suivant.pret { background: #27ae60; }
+    /* Message d'accueil de tuto.js : propose de visiter le menu Fichier (visites guidees). */
+    #tuto-accueil { position: fixed; z-index: 9003; width: 320px; max-width: calc(100vw - 16px); box-sizing: border-box;
+        padding: 14px 16px; background: #fffdf5; color: #1b2733; border: 2px solid #ff5501; border-radius: 10px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45); font-size: 13px; line-height: 1.45; }
+    #tuto-accueil h4 { margin: 0 0 6px; font-size: 15px; color: #1b2733; }
+    #tuto-accueil p { margin: 0 0 8px; }
+    #tuto-accueil-fleche { position: absolute; top: -9px; width: 14px; height: 14px; background: #fffdf5;
+        border-left: 2px solid #ff5501; border-top: 2px solid #ff5501; transform: rotate(45deg); }
+    #tuto-accueil-label { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; margin-bottom: 10px; }
+    #tuto-accueil-boutons { display: flex; justify-content: flex-end; gap: 8px; }
+    #tuto-accueil button { font-size: 12px; padding: 5px 10px; margin: 0; background: #4a4a4a; color: #fff; }
+    #tuto-accueil button:hover { background: #5e5e5e; }
+    #tuto-accueil button.pret { background: #27ae60; }
+    @keyframes tuto-clignote { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 85, 1, 0.9); } 50% { box-shadow: 0 0 0 6px rgba(255, 85, 1, 0); } }
+    .tuto-clignote { animation: tuto-clignote 1.2s ease-in-out infinite; outline: 2px solid #ff5501; }
+
+    #banniere-edition-code { display: none; margin: 10px 0; padding: 8px 10px; background: #4a3418;
+        border-left: 3px solid #cf4400; color: #ffcc80; font-size: 12px; border-radius: 3px; }
+    #banniere-edition-code.visible { display: block; }
+    #code-edit { display: none; width: 100%; box-sizing: border-box; flex: 1 1 auto; min-height: 200px;
+        background: var(--fond-saisie); color: var(--texte-code); font-family: Consolas, monospace; font-size: 13px; line-height: 1.5;
+        border: 1px solid var(--bordure-chrome); border-radius: 4px; padding: 10px; resize: none; }
+    #code-edit.visible { display: block; }
+
+    /* Les pilotes des modules sont replies : ils occupaient plus de place que
+       le programme lui-meme. Le .hex et le .py, eux, les contiennent toujours. */
+    .pilote-replie { margin: 2px 0; }
+    .pilote-replie > summary { cursor: pointer; color: #6a9955; font-style: italic;
+                               list-style: none; outline: none; }
+    .pilote-replie > summary::-webkit-details-marker { display: none; }
+    .pilote-replie > summary::before { content: '\25B8  '; }
+    .pilote-replie[open] > summary::before { content: '\25BE  '; }
+    .pilote-replie > summary:hover { color: #8fce9b; }
+    .pilote-replie > .pilote-corps { margin: 3px 0 3px 10px; padding-left: 9px;
+                                     border-left: 2px solid #3a3a3a; color: #8a8a8a;
+                                     white-space: pre-wrap; }
+    
+    /* scrollbar-gutter: stable — la place de la barre de defilement est
+       reservee en permanence. Sans cela, l'echelle de la carte et la presence
+       de la barre s'influencent l'une l'autre : une carte plus petite fait
+       disparaitre la barre, ce qui elargit le cadre, ce qui reagrandit la
+       carte, ce qui ramene la barre. */
+    #simulator-container { flex: 0 0 24%; min-width: 250px; min-height: 0; height: 100%; background: var(--fond-chrome); display: flex; flex-direction: column; align-items: center; padding: 20px; box-sizing: border-box; border-left: 2px solid var(--fond-chrome-profond); overflow-y: auto; scrollbar-gutter: stable;}
+    #simulator-container h3 { margin-top: 0; color: #ff7a33; font-size: 14px; text-transform: uppercase; width: 100%; text-align: left;}
+
+    /* Repositionnement automatique selon la place disponible (demande de
+       l'utilisateur, dans le prolongement de la mise a l'echelle fixe de la
+       carte micro:bit — voir adapterEchelleSimulateur dans un.js) : agrandir
+       le panneau simulateur par glisser ne doit ni etirer ni rapetisser la
+       carte, les boutons ou les panneaux Grove/Piste/LiDAR — seulement
+       reorganiser leur PLACEMENT. Chacun garde sa largeur "naturelle" — celle
+       du panneau par defaut (24% d'une fenetre courante, moins son padding),
+       la taille a laquelle toute l'interface a ete concue et testee jusqu'ici
+       — et se repositionne via un simple retour a la ligne CSS (`flex-wrap`
+       pour la carte+les boutons, `grid` pour les panneaux repliables), sans
+       JS ni requete de conteneur : pas assez de place, tout reste empile en
+       une colonne comme avant ; assez de place, les blocs se rangent
+       cote a cote. Les trois panneaux repliables (Grove/Piste/LiDAR) sont
+       des cartes independantes qui peuvent legitimement se cotoyer ; la carte
+       micro:bit et ses 3 boutons d'action forment un groupe a part (une
+       "console") qui se range a cote de la carte plutot qu'au milieu des
+       panneaux, pour rester lisible comme un tout. */
+    #simulateur-console { width: 100%; margin-top: 20px; display: flex; flex-wrap: wrap;
+        justify-content: center; align-items: flex-start; gap: 20px; }
+    /* `auto-fit` (pas `auto-fill`) + `minmax(268px, 1fr)` : une piste vide est
+       repliee au lieu de garder sa largeur fixe, et les pistes restantes se
+       partagent l'espace libere — un seul panneau visible (LiDAR seul, par
+       exemple) occupe alors toute la largeur au lieu de rester coince a
+       268px avec du vide a cote. Signale par l'utilisateur, capture d'ecran
+       du panneau Grove a l'appui : « pourquoi les elements s'affichent en
+       colonne ? j'avais demande un affichage auto adaptatif sur la zone ». */
+    #simulateur-panneaux { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+        justify-content: center; gap: 20px; }
+    #simulateur-actions { width: 268px; flex: 0 0 auto; display: flex; flex-direction: column; gap: 12px; }
+
+    /* Redimensionnement du panneau simulateur par glisser — seulement quand
+       la transcription est masquee (voir basculerPanneau dans un.js) : c'est
+       le seul cas ou cette bordure separe directement le simulateur de la
+       zone de blocs, sans le panneau de code entre les deux. */
+    #simulateur-redimensionneur { display: none; flex: 0 0 6px; min-height: 0; height: 100%;
+        cursor: col-resize; background: var(--fond-chrome-profond); }
+    #simulateur-redimensionneur:hover, #simulateur-redimensionneur.actif { background: #cf4400; }
+    #simulateur-redimensionneur.visible { display: block; }
+    
+    /* Le cadre porte la place occupee, la carte porte l'echelle. Un transform
+       ne modifie pas la mise en page : sans ce cadre dont on ajuste la hauteur,
+       la carte reduite laisserait un vide, ou la carte agrandie deborderait. */
+    /* Largeur fixe (pas 100%) : depuis que la carte est nichee dans
+       #simulateur-console (flex-wrap, voir plus haut), elle doit avoir sa
+       propre largeur pour que le retour a la ligne sache quand agir, plutot
+       que de s'etirer pour occuper toute la rangee. 210px = 280px (largeur
+       de la carte) x 0.75 (REDUCTION, voir adapterEchelleSimulateur) : la
+       largeur reellement occupee une fois la carte mise a l'echelle. */
+    #carte-cadre { width: 210px; flex: 0 0 auto; display: flex; justify-content: center; }
+    #microbit-board {
+        /* Coins bas peu arrondis (pas 25px) : sur la vraie carte, le bord du
+           bas est quasiment droit — un grand rayon ici "grignotait" en
+           arrondi les coins de la reglette de connecteurs, donnant a tort
+           l'impression d'encoches decoupees dans le bord dore. */
+        width: 280px; height: 230px; background: #191919; border-radius: 15px 15px 6px 6px;
+        position: relative; box-shadow: 0px 15px 25px rgba(0,0,0,0.6);
+        overflow: hidden; user-select: none;
+        /* flex: 0 0 auto — sinon la colonne, en min-height: 0, ecrase la carte
+           des que son contenu deborde. */
+        flex: 0 0 auto;
+        transform-origin: top center;
+    }
+
+    #led-grid { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;}
+    /* LED eteinte : sur la vraie carte, le composant reste visible (petit
+       boitier blanc/argente), pas un carre sombre quasi invisible comme
+       avant — d'apres la photo officielle micro:bit V2 (microbit.org). */
+    .led { width: 8px; height: 14px; background: linear-gradient(180deg, #e2ded1, #b8b3a3); border-radius: 2px; transition: 0.05s; box-shadow: inset 0 0 1px rgba(0,0,0,0.4); }
+    .led.on { background: #ff3333; box-shadow: 0 0 8px #ff3333; }
+    
+    /* --- NOUVEAU : GESTION DU TEXTE SUR LES LEDS --- */
+    #led-text-container {
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%);
+        width: 70px; height: 70px; overflow: hidden; display: none; z-index: 10;
+        background: #111; pointer-events: none; align-items: center; justify-content: center;
+    }
+    #led-text-content {
+        color: #ff3333; font-family: monospace; font-size: 26px; font-weight: bold;
+        white-space: nowrap; text-shadow: 0 0 5px #ff3333;
+    }
+    @keyframes scroll-left {
+        from { transform: translateX(70px); }
+        to { transform: translateX(-100%); }
+    }
+    /* ----------------------------------------------- */
+
+    .mb-btn-wrap { position: absolute; top: 95px; display: flex; flex-direction: column; align-items: center;}
+    #wrap-a { left: 15px; } #wrap-b { right: 15px; }
+    .mb-btn-outer { width: 32px; height: 32px; background: linear-gradient(180deg, #a8a8a8, #7d7d7d); border-radius: 2px; position: relative; }
+    .mb-btn-inner { position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; background: #111; border-radius: 50%; cursor: pointer; box-shadow: inset 0 2px 5px rgba(0,0,0,0.8); }
+    .mb-btn-inner:active { background: #333; }
+    /* Deux petites pattes claires au bord bas du bouton (photo officielle :
+       pas de 4 points aux coins, ce sont deux languettes en bas). */
+    .mb-btn-tab { position: absolute; bottom: -2px; width: 6px; height: 3px; background: #d6d6d6; border-radius: 0 0 1px 1px; }
+    .mb-btn-tab-l { left: 4px; } .mb-btn-tab-r { right: 4px; }
+    /* Etiquette A/B : sur la vraie carte c'est un petit triangle bleu avec la
+       lettre imprimee dedans, pas juste une lettre coloree isolee. */
+    .mb-btn-label { position: relative; width: 26px; height: 22px; margin-top: 6px; }
+    .mb-btn-label-tri { position: absolute; inset: 0; background: #0396d6; clip-path: polygon(0 0, 0 100%, 100% 100%); }
+    .mb-btn-label-lettre { position: absolute; left: 5px; bottom: 1px; color: #111; font-weight: 800; font-size: 12px; font-family: sans-serif; }
+    #wrap-b .mb-btn-label { position: absolute; top: -30px; left: 12px; }
+
+    .mb-btn-label-ab { position: absolute; color: white; font-weight: bold; font-size: 13px; left: -32px; top: 8px; }
+
+    /* Indicateur "V2" : sur la vraie carte, ce texte est serigraphie au DOS
+       (pres du logo "micro:bit"), jamais sur la face avant que montre le
+       simulateur — un rond blanc pose sur la coque suggerait a tort une
+       impression qui n'y est pas. Deplace en etiquette d'interface a cote
+       du titre, pas sur le dessin de la carte lui-meme. */
+    #mb-version-tag { display: inline-block; background: #e4c558; color: #191919; font-family: var(--font, sans-serif);
+                       font-weight: bold; font-size: 11px; padding: 2px 7px; border-radius: 10px; vertical-align: middle; }
+    /* Accent en coin : deux triangles bleus separes (pas un seul zigzag),
+       d'apres la photo officielle micro:bit V2 — un grand triangle et un
+       plus petit distinct, avec un espace noir entre les deux. */
+    .mb-accent { position: absolute; top: 0; left: 0; width: 68px; height: 68px; background: #0396d6; clip-path: polygon(0 0, 100% 0, 0 100%); }
+    .mb-accent2 { position: absolute; top: 0; left: 78px; width: 34px; height: 34px; background: #0396d6; clip-path: polygon(0 0, 100% 0, 0 100%); }
+    /* Connecteur micro-USB : petit boitier gris qui depasse du bord haut. */
+    .mb-usb { position: absolute; top: -3px; left: 90px; width: 26px; height: 9px;
+              background: linear-gradient(180deg, #cfcfcf, #8f8f8f); border-radius: 2px 2px 0 0;
+              border: 1px solid #6b6b6b; border-bottom: none; }
+    .mb-usb-notch { position: absolute; top: 2px; left: 3px; right: 3px; height: 3px; background: #4a4a4a; border-radius: 1px; }
+    .mb-logo { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); width: 40px; height: 18px; border: 4px solid #e4c558; border-radius: 12px; display: flex; justify-content: center; align-items: center; gap: 6px; cursor: pointer; transition: 0.1s; }
+    .mb-logo:active { background: rgba(228, 197, 88, 0.3); }
+    .mb-logo-dot { width: 4px; height: 4px; background: #e4c558; border-radius: 50%; }
+    /* Indicateur du microphone (nouveaute V2, voir microbit.org/fr) : petit
+       cercle temoin + icone micro imprimee, a droite du logo tactile. */
+    .mb-mic-indicateur { position: absolute; top: 18px; right: 34px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .mb-mic-point { width: 5px; height: 5px; border-radius: 50%; border: 1px solid #666; background: transparent; }
+    .mb-mic-icone { width: 8px; height: 10px; position: relative; }
+    .mb-mic-icone-tete { position: absolute; top: 0; left: 1px; width: 6px; height: 7px; border-radius: 3px; background: #e53935; }
+    .mb-mic-icone-pied { position: absolute; bottom: 0; left: 3px; width: 2px; height: 3px; background: #e53935; }
+    /* Connecteur, en SVG : image de reference fournie par l'utilisateur
+       (« je veux ça ») combinant les deux styles precedents — un dome rond
+       avec trou clair au-dessus de chaque etiquette (comme le simulateur
+       MakeCode, passe 6/7) ET le bord du bas onduleux "bosselé" du V2
+       (passe 8). Le dome est peint APRES la bande a dents (donc par-dessus,
+       en or plein uni, sans motif) pour eviter que les dents ne traversent
+       visuellement le dome — plus simple et plus fiable qu'exclure une
+       region d'un degrade de fond partage (voir le piege des coins qui se
+       touchaient, plus haut). */
+    .mb-edge { position: absolute; bottom: 0; left: 0; right: 0; height: 58px; }
+    .mb-edge svg { display: block; width: 100%; height: 100%; }
+    .mb-edge-txt { font-family: sans-serif; font-weight: 800; font-size: 12px; fill: #141414; text-anchor: middle; }
+    .mb-edge-txt-petit { font-size: 8px; }
+    .mb-edge-trou { fill: url(#mb-edge-trou); }
+    /* Retour visuel manquant apres le passage en SVG : le <rect> transparent
+       (voir un.js, lierCapteurTactile) n'assombrissait plus rien au clic,
+       contrairement a l'ancien filter: brightness() sur le <div> de plot. */
+    .mb-edge-zone { cursor: pointer; fill: transparent; }
+    .mb-edge-zone.mb-edge-zone-active { fill: rgba(0, 0, 0, 0.28); }
+
+    #run-sim { background: #cf4400; width: 100%; font-size: 16px; padding: 12px; box-sizing: border-box; margin: 0; }
+    #run-sim:hover { background: #b33a00; }
+
+    /* Le geste « secouer » n'a pas de zone cliquable sur la carte : il lui faut
+       son propre bouton, sans quoi accelerometer.was_gesture() reste toujours
+       faux et les blocs correspondants ne se declenchent jamais. */
+    #btn-shake { background: #5e5e5e; width: 100%; font-size: 15px; padding: 10px; box-sizing: border-box; margin: 0; }
+    #btn-shake:hover { background: #747474; }
+    @keyframes secousse {
+        0%, 100% { transform: translateX(0) rotate(0deg); }
+        20% { transform: translateX(-7px) rotate(-2deg); }
+        40% { transform: translateX(7px) rotate(2deg); }
+        60% { transform: translateX(-5px) rotate(-1.5deg); }
+        80% { transform: translateX(5px) rotate(1.5deg); }
+    }
+    #microbit-board.secoue { animation: secousse 0.4s ease-in-out; }
+
+    #btn-reset { background: #8c8c8c; width: 100%; font-size: 14px; padding: 9px; box-sizing: border-box; margin: 0; }
+    #btn-reset:hover { background: #6e6e6e; }
+
+    /* --- Peripheriques Grove --- */
+    /* Chaque module Grove actif (.grove-bloc) est une carte independante des
+       autres : meme principe d'adaptation que #simulateur-panneaux (plus
+       haut) applique un niveau plus bas, pour que les modules se rangent a
+       plusieurs par ligne des que le panneau Grove a la largeur pour — pas
+       seulement le panneau Grove entier face aux panneaux Piste/LiDAR. */
+    #grove-panneau { width: 100%; box-sizing: border-box; border-top: 1px solid var(--bordure-chrome); padding-top: 12px;
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 18px; align-items: start; }
+    #grove-panneau h4 { grid-column: 1 / -1; margin: 0 0 10px 0; color: #b39ddb; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .grove-bloc { margin-bottom: 12px; font-size: 12px; color: var(--texte-chrome); }
+    .grove-titre { display: block; margin-bottom: 4px; color: #b8b8b8; }
+    .grove-bloc label { display: block; margin: 3px 0; }
+    .grove-bloc input[type="range"] { width: 100%; vertical-align: middle; }
+    .grove-case { display: flex !important; align-items: center; gap: 6px; }
+    .grove-case input { width: auto; }
+
+    /* --- Piste + robot : panneau PARTAGÉ par Maqueen Plus, Kitrobot v2 et
+       Maqueen Lite (un seul robot affiché à la fois, celui dont les blocs
+       sont posés — voir robotActifDetecte() dans un.js). --- */
+    #piste-panneau { width: 100%; box-sizing: border-box; border-top: 1px solid var(--bordure-chrome); padding-top: 12px; }
+    #piste-panneau h4 { margin: 0 0 10px 0; color: #ffb74d; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .maqueen-piste-barre { display: flex; gap: 6px; margin-bottom: 8px; }
+    #maqueen-piste-select { flex: 1; min-width: 0; box-sizing: border-box; padding: 6px;
+        border-radius: 4px; background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome); font-size: 12px; }
+    #maqueen-piste-editer { font-size: 11px; padding: 6px 8px; margin: 0; white-space: nowrap; }
+
+    #maqueen-edition-barre { display: none; margin-bottom: 8px; }
+    #maqueen-edition-barre.active { display: block; }
+    #maqueen-edition-barre p { font-size: 11px; color: #b8b8b8; margin: 0 0 6px 0; }
+    .maqueen-edition-boutons { display: flex; gap: 6px; }
+    .maqueen-edition-boutons button { flex: 1; font-size: 12px; padding: 6px; margin: 0; }
+    #maqueen-piste-annuler, #maqueen-piste-effacer { background: #8c8c8c; }
+    #maqueen-piste-annuler:hover, #maqueen-piste-effacer:hover { background: #6e6e6e; }
+
+    /* Poignee jaune = point normal, verte = premier point (depart + cap de depart). */
+    .mq-poignee { position: absolute; width: 12px; height: 12px; border-radius: 50%;
+        background: #ffeb3b; border: 2px solid #263238; transform: translate(-50%, -50%);
+        cursor: grab; touch-action: none; z-index: 5; }
+    .mq-poignee:active { cursor: grabbing; }
+    .mq-poignee-depart { background: #4caf50; }
+    /* La piste garde ses coordonnees internes fixes (300x220) : le robot est
+       positionne en pourcentage de ces coordonnees, donc suit la mise a
+       l'echelle CSS du canevas sans recalcul JS. */
+    #maqueen-piste { position: relative; width: 100%; aspect-ratio: 300 / 220;
+                     border-radius: 6px; overflow: hidden; background: #3aa66b; }
+    #maqueen-piste-canevas { display: block; width: 100%; height: 100%; }
+    /* Deplacable a la souris/au doigt : voir le pointerdown/move/up dans un.js.
+       touch-action: none empeche le navigateur de faire defiler la page au
+       lieu de deplacer le robot sur un ecran tactile. */
+    /* Inspiré de photos du vrai circuit imprimé Maqueen Plus V3 (dessus et
+       dessous) : carte couleur PCB (vert très sombre, pas un simple gris)
+       aux coins avant chanfreinés (silhouette "bouclier"), six vis dorées
+       (quatre coins + deux près du support moteur), support moteur noir
+       central, fente du connecteur micro:bit, compartiment a pile 18650.
+       Gabarit volontairement plus grand que les autres modules dessinés du
+       simulateur (Kitrobot, LiDAR) : c'est le robot qu'on regarde le plus
+       longtemps à l'écran, la lisibilité du détail prime ici sur la
+       cohérence stricte de taille. Les deux petites DEL reflètent l'état
+       réel des DEL RGB du programme (voir dessinerDelsMaqueen dans un.js)
+       — pas juste décoratif. */
+    #maqueen-robot { position: absolute; width: 42px; height: 48px; left: 50%; top: 50%;
+                     transform: translate(-50%, -50%); cursor: grab; touch-action: none; }
+    #maqueen-robot:active { cursor: grabbing; }
+    #maqueen-robot:hover #maqueen-robot-svg { filter: drop-shadow(0 0 1.5px rgba(255,255,255,0.75)); }
+    /* Carrosserie tracée en SVG (pas en div+CSS) d'après deux photos du vrai
+       circuit imprimé Maqueen Plus V3 (dessus et dessous) : silhouette
+       "bouclier" à coins avant chanfreinés, compartiment à pile 18650,
+       liseré de circuit imprimé vert, support moteur noir central, six vis
+       dorées. Un tracé vectoriel suit le contour réel bien plus fidèlement
+       qu'un empilement de rectangles CSS — voir PROMPT_RECREATION.md pour
+       le choix (CSS repoussé au maximum d'abord, SVG ensuite sur demande
+       explicite). Les éléments dynamiques (DEL, capteurs de ligne, avant)
+       restent des <div> par-dessus, inchangés : seule la carrosserie
+       statique est passée en SVG. */
+    #maqueen-robot-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+    #maqueen-robot .mq-sprite-del { position: absolute; bottom: 3.5px; width: 4px; height: 4px;
+                                     border-radius: 50%; background: #333; transition: background 0.15s; z-index: 2; }
+    #maqueen-robot #maqueen-sprite-del-1 { left: 8px; }
+    #maqueen-robot #maqueen-sprite-del-2 { left: 14px; }
+    #maqueen-robot .mq-avant { position: absolute; top: 50%; right: -7px; width: 5px; height: 5px;
+                                background: #ff3b30; border-radius: 50%; transform: translateY(-50%);
+                                box-shadow: 0 0 4px #ff3b30; z-index: 2; }
+    /* Capteurs de ligne, sur le bord avant du robot (meme cote que .mq-avant),
+       dans l'ordre reel gauche->droite : L2 en haut, R2 en bas (voir
+       positionCapteurMaqueen dans un.js — decalage negatif = cote L, donc
+       "au-dessus" du robot quand il pointe vers la droite, cap=0). Forme en
+       petit boitier blanc (comme les photorecepteurs de la vraie carte),
+       pas un simple point. Cache par defaut, comme la ligne d'indicateurs
+       sous la piste : seuls les capteurs reellement lus par le programme
+       sont affiches (classe "visible"), et passent au vert quand ils
+       detectent la ligne (classe "sur-ligne") — mise a jour au meme
+       rythme que le reste du robot, dans dessinerRobotMaqueen. */
+    #maqueen-robot .mq-capteur-sprite { position: absolute; right: -1.5px; width: 4px; height: 3px;
+                                         border-radius: 1px; background: #e8e8e8; border: 0.5px solid #888;
+                                         display: none; z-index: 2; }
+    #maqueen-robot .mq-capteur-sprite.visible { display: block; }
+    #maqueen-robot .mq-capteur-sprite.sur-ligne { background: #4caf50; border-color: #2e7d32; box-shadow: 0 0 3px #4caf50; }
+    #maqueen-robot .mq-capteur-sprite-L2 { top: 1px; }
+    #maqueen-robot .mq-capteur-sprite-L1 { top: 11px; }
+    #maqueen-robot .mq-capteur-sprite-M  { top: 21.5px; }
+    #maqueen-robot .mq-capteur-sprite-R1 { top: 32px; }
+    #maqueen-robot .mq-capteur-sprite-R2 { top: 42.5px; }
+    /* Roues désormais tracées dans #maqueen-robot-svg (deux <rect> au début
+       du SVG) — plus de .mq-roue div ici, contrairement à Kitrobot/Lite. */
+    .maqueen-ligne { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--texte-chrome); }
+    .maqueen-phare { width: 10px; height: 10px; border-radius: 50%; background: #555; display: inline-block; }
+    .maqueen-phare.allume { background: #fff8dc; box-shadow: 0 0 6px #fff8dc; }
+    .maqueen-dels { display: flex; gap: 5px; }
+    .maqueen-del { width: 10px; height: 10px; border-radius: 50%; background: #333; border: 1px solid #444; }
+
+    /* N'affiche que les capteurs de ligne réellement utilisés par le
+       programme (voir rafraichirPanneauMaqueen dans un.js) — comme le reste
+       du panneau Grove, pas la peine de montrer les cinq si un seul sert. */
+    #maqueen-ligne-capteurs { display: none; }
+    #maqueen-ligne-capteurs.visible { display: flex; align-items: center; gap: 6px;
+        margin-top: 8px; font-size: 11px; color: var(--texte-chrome); flex-wrap: wrap; }
+    .maqueen-capteur-ligne { display: none; align-items: center; gap: 4px; background: var(--fond-saisie);
+        padding: 3px 7px; border-radius: 10px; font-family: monospace; }
+    .maqueen-capteur-ligne.visible { display: inline-flex; }
+    .maqueen-capteur-point { width: 9px; height: 9px; border-radius: 50%; background: #333; }
+    .maqueen-capteur-point.sur-ligne { background: #4caf50; box-shadow: 0 0 5px #4caf50; }
+
+    /* --- Kitrobot v2 : sprite, affiché sur la piste partagée ci-dessus
+       (voir #piste-panneau) quand un bloc kitrobot_* est posé. Le trace
+       "Départ/Arrivée" (voir PISTES_MAQUEEN dans un.js) inverse les couleurs
+       de la piste (noir sur blanc) pour ce robot précisément — géré par
+       dessinerPisteMaqueen(), pas ici. --- */
+    .piste-drapeau { position: absolute; top: 8px; bottom: 8px; width: 3px; background: repeating-linear-gradient(
+        45deg, #111 0 6px, #fff 6px 12px); display: none; }
+    .piste-drapeau.visible { display: block; }
+    .piste-drapeau-depart { left: 34px; }
+    .piste-drapeau-arrivee { right: 34px; }
+    .piste-drapeau-etiquette { position: absolute; top: -2px; font-size: 9px; color: #46617d;
+        background: #fff; padding: 0 3px; border-radius: 2px; white-space: nowrap; }
+    .piste-drapeau-depart .piste-drapeau-etiquette { left: -6px; }
+    .piste-drapeau-arrivee .piste-drapeau-etiquette { right: -6px; }
+    /* Chassis bleu-gris distinct du Maqueen (sombre/dore) pour ne pas les confondre. */
+    #kitrobot-robot { position: absolute; width: 24px; height: 30px; left: 50%; top: 50%;
+                       transform: translate(-50%, -50%); cursor: grab; touch-action: none; }
+    #kitrobot-robot:active { cursor: grabbing; }
+    #kitrobot-robot .kb-corps { position: absolute; inset: 0;
+                                 background: linear-gradient(180deg, #6f8fa8, #3c5468);
+                                 border-radius: 6px; border: 1.5px solid #26374a; }
+    #kitrobot-robot .kb-oeil { position: absolute; top: 6px; width: 4px; height: 4px; border-radius: 50%;
+                                background: #aeeaff; box-shadow: 0 0 3px #aeeaff; }
+    #kitrobot-robot .kb-oeil-g { left: 5px; } #kitrobot-robot .kb-oeil-d { right: 5px; }
+    #kitrobot-robot .kb-avant { position: absolute; top: 50%; right: -2px; width: 5px; height: 5px;
+                                 background: #ffca28; border-radius: 50%; transform: translateY(-50%);
+                                 box-shadow: 0 0 3px #ffca28; }
+    #kitrobot-robot .kb-roue { position: absolute; width: 5px; height: 10px; background: #16181a; border-radius: 1px; }
+    #kitrobot-robot .kb-roue-h { left: 4px; top: -2px; } #kitrobot-robot .kb-roue-b { left: 4px; bottom: -2px; }
+
+    /* --- Maqueen Lite : carrosserie tracée en SVG d'après photos officielles
+       DFRobot ROB0148-EN (carte bleue, yeux ultrasons chromés, compartiment
+       piles noir, grandes roues blanches) — voir #maqueenlite-robot-svg
+       ci-dessous. Mêmes 2 capteurs de ligne (gauche/droit) que Kitrobot,
+       mais lus en clair sur fond vert (convention Maqueen), pas en inversé. --- */
+    #maqueenlite-robot { position: absolute; width: 22px; height: 28px; left: 50%; top: 50%;
+                          transform: translate(-50%, -50%); cursor: grab; touch-action: none; }
+    #maqueenlite-robot:active { cursor: grabbing; }
+    #maqueenlite-robot-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+    #maqueenlite-robot:hover #maqueenlite-robot-svg { filter: drop-shadow(0 0 1.5px rgba(255,255,255,0.75)); }
+    #maqueenlite-robot .mlite-del { position: absolute; top: 5px; width: 3.5px; height: 3.5px; border-radius: 50%;
+                                     background: #333; transition: background 0.15s; z-index: 2; }
+    #maqueenlite-robot .mlite-del-g { left: 4px; } #maqueenlite-robot .mlite-del-d { right: 4px; }
+    #maqueenlite-robot .mlite-avant { position: absolute; top: 50%; right: -2px; width: 5px; height: 5px;
+                                       background: #7c4dff; border-radius: 50%; transform: translateY(-50%);
+                                       box-shadow: 0 0 3px #7c4dff; z-index: 2; }
+    /* Indicateurs de capteurs de ligne directement sur le robot (comme
+       Maqueen Plus) : caches par defaut, affiches seulement pour les
+       capteurs reellement lus par le programme (classe "visible"), verts
+       quand ils detectent la ligne (classe "sur-ligne") — meme mecanisme
+       que la ligne "Ligne : G/D" sous la piste, juste un second endroit
+       ou l'afficher (mettreAJourIndicateursLigneMaqueenLite). */
+    #maqueenlite-robot .mlite-capteur-sprite { position: absolute; right: -1.5px; width: 4px; height: 3px;
+                                                border-radius: 1px; background: #e8e8e8; border: 0.5px solid #888;
+                                                display: none; z-index: 2; }
+    #maqueenlite-robot .mlite-capteur-sprite.visible { display: block; }
+    #maqueenlite-robot .mlite-capteur-sprite.sur-ligne { background: #4caf50; border-color: #2e7d32; box-shadow: 0 0 3px #4caf50; }
+    #maqueenlite-robot .mlite-capteur-sprite-gauche { top: 8px; }
+    #maqueenlite-robot .mlite-capteur-sprite-droit { top: 17px; }
+
+    #kitrobot-ligne-capteurs { display: none; }
+    #kitrobot-ligne-capteurs.visible { display: flex; align-items: center; gap: 6px;
+        margin-top: 8px; font-size: 11px; color: var(--texte-chrome); flex-wrap: wrap; }
+
+    /* --- LiDAR matriciel : pas de robot, juste trois curseurs --- */
+    /* Meme adaptation que le panneau Grove ci-dessus : les 3 curseurs
+       (gauche/devant/droite) se rangent sur plusieurs colonnes si la largeur
+       le permet, au lieu de rester empiles verticalement dans tous les cas. */
+    #lidar-panneau { width: 100%; box-sizing: border-box; border-top: 1px solid var(--bordure-chrome); padding-top: 12px;
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 18px; align-items: start; }
+    #lidar-panneau h4 { grid-column: 1 / -1; margin: 0 0 10px 0; color: #7986cb; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* Maqueen Lite partage désormais #piste-panneau (voir plus haut) : plus
+       de panneau séparé, seulement des sections #maqueenlite-extra/robot. */
+    #maqueen-extra, #kitrobot-extra, #maqueenlite-extra { display: contents; }
+
+    #grove-ruban { display: flex; flex-wrap: wrap; gap: 3px; min-height: 14px;
+                   padding: 5px; background: var(--fond-saisie); border-radius: 4px; }
+    .grove-led { width: 11px; height: 11px; border-radius: 50%; background: #2a2a2a;
+                 box-shadow: inset 0 0 2px #000; }
+    .grove-vide { color: #6b7f93; font-style: italic; }
+
+    /* Afficheur a sept segments : on dessine les segments reellement allumes,
+       d'apres le motif que le pilote TM1637 envoie a la puce. Les segments
+       eteints restent faiblement visibles, comme sur un vrai module. */
+    /* Boitier noir a bord arrondi, chiffres cyan legerement penches : c'est
+       l'aspect du module reel. L'inclinaison porte sur tout l'ecran, deux
+       points compris, comme sur un afficheur du commerce. */
+    #grove-4digit { background: linear-gradient(#242424, #131313);
+                    border: 1px solid #4a4f52; border-radius: 9px; padding: 9px 14px;
+                    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 3px rgba(0,0,0,0.6); }
+    #grove-4digit-ecran { display: flex; align-items: center; justify-content: center; gap: 6px;
+                          transform: skewX(-8deg); }
+    .digit7 { width: 26px; height: 46px; display: block; }
+    .digit7 .seg { fill: #1b2f2c; transition: fill 0.08s; }
+    .digit7 .seg.on { fill: #24e8c6; filter: drop-shadow(0 0 3px rgba(36, 232, 198, 0.85)); }
+    .digit7-points { display: flex; flex-direction: column; justify-content: center; gap: 11px;
+                     height: 46px; padding: 0 1px; }
+    .digit7-points span { width: 5px; height: 5px; border-radius: 50%; background: #1b2f2c;
+                          transition: background 0.08s; }
+    .digit7-points.on span { background: #24e8c6; box-shadow: 0 0 4px rgba(36, 232, 198, 0.9); }
+
+    /* LED simples : une pastille par broche pilotee. L'eclat suit la valeur
+       ecrite ; la pastille eteinte reste visible, comme une LED au repos. */
+    #grove-leds { display: flex; flex-wrap: wrap; gap: 8px; }
+    .led-broche { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+    /* Le socle sombre porte l'apparence de la LED au repos ; la pastille, elle,
+       porte l'eclat. Ils sont separes parce que l'opacite s'applique a tous les
+       descendants : une pastille eteinte emporterait son propre socle. */
+    .led-socle { position: relative; width: 13px; height: 13px; border-radius: 50%;
+                 background: #3a3527; box-shadow: inset 0 0 0 1px #55503c; }
+    .led-pastille { position: absolute; inset: 0; border-radius: 50%;
+                    background: radial-gradient(circle at 35% 30%, #fff6a8, #ffcf2e 45%, #d99400);
+                    box-shadow: 0 0 7px rgba(255, 200, 40, 0.85);
+                    transition: opacity 0.1s; }
+    .led-nom { color: #b8b8b8; }
+    .led-val { color: #8c8c8c; }
+
+    /* Ecran LCD 1602 : cadre noir, retro-eclairage bleu, caracteres clairs.
+       Chaque caractere occupe sa propre cellule, comme sur le composant : le
+       texte s'aligne donc en colonnes, et une cellule vide reste visible.
+       Le pas de la trame est de 2 px, soit une cellule de 5x8 points = 10x16. */
+    #grove-lcd-module { display: inline-block; padding: 7px; border-radius: 5px;
+                        background: #0b0b0b;
+                        box-shadow: inset 0 0 0 1px #3d3d3d, 0 2px 5px rgba(0,0,0,0.55); }
+    #grove-lcd { position: relative; padding: 6px; border-radius: 2px;
+                 background: linear-gradient(180deg, #3059ea 0%, #1f41c9 55%, #1a35ad 100%);
+                 box-shadow: inset 0 0 9px rgba(0,0,0,0.45); }
+    .lcd-ligne { display: flex; gap: 2px; }
+    .lcd-ligne + .lcd-ligne { margin-top: 2px; }
+    .lcd-cell { width: 10px; height: 16px; overflow: hidden;
+                background: rgba(255,255,255,0.055);
+                font-family: Consolas, "DejaVu Sans Mono", monospace;
+                font-size: 14px; line-height: 16px; text-align: center;
+                color: var(--lcd-texte, #f4f8ff); text-shadow: 0 0 3px rgba(215,232,255,0.8); }
+    /* La trame est une grille sombre au pas du point, posee PAR-DESSUS le
+       texte : elle decoupe les jambages en points et donne l'aspect matriciel
+       sans avoir a redessiner une fonte 5x8 caractere par caractere. */
+    .lcd-trame { position: absolute; inset: 0; pointer-events: none; border-radius: 2px;
+                 background-image:
+                   repeating-linear-gradient(to right,  rgba(6,16,64,0.34) 0 1px, transparent 1px 2px),
+                   repeating-linear-gradient(to bottom, rgba(6,16,64,0.34) 0 1px, transparent 1px 2px); }
+    /* Affichage eteint ("LCD : eteindre l'affichage") : sur le module reel
+       (Grove LCD 16x2 v1, JHD1802) le retro-eclairage est cable en
+       permanence et n'est PAS commandable en I2C — seul le bit "display
+       off" du controleur existe : les caracteres disparaissent (la memoire
+       d'affichage est conservee, ils reviennent a l'allumage) mais le fond
+       bleu reste allume. Signale par l'utilisateur : l'ancien rendu gris-vert
+       laissait croire a un retro-eclairage coupe, ce que la carte ne fait pas. */
+    #grove-lcd.eteint .lcd-cell { color: transparent; text-shadow: none; }
+
+    #grove-couleur { width: 100%; height: 30px; padding: 0; border: 0; background: none; cursor: pointer; }
+    #grove-moteurs, #grove-servos { background: var(--fond-saisie); border-radius: 4px; padding: 6px 8px; font-size: 11px; }
+    #grove-servos { display: flex; flex-wrap: wrap; gap: 4px; }
+
+    /* Un servo positionnel se place a un angle : rotation animee par une
+       transition. Un servo a rotation continue tourne sans fin : rotation
+       animee par des images cles, dont la duree vient de la vitesse. */
+    .servo { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px; }
+    .servo-cadran { width: 44px; height: 44px; border-radius: 50%; background: #0f1c26;
+                    border: 2px solid #46617d; position: relative; box-sizing: border-box; }
+    .servo-rotor { position: absolute; inset: 0; transform: rotate(0deg);
+                   transition: transform 0.35s ease-out; }
+    .servo-bras { position: absolute; left: 50%; top: 4px; width: 3px; height: 16px;
+                  margin-left: -1.5px; background: #2ecc71; border-radius: 2px; }
+    .servo-axe { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px;
+                 margin: -3.5px 0 0 -3.5px; background: #46617d; border-radius: 50%; }
+    .servo-cadran.continu .servo-rotor {
+        transition: none;
+        animation: servo-tour var(--duree, 2s) linear infinite;
+    }
+    .servo-cadran.continu.inverse .servo-rotor { animation-direction: reverse; }
+    .servo-cadran.arret { border-color: #8c8c8c; }
+    .servo-cadran.arret .servo-bras { background: #8c8c8c; }
+    @keyframes servo-tour { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .servo-nom { font-size: 10px; color: #b8b8b8; }
+    .servo-etat { font-size: 10px; color: var(--texte-chrome); text-align: center; line-height: 1.2; }
+
+    #grove-geste { width: 100%; padding: 4px; margin-bottom: 6px; font: inherit; font-size: 12px; }
+    #grove-geste-btn { width: 100%; background: #6e6e6e; font-size: 13px; padding: 7px; margin: 0; }
+    #grove-geste-btn:hover { background: #7d3c98; }
+    /* ═══════════════════════════════════════════════════════════════════════
+       APPARENCE ALIGNEE SUR LA VERSION ARDUINO R4 (« Prompt police et couleurs »).
+       Purement esthetique : aucune categorie, aucun bloc, aucune fonction n'est modifie.
+       Mes modes d'affichage : sombre = defaut (aucun attribut), clair = :root[data-theme="light"],
+       contraste eleve = :root[data-contrast="high"] (sombre + eleve = les deux sans « light »).
+       Les valeurs de chaque mode sont des variables --ec-* ; les regles plus bas ne contiennent plus de couleur.
+       ═══════════════════════════════════════════════════════════════════════ */
+    :root {   /* SOMBRE, contraste normal */
+      --ec-page: #1b1c1f;
+      --ec-cat-txt: #ddd; --ec-cat-hover: #2a2c30; --ec-cat-sel: #34363b; --ec-cat-sel-txt: #fff; --ec-cat-lisere: #e8a020;
+      --ec-cat-fw: normal; --ec-cat-bord-droit: 0 solid transparent;
+      --ec-puce-lisere: rgba(255,255,255,0.55); --ec-puce-lisere-w: 1.5px;
+      --ec-grille: #34373d; --ec-flyout: #2a2c31; --ec-flyout-contour: none;
+      --ec-label: #b5b8bf; --ec-label-fw: normal;
+      --ec-sim: #1e1f23; --ec-bord: #3c3f45; --ec-bord-w: 2px; --ec-code: #222327; --ec-code-bord: #3c3f45;
+      --ec-pan: #2a2c31; --ec-pan-bord: #3c3f45; --ec-pan-w: 1px; --ec-pan-txt: #e6e6e6; --ec-sep: #3c3f45;
+    }
+    :root[data-theme="light"] {   /* CLAIR, contraste normal */
+      --ec-page: #e8e8e8;
+      --ec-cat-txt: #ddd; --ec-cat-hover: #444; --ec-cat-sel: #555;
+      --ec-grille: #e8e8e8; --ec-flyout: #d9d9d9;
+      --ec-label: #555;
+      --ec-sim: #f7f7f7; --ec-bord: #aaa; --ec-code: var(--fond-code); --ec-code-bord: var(--fond-chrome); --ec-sep: #ccc;
+    }
+    :root[data-contrast="high"] {   /* SOMBRE + CONTRASTE ELEVE : noir, bord et texte blancs */
+      --ec-page: #000;
+      --ec-cat-txt: #fff; --ec-cat-hover: #333; --ec-cat-sel: #fff; --ec-cat-sel-txt: #000; --ec-cat-lisere: transparent;
+      --ec-cat-fw: 600; --ec-cat-bord-droit: 3px solid #fff;
+      --ec-puce-lisere: #fff; --ec-puce-lisere-w: 2px;
+      --ec-grille: #444; --ec-flyout: #000; --ec-flyout-contour: 3px solid #fff;
+      --ec-label: #fff; --ec-label-fw: 700;
+      --ec-sim: #000; --ec-bord: #fff; --ec-bord-w: 3px; --ec-code: #000; --ec-code-bord: #fff;
+      --ec-pan: #000; --ec-pan-bord: #fff; --ec-pan-w: 2px; --ec-pan-txt: #fff; --ec-sep: #fff;
+    }
+    :root[data-theme="light"][data-contrast="high"] {   /* CLAIR + CONTRASTE ELEVE : blanc, bord et texte noirs */
+      --ec-page: #e8e8e8;
+      --ec-cat-txt: #000; --ec-cat-hover: #e6e6e6; --ec-cat-sel: #000; --ec-cat-sel-txt: #fff;
+      --ec-cat-bord-droit: 3px solid #000;
+      --ec-puce-lisere: #000;
+      --ec-grille: #bbb; --ec-flyout: #fff; --ec-flyout-contour: 3px solid #000;
+      --ec-label: #000;
+      --ec-sim: #fff; --ec-bord: #000; --ec-code: #fff; --ec-code-bord: #000;
+      --ec-pan: transparent; --ec-pan-bord: #000; --ec-pan-txt: #000; --ec-sep: #000;
+    }
+    body { background: var(--ec-page); }
+
+    /* Colonne des categories : fond et bord droit (le fond lui-meme vient du theme Blockly, voir un.js). */
+    .blocklyToolboxDiv { border-right: var(--ec-cat-bord-droit); box-sizing: border-box; }
+    .blocklyToolboxCategory > .blocklyTreeRow .blocklyTreeLabel {
+        font-size: 12.5px; font-weight: var(--ec-cat-fw); color: var(--ec-cat-txt) !important; }
+    .blocklyToolboxCategory .blocklyToolboxCategory > .blocklyTreeRow .blocklyTreeLabel { font-size: 11.5px; }
+    .blocklyToolboxCategory > .blocklyTreeRow:hover { background-color: var(--ec-cat-hover) !important; }
+    .blocklyToolboxCategory > .blocklyTreeRow.blocklyTreeSelected {
+        background-color: var(--ec-cat-sel) !important; box-shadow: inset 3px 0 0 var(--ec-cat-lisere); }
+    .blocklyToolboxCategory > .blocklyTreeRow.blocklyTreeSelected .blocklyTreeLabel { color: var(--ec-cat-sel-txt) !important; }
+    /* Pastille : couleur exacte de la version Arduino (posee dans --puce par bandeau.js), fin liseré (blanc, noir ou blanc epais selon le mode). */
+    .blocklyToolboxCategory .blocklyTreeRow::before {
+        background: var(--puce, #888);
+        box-shadow: 0 0 0 var(--ec-puce-lisere-w) var(--ec-puce-lisere); }
+
+    /* Fleche de depliage (Radio, Grove, Robots) : le sprite noir de Blockly est remplace par ▸ / ▾ a la couleur du texte (visible dans les 4 modes). */
+    .blocklyToolboxCategory > .blocklyTreeRow .blocklyTreeIcon { background-image: none !important; color: var(--ec-cat-txt); font-size: 14px; line-height: 16px; text-align: center; }
+    .blocklyToolboxCategory > .blocklyTreeRow .blocklyTreeIconClosed::before { content: '▸'; }
+    .blocklyToolboxCategory > .blocklyTreeRow .blocklyTreeIconOpen::before { content: '▾'; }
+    .blocklyToolboxCategory > .blocklyTreeRow.blocklyTreeSelected .blocklyTreeIcon { color: var(--ec-cat-sel-txt); }
+    /* Zone de programmation : grille (le fond vient du theme Blockly). */
+    pattern line { stroke: var(--ec-grille) !important; }
+
+    /* Colonne de blocs */
+    .blocklyFlyoutBackground { fill: var(--ec-flyout) !important; fill-opacity: 1 !important; }
+    .injectionDiv .blocklyFlyout { outline: var(--ec-flyout-contour); }
+    .injectionDiv .blocklyFlyout .blocklyFlyoutLabelText, .injectionDiv .blocklyFlyoutLabelText {
+        fill: var(--ec-label) !important; font-style: italic; font-weight: var(--ec-label-fw); }
+
+    /* Simulation, panneau de code, console : fond, bord et separateur (« :root » = specificite superieure aux regles d'origine). */
+    :root #simulator-container { background: var(--ec-sim); border-left: var(--ec-bord-w) solid var(--ec-bord); }
+    :root #code-container { background: var(--ec-code); border-left: var(--ec-bord-w) solid var(--ec-code-bord); }
+    :root #console-panneau, :root #ia-panneau { background: var(--ec-code); border-top: var(--ec-bord-w) solid var(--ec-code-bord); }
+    :root #simulateur-redimensionneur { background: var(--ec-sep); }
+    :root #simulateur-redimensionneur:hover, :root #simulateur-redimensionneur.actif { background: #cf4400; }
+    /* Panneaux de la simulation (Grove, Piste/robot, LiDAR) : encadres en sombre et en contraste eleve ; en clair, les tiens. */
+    :root:not([data-theme="light"]) #grove-panneau, :root:not([data-theme="light"]) #piste-panneau, :root:not([data-theme="light"]) #lidar-panneau,
+    :root[data-theme="light"][data-contrast="high"] #grove-panneau, :root[data-theme="light"][data-contrast="high"] #piste-panneau,
+    :root[data-theme="light"][data-contrast="high"] #lidar-panneau {
+        background: var(--ec-pan); border: var(--ec-pan-w) solid var(--ec-pan-bord); border-radius: 6px; padding: 12px; color: var(--ec-pan-txt); }
+
+    /* Boutons de la colonne de blocs (« Creer une variable... ») en contraste eleve : fond du tiroir, bord et texte de la couleur des libelles. */
+    :root[data-contrast="high"] .blocklyFlyoutButton .blocklyFlyoutButtonBackground { fill: var(--ec-flyout) !important; stroke: var(--ec-label) !important; stroke-width: 2px; }
+    :root[data-contrast="high"] .blocklyFlyoutButton .blocklyFlyoutButtonShadow { fill: none !important; }
+    /* Blocs en contraste eleve, CLAIR : blancs, bord noir 3 px, texte noir, champs blancs a bord noir (l'inverse en sombre, voir plus haut). */
+    :root[data-theme="light"][data-contrast="high"] .blocklyPath { fill: #fff !important; stroke: #000 !important; stroke-width: 3px !important; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyPathDark,
+    :root[data-theme="light"][data-contrast="high"] .blocklyPathLight { fill: none !important; stroke: none !important; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyBlock.blocklyDisabled > .blocklyPath,
+    :root[data-theme="light"][data-contrast="high"] .blocklyBlock.blocklyDisabledPattern > .blocklyPath { fill: #ddd !important; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyText,
+    :root[data-theme="light"][data-contrast="high"] .blocklyText tspan { fill: #000 !important; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyFieldRect { fill: #fff !important; fill-opacity: 1 !important; stroke: #000 !important; stroke-width: 1.5px; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyIconShape { fill: #fff !important; stroke: #000; stroke-width: 1.5px; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyIconSymbol { fill: #000 !important; }
+    :root[data-theme="light"][data-contrast="high"] .blocklyBlock image { filter: grayscale(1) brightness(0.6); }
+    /* Blocs en contraste eleve, SOMBRE : complements (champs, icones, fleches des menus deroulants). */
+    :root[data-contrast="high"]:not([data-theme="light"]) .blocklyBlock.blocklyDisabled > .blocklyPath { fill: #333 !important; }
+    :root[data-contrast="high"]:not([data-theme="light"]) .blocklyFieldRect { fill: #000 !important; fill-opacity: 1 !important; stroke: #fff !important; stroke-width: 1.5px; }
+    :root[data-contrast="high"]:not([data-theme="light"]) .blocklyIconShape { fill: #000 !important; stroke: #fff; stroke-width: 1.5px; }
+    :root[data-contrast="high"]:not([data-theme="light"]) .blocklyIconSymbol { fill: #fff !important; }
+    :root[data-contrast="high"]:not([data-theme="light"]) .blocklyBlock image { filter: grayscale(1) brightness(1.6); }
+  </style>
+</head>
+
+<body onload="brython()">
+  
+  <div id="toolbar">
+    <!-- 1. Logo (accessoire) -->
+    <!-- 2. Affichage : theme clair / sombre, contraste normal / eleve (bandeau.js ; les boutons d'origine #btn-theme et #btn-contraste, caches, restent le moteur) -->
+    <div id="menu-affichage-conteneur" class="tb-dropdown menu-deroulant">
+      <button id="menu-affichage-btn" class="tb-btn menu-btn" title="Affichage : thème clair ou sombre, contraste normal ou élevé" aria-label="Affichage">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg>
+      </button>
+      <div id="menu-affichage-panneau" class="tb-dropdown-menu menu-panneau">
+        <div class="menu-titre">Thème</div>
+        <button id="aff-theme-clair">☀ Clair</button>
+        <button id="aff-theme-sombre">☾ Sombre</button>
+        <div class="menu-titre">Contraste</div>
+        <button id="aff-contraste-normal">◑ Normal</button>
+        <button id="aff-contraste-eleve">● Élevé</button>
+        <button id="btn-theme" class="btn-vue" style="display:none" title="Passer au thème clair">Thème</button>
+        <button id="btn-contraste" class="btn-vue" style="display:none" title="Passer en contraste élevé">Contraste élevé</button>
+      </div>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <!-- 4. Fichier -->
+    <div id="menu-fichier-conteneur" class="tb-dropdown menu-deroulant">
+      <button id="menu-fichier-btn" class="tb-btn menu-btn">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="0" y="6" width="10" height="2" rx="1"/><rect x="0" y="12" width="12" height="2" rx="1"/></svg>
+        Fichier ▾
+      </button>
+      <div id="menu-fichier-panneau" class="tb-dropdown-menu menu-panneau">
+        <button id="nouveau-projet-btn">Nouveau projet</button>
+        <button id="import-hex-btn">Charger un fichier .hex</button>
+        <button id="import-py-btn">Charger un script .py</button>
+        <input type="file" id="import-hex-input" accept=".hex" style="display:none;">
+        <input type="file" id="import-py-input" accept=".py" style="display:none;">
+        <button id="tb-telecharger-xml" disabled title="Non disponible dans cette version">Télécharger .xml</button>
+        <button id="download-btn">Télécharger .hex</button>
+        <button id="download-py-btn">Télécharger .py</button>
+      </div>
+    </div>
+
+    <!-- 5. Nom du programme : encadre blanc (champ de saisie, un clic permet de le renommer) -->
+    <label class="tb-btn" id="tb-nomfichier" title="Nom de votre programme — cliquez pour le renommer. Laissez vide pour le nom par défaut.">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <input id="nom-fichier" type="text" maxlength="60" spellcheck="false" autocomplete="off" placeholder="programme" aria-label="Nom du fichier">
+    </label>
+
+    <div class="tb-sep"></div>
+
+    <!-- 7-8. Defaire / Refaire -->
+    <button id="btn-annuler" class="tb-btn" title="Défaire (Ctrl+Z)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+      Défaire
+    </button>
+    <button id="btn-refaire" class="tb-btn" title="Refaire (Ctrl+Maj+Z)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>
+      Refaire
+    </button>
+
+    <div class="tb-sep"></div>
+
+    <!-- 10. Capture -->
+    <button id="capture-ecran-btn" class="tb-btn" title="Capture d'écran des blocs (.png)" aria-label="Capture d'écran des blocs (.png)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Capture
+    </button>
+
+    <!-- 11-13. Afficher / masquer la console, la simulation, le code (libelles geres par bandeau.js) -->
+    <button id="btn-vue-console" class="tb-btn inactif" title="Afficher ou masquer la console, en bas (print du simulateur et de la carte). Le voyant indique si la carte est connectée : se connecte avec « Connecter » dans la console." aria-label="Afficher ou masquer la console">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+      <span id="lib-console">Afficher la console</span><span id="voyant-carte" class="voyant" role="img" aria-label="Carte non connectée" title="Carte non connectée"></span>
+    </button>
+    <button id="btn-vue-simu" class="tb-btn" title="Masquer ou afficher le panneau de simulation, à droite" aria-label="Afficher ou masquer le simulateur">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+      <span id="lib-simulation">Masquer la simulation</span>
+    </button>
+    <button id="btn-vue-code" class="tb-btn" title="Afficher ou masquer le code MicroPython, à gauche de la simulation" aria-label="Afficher ou masquer la transcription MicroPython">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      <span id="lib-code">Masquer le code</span>
+    </button>
+    <!-- Specifique a ce logiciel (absent du modele) : panneau IA, apres Code -->
+    <button id="btn-vue-ia" class="tb-btn inactif" title="IA : reconnaissance d'images et de sons (caméra, micro)" aria-label="Afficher ou masquer le panneau IA">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+      IA
+    </button>
+
+    <div class="tb-sep"></div>
+
+
+    <!-- 16. Selecteur de carte (non disponible : la micro:bit se choisit dans la fenetre du navigateur) -->
+    <div id="port-group" title="Carte micro:bit utilisée par le bouton « Connecter » de la console (Chrome ou Edge)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="14" rx="2"/><line x1="9" y1="16" x2="9" y2="22"/><line x1="15" y1="16" x2="15" y2="22"/><circle cx="9" cy="6" r="1" fill="currentColor"/><circle cx="15" cy="6" r="1" fill="currentColor"/></svg>
+      <select id="port-select" title="Choisissez la carte à connecter (appliqué au prochain « Connecter »)" aria-label="Carte micro:bit"><option value="">micro:bit</option></select>
+      <button id="port-refresh" title="Rechercher les cartes : autoriser une nouvelle micro:bit branchée en USB" aria-label="Rechercher les cartes">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
+    </div>
+
+    <!-- 17. Televerser = Envoyer sur la carte -->
+    <button id="btn-envoyer" class="tb-btn" title="Envoyer sur la carte : écrire le programme sur le lecteur MICROBIT" aria-label="Téléverser sur la carte">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V6"/><polyline points="5 12 12 5 19 12"/><line x1="5" y1="21" x2="19" y2="21"/></svg>
+      <span id="lib-televerser">Téléverser</span>
+    </button>
+
+    <!-- 18. Lancer la simulation / Arreter (bascule geree par bandeau.js : #run-sim / #btn-reset) -->
+    <button id="tb-lancer" title="Lancer la simulation (Arrêter pendant son exécution)">
+      <svg id="tb-lancer-icone" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+      <span id="tb-lancer-label">Lancer la simulation</span>
+    </button>
+
+    <button id="btn-options" class="btn-vue" title="Panneau administrateur">Options</button>
+    <span id="etat"></span>
+    <span id="copyright-toolbar">V2.0E</span>
+
+    <!-- 19. Aide : tout a droite, s'ouvre vers la gauche -->
+    <div id="menu-aide-conteneur" class="tb-dropdown menu-deroulant">
+      <button id="menu-aide-btn" class="tb-btn menu-btn" title="Visites guidées">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Aide ▾
+      </button>
+      <div id="menu-aide-panneau" class="tb-dropdown-menu menu-panneau">
+        <button id="ex-menu-btn" title="Exercices progressifs avec indices, étoiles et progression enregistrée">🎓 Exercices pas à pas</button>
+        <button id="ex-eval-menu-btn" title="Évaluation chronométrée, sans indice, avec note et rapport">📝 Mode évaluation</button>
+        <button id="tuto-menu-btn">🧭 Visite guidée</button>
+        <button id="tuto-ia-menu-btn">🧠 Visite guidée IA</button>
+        <button id="tb-mission" disabled title="Non disponible dans cette version">🚀 Mon premier programme</button>
+        <button id="tuto-clicdroit-menu-btn">🖱 Visite guidée clic droit</button>
+        <button id="tuto-console-menu-btn">⌨ Visite guidée Console</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="main-container">
+    <div id="blockly-wrapper">
+      <div id="blocklyDiv"></div>
+      <div id="voile-blocs-figes"><span>✎ Blocs figés — édition manuelle du code en cours</span></div>
+    </div>
+    <div id="code-container">
+      <div class="code-entete">
+        <h3>Transcription MicroPython</h3>
+        <button id="btn-editer-code" class="btn-vue" title="Saisir du code MicroPython à la main">✎ Éditer</button>
+      </div>
+      <p id="banniere-edition-code">Code modifié à la main : les blocs sont figés et ne sont plus
+        synchronisés avec ce qui s'affiche ici. « Revenir aux blocs » abandonne ces modifications.</p>
+      <div id="code-display">Le code s'affichera ici...</div>
+      <textarea id="code-edit" spellcheck="false"></textarea>
+    </div>
+    <div id="simulateur-redimensionneur" title="Glisser pour redimensionner le simulateur"></div>
+    <div id="simulator-container">
+      <h3>Simulateur visuel <span id="mb-version-tag">V2</span></h3>
+      <div id="simulateur-console">
+      <div id="carte-cadre">
+      <div id="microbit-board">
+          <div class="mb-accent"></div>
+          <div class="mb-accent2"></div>
+          <div class="mb-usb"><div class="mb-usb-notch"></div></div>
+          <div class="mb-logo" id="mb-logo"><div class="mb-logo-dot"></div><div class="mb-logo-dot"></div></div>
+          <div class="mb-mic-indicateur">
+              <div class="mb-mic-point"></div>
+              <div class="mb-mic-icone"><div class="mb-mic-icone-tete"></div><div class="mb-mic-icone-pied"></div></div>
+          </div>
+
+          <div class="mb-btn-wrap" id="wrap-a">
+              <div class="mb-btn-outer">
+                  <div class="mb-btn-tab mb-btn-tab-l"></div><div class="mb-btn-tab mb-btn-tab-r"></div>
+                  <div class="mb-btn-inner" id="btn-a"></div>
+              </div>
+              <div class="mb-btn-label"><div class="mb-btn-label-tri"></div><span class="mb-btn-label-lettre">A</span></div>
+          </div>
+          
+          <div id="led-grid"></div>
+
+          <!-- ÉCRAN TEXTE QUI SUPERPOSE LES LEDS -->
+          <div id="led-text-container">
+              <div id="led-text-content"></div>
+          </div>
+          
+          <div class="mb-btn-wrap" id="wrap-b">
+              <div class="mb-btn-label"><div class="mb-btn-label-tri"></div><span class="mb-btn-label-lettre">B</span></div>
+              <div class="mb-btn-outer">
+                  <div class="mb-btn-tab mb-btn-tab-l"></div><div class="mb-btn-tab mb-btn-tab-r"></div>
+                  <div class="mb-btn-inner" id="btn-b"></div>
+              </div>
+          </div>
+
+          <div class="mb-btn-wrap" id="wrap-ab" style="display: none; top: 140px; right: 15px;">
+              <div class="mb-btn-label-ab">A+B</div>
+              <div class="mb-btn-outer">
+                  <div class="mb-btn-tab mb-btn-tab-l"></div><div class="mb-btn-tab mb-btn-tab-r"></div>
+                  <div class="mb-btn-inner" id="btn-ab"></div>
+              </div>
+          </div>
+
+          <div class="mb-edge">
+            <svg viewBox="0 0 280 58" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <radialGradient id="mb-edge-trou" cx="35%" cy="30%" r="70%">
+                  <stop offset="0%" stop-color="#ffffff"/>
+                  <stop offset="60%" stop-color="#e2e2e2"/>
+                  <stop offset="100%" stop-color="#b7b7b7"/>
+                </radialGradient>
+              </defs>
+              <!-- Bande a dents, pleine largeur, bord du bas onduleux (encoche
+                   peu profonde sous chaque etiquette) : "bosselé", propre au
+                   V2. Le haut reste droit ici ; les domes sont un calque a
+                   part, peints par-dessus (voir plus bas). Frontiere domes/
+                   bande a y=12 (pas 18) : mesure sur la capture de reference
+                   (echantillonnage de colonnes), la zone noire au-dessus des
+                   dents est nettement plus basse que ce que donnait 18. -->
+              <path d="M0,12 L280,12 L280,58 L275.96,58 Q259.96,51 243.96,58 L219.56,58 Q203.56,51 187.56,58
+                       L156,58 Q140,51 124,58 L92.44,58 Q76.44,51 60.44,58 L36.04,58 Q20.04,51 4.04,58
+                       L0,58 Z" fill="#d9b41c"/>
+              <!-- Domes : un par plot, en or plein, arc elliptique. Largeur
+                   fixee a 5x la largeur d'une piste doree (demande explicite
+                   de l'utilisateur : largeur piste = 5.1556, largeur dome =
+                   25.7778 -> rx=12.89), ry=12 inchange. Peints AVANT les
+                   dents (voir plus bas) pour que les traits separateurs, y
+                   compris ceux colles au bord d'un dome, restent entiers sur
+                   toute leur hauteur au lieu d'etre partiellement recouverts
+                   par le dome.
+                   Positions recalculees en resolvant ensemble trois
+                   contraintes : largeur totale = 280 (largeur de la carte),
+                   les 20 pistes dorees egales entre elles (deja acquis),
+                   ET desormais largeur dome = 5x largeur piste. Un dome plus
+                   etroit qu'avant (25.78 au lieu de 36) laisse plus de place
+                   aux espaces, donc largeur de piste recalculee a 5.1556 (au
+                   lieu de 2.6) pour que tout reboucle exactement sur 280 —
+                   voir le calcul complet dans ETAT_DU_PROJET.md. -->
+              <path d="M7.16,19 L7.16,12 A12.89,12 0 0,1 32.93,12 L32.93,19 Z" fill="#d9b41c"/>
+              <path d="M63.56,19 L63.56,12 A12.89,12 0 0,1 89.33,12 L89.33,19 Z" fill="#d9b41c"/>
+              <path d="M127.11,19 L127.11,12 A12.89,12 0 0,1 152.89,12 L152.89,19 Z" fill="#d9b41c"/>
+              <path d="M190.67,19 L190.67,12 A12.89,12 0 0,1 216.44,12 L216.44,19 Z" fill="#d9b41c"/>
+              <path d="M247.07,19 L247.07,12 A12.89,12 0 0,1 272.84,12 L272.84,19 Z" fill="#d9b41c"/>
+              <!-- Dents = traits separateurs entre les PISTES dorees (pas les
+                   pistes elles-memes) : nombre exact precise par l'utilisateur
+                   — 1 piste a gauche de 0, 4 entre 0 et 1, 5 entre 1 et 2, 5
+                   entre 2 et 3V, 4 entre 3V et GND, 1 a droite de GND. Pour N
+                   pistes visibles et bien separees dans un espace, il faut
+                   N+1 traits (un a CHAQUE bord, colle au dome voisin, sinon
+                   la piste du bord se fond dans le dome, meme couleur, sans
+                   frontiere visible). Un seul trait suffit cote piste
+                   d'extremite (bord gauche/droit de la carte) puisqu'il n'y
+                   a rien de l'autre cote a separer. -->
+              <g fill="#2e2500">
+                <rect x="5.16" y="12" width="2" height="46"/>
+                <rect x="32.93" y="12" width="2" height="46"/>
+                <rect x="40.09" y="12" width="2" height="46"/>
+                <rect x="47.24" y="12" width="2" height="46"/>
+                <rect x="54.4" y="12" width="2" height="46"/>
+                <rect x="61.56" y="12" width="2" height="46"/>
+                <rect x="89.33" y="12" width="2" height="46"/>
+                <rect x="96.49" y="12" width="2" height="46"/>
+                <rect x="103.64" y="12" width="2" height="46"/>
+                <rect x="110.8" y="12" width="2" height="46"/>
+                <rect x="117.96" y="12" width="2" height="46"/>
+                <rect x="125.11" y="12" width="2" height="46"/>
+                <rect x="152.89" y="12" width="2" height="46"/>
+                <rect x="160.04" y="12" width="2" height="46"/>
+                <rect x="167.2" y="12" width="2" height="46"/>
+                <rect x="174.36" y="12" width="2" height="46"/>
+                <rect x="181.51" y="12" width="2" height="46"/>
+                <rect x="188.67" y="12" width="2" height="46"/>
+                <rect x="216.44" y="12" width="2" height="46"/>
+                <rect x="223.6" y="12" width="2" height="46"/>
+                <rect x="230.76" y="12" width="2" height="46"/>
+                <rect x="237.91" y="12" width="2" height="46"/>
+                <rect x="245.07" y="12" width="2" height="46"/>
+                <rect x="272.84" y="12" width="2" height="46"/>
+              </g>
+              <circle class="mb-edge-trou" cx="20.04" cy="7" r="5"/>
+              <circle class="mb-edge-trou" cx="76.44" cy="7" r="5"/>
+              <circle class="mb-edge-trou" cx="140" cy="7" r="5"/>
+              <circle class="mb-edge-trou" cx="203.56" cy="7" r="5"/>
+              <circle class="mb-edge-trou" cx="259.96" cy="7" r="5"/>
+              <text class="mb-edge-txt" x="20.04" y="29">0</text>
+              <text class="mb-edge-txt" x="76.44" y="29">1</text>
+              <text class="mb-edge-txt" x="140" y="29">2</text>
+              <text class="mb-edge-txt mb-edge-txt-petit" x="203.56" y="28">3V</text>
+              <text class="mb-edge-txt mb-edge-txt-petit" x="259.96" y="28">GND</text>
+              <!-- Zones cliquables : bornees aux milieux des espaces entre
+                   domes (recalcules avec les nouvelles positions), pas des
+                   tranches fixes comme avant. -->
+              <rect class="mb-edge-zone" id="pin0" x="0" y="0" width="48.25" height="58" fill="transparent"/>
+              <rect class="mb-edge-zone" id="pin1" x="48.25" y="0" width="59.97" height="58" fill="transparent"/>
+              <rect class="mb-edge-zone" id="pin2" x="108.22" y="0" width="63.56" height="58" fill="transparent"/>
+              <rect class="mb-edge-zone" x="171.78" y="0" width="59.98" height="58" fill="transparent"/>
+              <rect class="mb-edge-zone" x="231.76" y="0" width="48.24" height="58" fill="transparent"/>
+            </svg>
+          </div>
+      </div>
+      </div>
+      <div id="simulateur-actions">
+      <button id="btn-shake">🤚 Secouer la carte</button>
+      <button id="run-sim">▶ Lancer la simulation</button>
+      <button id="btn-reset">⟲ Réinitialiser la simulation</button>
+      </div>
+      </div>
+
+      <div id="simulateur-panneaux">
+      <div id="grove-panneau">
+        <h4>Périphériques</h4>
+
+        <div class="grove-bloc" id="grove-sec-ruban">
+          <span class="grove-titre">Ruban RGB</span>
+          <div id="grove-ruban"><span class="grove-vide">non défini</span></div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-4digit">
+          <span class="grove-titre">Afficheur 4 digits</span>
+          <div id="grove-4digit"><div id="grove-4digit-ecran"></div></div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-ultrason">
+          <label class="grove-titre" for="grove-distance">Ultrason : <b id="grove-distance-val">50</b> cm</label>
+          <input type="range" id="grove-distance" min="0" max="200" value="50">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-joystick">
+          <span class="grove-titre">Joystick</span>
+          <label>X (P0) : <b id="grove-jx-val">512</b><input type="range" id="grove-jx" min="0" max="1023" value="512"></label>
+          <label>Y (P1) : <b id="grove-jy-val">512</b><input type="range" id="grove-jy" min="0" max="1023" value="512"></label>
+          <label class="grove-case"><input type="checkbox" id="grove-jbtn"> bouton enfoncé</label>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-gestes">
+          <span class="grove-titre">Capteur de gestes</span>
+          <select id="grove-geste">
+            <option value="haut">vers le haut</option>
+            <option value="bas">vers le bas</option>
+            <option value="gauche">vers la gauche</option>
+            <option value="droite">vers la droite</option>
+            <option value="avant">vers l'avant</option>
+            <option value="arriere">vers l'arrière</option>
+            <option value="horaire">sens horaire</option>
+            <option value="antihoraire">sens antihoraire</option>
+            <option value="vague">vague</option>
+          </select>
+          <button id="grove-geste-btn">Déclencher le geste</button>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-led">
+          <span class="grove-titre">LED sur broche</span>
+          <div id="grove-leds"><span class="grove-vide">aucune broche pilotée</span></div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-lcd">
+          <span class="grove-titre">Écran LCD 16x2</span>
+          <div id="grove-lcd-module">
+            <div id="grove-lcd">
+              <div class="lcd-ligne" id="grove-lcd-l0"></div>
+              <div class="lcd-ligne" id="grove-lcd-l1"></div>
+              <div class="lcd-trame"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-th">
+          <label class="grove-titre" for="grove-temp">Température : <b id="grove-temp-val">22</b> °C</label>
+          <input type="range" id="grove-temp" min="-10" max="60" value="22">
+          <label class="grove-titre" for="grove-humi">Humidité : <b id="grove-humi-val">45</b> %</label>
+          <input type="range" id="grove-humi" min="0" max="100" value="45">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-co2">
+          <label class="grove-titre" for="grove-co2">CO₂ : <b id="grove-co2-val">600</b> ppm</label>
+          <input type="range" id="grove-co2" min="400" max="5000" step="10" value="600">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-couleur">
+          <label class="grove-titre" for="grove-couleur">Couleur vue par le capteur</label>
+          <input type="color" id="grove-couleur" value="#33cc66">
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-moteurs">
+          <span class="grove-titre">Moteurs (DRV8830)</span>
+          <div id="grove-moteurs">canal 1 : arrêt · canal 2 : arrêt</div>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-radio">
+          <span class="grove-titre">Radio : message à recevoir</span>
+          <label class="grove-case"><input type="text" id="grove-radio-msg" value="42"
+                 style="width:100%; padding:4px; font:inherit; font-size:12px;"></label>
+          <button id="grove-radio-envoi" style="width:100%; margin:5px 0 0 0; font-size:13px;
+                  padding:6px; background:#c2185b;">Simuler la réception</button>
+        </div>
+
+        <div class="grove-bloc" id="grove-sec-servos">
+          <span class="grove-titre">Servomoteurs</span>
+          <div id="grove-servos">aucun</div>
+        </div>
+      </div>
+
+      <div id="piste-panneau">
+        <h4 id="piste-titre">Piste</h4>
+        <div class="maqueen-piste-barre">
+          <select id="maqueen-piste-select" title="Choisir la piste"></select>
+          <button id="maqueen-piste-editer" class="btn-vue" title="Créer ou modifier une piste personnalisée">✏ Éditer la piste</button>
+        </div>
+        <label class="grove-titre" for="maqueen-largeur-piste" style="display:block; margin-bottom:8px;">
+          Largeur de la piste (px) : <b id="maqueen-largeur-piste-val">26</b></label>
+        <input type="range" id="maqueen-largeur-piste" min="8" max="40" value="26" style="margin-bottom:8px;">
+        <label class="grove-titre" for="maqueen-echelle-robot" style="display:block; margin-bottom:8px;">
+          Échelle du robot : <b id="maqueen-echelle-robot-val">×1</b></label>
+        <input type="range" id="maqueen-echelle-robot" min="1" max="4" step="0.5" value="1" style="margin-bottom:8px;">
+        <div id="maqueen-edition-barre">
+          <p>Cliquez sur la piste pour ajouter un point. Glissez un point pour le déplacer,
+            double-cliquez dessus pour le supprimer.</p>
+          <div class="maqueen-edition-boutons">
+            <button id="maqueen-piste-terminer">Terminer</button>
+            <button id="maqueen-piste-annuler">Annuler</button>
+            <button id="maqueen-piste-effacer">Effacer</button>
+          </div>
+        </div>
+        <!-- Un seul canevas, un seul jeu de coordonnées (300x220) : les trois
+             robots y sont superposés, un seul visible à la fois selon les
+             blocs posés (voir robotActifDetecte()/rafraichirPisteEtRobots()
+             dans un.js). Les couleurs (vert/blanc ou blanc/noir) et le trait
+             "Départ/Arrivée" changent avec le robot actif, pas avec le tracé. -->
+        <div id="maqueen-piste">
+          <canvas id="maqueen-piste-canevas" width="300" height="220"></canvas>
+          <div class="piste-drapeau piste-drapeau-depart"><span class="piste-drapeau-etiquette">Départ</span></div>
+          <div class="piste-drapeau piste-drapeau-arrivee"><span class="piste-drapeau-etiquette">Arrivée</span></div>
+          <div id="maqueen-robot">
+            <svg id="maqueen-robot-svg" viewBox="0 0 42 48" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="mqg-corps" x1="0" y1="0" x2="0.3" y2="1">
+                  <stop offset="0%" stop-color="#1f2b22"/>
+                  <stop offset="55%" stop-color="#16211a"/>
+                  <stop offset="100%" stop-color="#0e150f"/>
+                </linearGradient>
+                <linearGradient id="mqg-pile" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#a9691a"/>
+                  <stop offset="30%" stop-color="#e8a33d"/>
+                  <stop offset="48%" stop-color="#f2c169"/>
+                  <stop offset="55%" stop-color="#d68b28"/>
+                  <stop offset="100%" stop-color="#c97f1f"/>
+                </linearGradient>
+                <linearGradient id="mqg-pcb" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#2e7d32"/>
+                  <stop offset="100%" stop-color="#1b5e20"/>
+                </linearGradient>
+                <linearGradient id="mqg-support" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#050505"/>
+                  <stop offset="50%" stop-color="#1c1c1c"/>
+                  <stop offset="100%" stop-color="#050505"/>
+                </linearGradient>
+                <linearGradient id="mqg-fil" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#b71c1c"/>
+                  <stop offset="100%" stop-color="#e53935"/>
+                </linearGradient>
+                <linearGradient id="mqg-connecteur" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#e53935"/>
+                  <stop offset="100%" stop-color="#b71c1c"/>
+                </linearGradient>
+                <radialGradient id="mqg-vis" cx="35%" cy="35%" r="70%">
+                  <stop offset="0%" stop-color="#f0d488"/>
+                  <stop offset="100%" stop-color="#a9791c"/>
+                </radialGradient>
+                <linearGradient id="mqg-roue" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#050505"/>
+                  <stop offset="45%" stop-color="#222"/>
+                  <stop offset="100%" stop-color="#050505"/>
+                </linearGradient>
+              </defs>
+
+              <rect x="8" y="-4" width="8" height="16" rx="2" fill="url(#mqg-roue)"/>
+              <rect x="8" y="36" width="8" height="16" rx="2" fill="url(#mqg-roue)"/>
+
+              <!-- Coque : silhouette "bouclier" (coins avant chanfreinés), tracée
+                   d'après la photo plutôt qu'approximée par un clip-path CSS. -->
+              <path d="M2,0 L36.12,0 L42,5.76 L42,42.24 L36.12,48 L2,48 Q0,48 0,46 L0,2 Q0,0 2,0 Z"
+                    fill="url(#mqg-corps)" stroke="#c9a227" stroke-width="2"/>
+
+              <!-- Support moteur central -->
+              <rect x="19" y="2" width="8" height="44" rx="2" fill="url(#mqg-support)" stroke="#000" stroke-width="0.5"/>
+              <!-- Petit fil rouge -->
+              <rect x="37" y="11" width="4" height="2" rx="1" fill="url(#mqg-fil)"/>
+
+              <!-- Compartiment à pile 18650 -->
+              <rect x="6" y="4" width="11" height="31" rx="2" fill="#0c0d0e" stroke="#000" stroke-width="1"/>
+              <rect x="7.5" y="5" width="8" height="29" rx="2" fill="url(#mqg-pile)"/>
+              <text x="11.5" y="12" font-size="7" font-weight="700" fill="#6b3f0a" text-anchor="middle" font-family="sans-serif">+</text>
+
+              <!-- Liseré de circuit imprimé, deux connecteurs rouges -->
+              <rect x="30" y="3" width="9" height="42" rx="1.5" fill="url(#mqg-pcb)" stroke="#0d3311" stroke-width="0.5"/>
+              <rect x="35.5" y="5.5" width="4" height="3" rx="0.5" fill="url(#mqg-connecteur)"/>
+              <rect x="35.5" y="39.5" width="4" height="3" rx="0.5" fill="url(#mqg-connecteur)"/>
+
+              <!-- Six vis dorées : quatre coins + deux près du support moteur -->
+              <circle cx="4.5" cy="4.5" r="1.5" fill="url(#mqg-vis)"/>
+              <circle cx="34.5" cy="5.5" r="1.5" fill="url(#mqg-vis)"/>
+              <circle cx="4.5" cy="43.5" r="1.5" fill="url(#mqg-vis)"/>
+              <circle cx="34.5" cy="42.5" r="1.5" fill="url(#mqg-vis)"/>
+              <circle cx="22.25" cy="4.25" r="1.25" fill="url(#mqg-vis)"/>
+              <circle cx="22.25" cy="43.75" r="1.25" fill="url(#mqg-vis)"/>
+            </svg>
+            <div class="mq-sprite-del" id="maqueen-sprite-del-1"></div>
+            <div class="mq-sprite-del" id="maqueen-sprite-del-2"></div>
+            <div class="mq-avant"></div>
+            <div class="mq-capteur-sprite mq-capteur-sprite-L2" data-capteur="L2"></div>
+            <div class="mq-capteur-sprite mq-capteur-sprite-L1" data-capteur="L1"></div>
+            <div class="mq-capteur-sprite mq-capteur-sprite-M" data-capteur="M"></div>
+            <div class="mq-capteur-sprite mq-capteur-sprite-R1" data-capteur="R1"></div>
+            <div class="mq-capteur-sprite mq-capteur-sprite-R2" data-capteur="R2"></div>
+          </div>
+          <div id="kitrobot-robot">
+            <div class="kb-roue kb-roue-h"></div>
+            <div class="kb-roue kb-roue-b"></div>
+            <div class="kb-corps">
+              <div class="kb-oeil kb-oeil-g"></div>
+              <div class="kb-oeil kb-oeil-d"></div>
+            </div>
+            <div class="kb-avant"></div>
+          </div>
+          <div id="maqueenlite-robot">
+            <svg id="maqueenlite-robot-svg" viewBox="0 0 22 28" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="mlg-corps" x1="0" y1="0" x2="0.3" y2="1">
+                  <stop offset="0%" stop-color="#3a6fc4"/>
+                  <stop offset="55%" stop-color="#24488a"/>
+                  <stop offset="100%" stop-color="#162f5f"/>
+                </linearGradient>
+                <linearGradient id="mlg-batt" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#2b2b2b"/>
+                  <stop offset="100%" stop-color="#0c0c0c"/>
+                </linearGradient>
+                <linearGradient id="mlg-pneu" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#050505"/>
+                  <stop offset="45%" stop-color="#222"/>
+                  <stop offset="100%" stop-color="#050505"/>
+                </linearGradient>
+                <radialGradient id="mlg-jante" cx="35%" cy="35%" r="70%">
+                  <stop offset="0%" stop-color="#ffffff"/>
+                  <stop offset="55%" stop-color="#d9d9d9"/>
+                  <stop offset="100%" stop-color="#9c9c9c"/>
+                </radialGradient>
+                <radialGradient id="mlg-us" cx="35%" cy="35%" r="70%">
+                  <stop offset="0%" stop-color="#f5f5f5"/>
+                  <stop offset="45%" stop-color="#b8b8b8"/>
+                  <stop offset="100%" stop-color="#6e6e6e"/>
+                </radialGradient>
+                <radialGradient id="mlg-vis" cx="35%" cy="35%" r="70%">
+                  <stop offset="0%" stop-color="#f0d488"/>
+                  <stop offset="100%" stop-color="#a9791c"/>
+                </radialGradient>
+              </defs>
+
+              <!-- Roues : grandes jantes blanches/argentées, pneu noir fin
+                   (d'après photo ROB0148-EN_Main_01 : roues plastique larges,
+                   bien plus visibles que sur Kitrobot/Maqueen). -->
+              <circle cx="6.5" cy="2.3" r="4.4" fill="url(#mlg-pneu)"/>
+              <circle cx="6.5" cy="2.3" r="2.7" fill="url(#mlg-jante)"/>
+              <circle cx="6.5" cy="25.7" r="4.4" fill="url(#mlg-pneu)"/>
+              <circle cx="6.5" cy="25.7" r="2.7" fill="url(#mlg-jante)"/>
+
+              <!-- Coque : carte bleue en "maison" pointant vers l'avant (photo
+                   Main_01 : PCB bleu chanfreiné vers la pointe avant). -->
+              <path d="M2,2 L13,2 L19,9 L19,19 L13,26 L2,26 Q0,26 0,24 L0,4 Q0,2 2,2 Z"
+                    fill="url(#mlg-corps)" stroke="#0d1f45" stroke-width="1.2"/>
+
+              <!-- Compartiment à piles (3xAAA) : boîtier noir avec ressorts,
+                   occupe l'essentiel de l'arrière (photo : contacts métal visibles). -->
+              <rect x="2" y="5" width="10" height="18" rx="1.5" fill="url(#mlg-batt)" stroke="#000" stroke-width="0.6"/>
+              <rect x="3" y="8" width="8" height="0.8" fill="#888"/>
+              <rect x="3" y="13" width="8" height="0.8" fill="#888"/>
+              <rect x="3" y="19" width="8" height="0.8" fill="#888"/>
+
+              <!-- Petite carte avant avec les deux "yeux" ultrasons chromés
+                   (photo : sous-carte au bout de la pointe, deux capteurs ronds). -->
+              <rect x="17.5" y="8" width="4" height="12" rx="1" fill="#1a1a1a" stroke="#000" stroke-width="0.5"/>
+              <circle cx="21" cy="11" r="1.8" fill="url(#mlg-us)"/>
+              <circle cx="21" cy="17" r="1.8" fill="url(#mlg-us)"/>
+
+              <!-- Petit bouton d'alimentation + LED verte (photo : bouton noir "Power") -->
+              <rect x="14.5" y="4" width="2" height="2" rx="0.5" fill="#222" stroke="#555" stroke-width="0.3"/>
+              <circle cx="15.5" cy="23" r="1" fill="#4caf50"/>
+
+              <!-- Quatre vis dorées aux coins -->
+              <circle cx="2.3" cy="3" r="1" fill="url(#mlg-vis)"/>
+              <circle cx="2.3" cy="25" r="1" fill="url(#mlg-vis)"/>
+              <circle cx="16.8" cy="4.2" r="0.9" fill="url(#mlg-vis)"/>
+              <circle cx="16.8" cy="23.8" r="0.9" fill="url(#mlg-vis)"/>
+            </svg>
+            <div class="mlite-del mlite-del-g" id="maqueenlite-sprite-del-g"></div>
+            <div class="mlite-del mlite-del-d" id="maqueenlite-sprite-del-d"></div>
+            <div class="mlite-avant"></div>
+            <div class="mlite-capteur-sprite mlite-capteur-sprite-gauche" data-capteur="gauche"></div>
+            <div class="mlite-capteur-sprite mlite-capteur-sprite-droit" data-capteur="droit"></div>
+          </div>
+        </div>
+
+        <div id="maqueen-extra">
+          <div class="maqueen-ligne" id="maqueen-phares-dels">
+            <span>Phares :</span>
+            <span class="maqueen-phare" id="maqueen-phare-g"></span>
+            <span class="maqueen-phare" id="maqueen-phare-d"></span>
+            <span style="margin-left:auto;">DEL :</span>
+            <span class="maqueen-dels">
+              <span class="maqueen-del" id="maqueen-del-l1"></span>
+              <span class="maqueen-del" id="maqueen-del-l2"></span>
+              <span class="maqueen-del" id="maqueen-del-r2"></span>
+              <span class="maqueen-del" id="maqueen-del-r1"></span>
+            </span>
+          </div>
+          <div class="maqueen-ligne" id="maqueen-ligne-capteurs">
+            <span>Ligne :</span>
+            <span class="maqueen-capteur-ligne" data-capteur="L2">L2<i class="maqueen-capteur-point"></i></span>
+            <span class="maqueen-capteur-ligne" data-capteur="L1">L1<i class="maqueen-capteur-point"></i></span>
+            <span class="maqueen-capteur-ligne" data-capteur="M">M<i class="maqueen-capteur-point"></i></span>
+            <span class="maqueen-capteur-ligne" data-capteur="R1">R1<i class="maqueen-capteur-point"></i></span>
+            <span class="maqueen-capteur-ligne" data-capteur="R2">R2<i class="maqueen-capteur-point"></i></span>
+          </div>
+          <label class="grove-titre" for="maqueen-distance" style="margin-top:8px; display:block;">
+            Distance obstacle (cm) : <b id="maqueen-distance-val">50</b></label>
+          <input type="range" id="maqueen-distance" min="0" max="200" value="50">
+
+          <div class="grove-bloc" id="maqueen-ir-panneau" style="margin-top:10px;">
+            <span class="grove-titre">Télécommande infrarouge (simulation)</span>
+            <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+              <select id="maqueen-ir-telecommande" style="flex:1; min-width:110px; box-sizing:border-box; padding:4px;
+                  border-radius:4px; background:var(--fond-saisie); color:var(--texte-saisie); border:1px solid var(--bordure-chrome); font-size:12px;">
+                <option value="noire">Noire</option>
+                <option value="grise">Grise Car mp3</option>
+              </select>
+              <select id="maqueen-ir-touche" style="flex:1; min-width:110px; box-sizing:border-box; padding:4px;
+                  border-radius:4px; background:var(--fond-saisie); color:var(--texte-saisie); border:1px solid var(--bordure-chrome); font-size:12px;"></select>
+              <button id="maqueen-ir-simuler" class="btn-vue" style="margin:0; font-size:11px; padding:5px 8px;">Simuler l'appui</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="kitrobot-extra">
+          <div class="maqueen-ligne" id="kitrobot-ligne-capteurs">
+            <span>Ligne :</span>
+            <span class="maqueen-capteur-ligne" data-capteur="gauche">G<i class="maqueen-capteur-point"></i></span>
+            <span class="maqueen-capteur-ligne" data-capteur="droit">D<i class="maqueen-capteur-point"></i></span>
+          </div>
+          <label class="grove-titre" for="kitrobot-distance" style="margin-top:8px; display:block;">
+            Distance obstacle (cm) : <b id="kitrobot-distance-val">50</b></label>
+          <input type="range" id="kitrobot-distance" min="0" max="200" value="50">
+        </div>
+
+        <div id="maqueenlite-extra">
+          <div class="maqueen-ligne" id="maqueenlite-ligne-capteurs">
+            <span>Ligne :</span>
+            <span class="maqueen-capteur-ligne" data-capteur="gauche">G<i class="maqueen-capteur-point"></i></span>
+            <span class="maqueen-capteur-ligne" data-capteur="droit">D<i class="maqueen-capteur-point"></i></span>
+          </div>
+          <label class="grove-titre" for="maqueenlite-distance" style="margin-top:8px; display:block;">
+            Distance obstacle (cm) : <b id="maqueenlite-distance-val">50</b></label>
+          <input type="range" id="maqueenlite-distance" min="0" max="200" value="50">
+        </div>
+      </div>
+
+      <div id="lidar-panneau">
+        <h4>LiDAR matriciel</h4>
+        <div class="grove-bloc">
+          <label class="grove-titre" for="lidar-gauche">Gauche : <b id="lidar-gauche-val">1000</b> mm</label>
+          <input type="range" id="lidar-gauche" min="0" max="2000" value="1000">
+        </div>
+        <div class="grove-bloc">
+          <label class="grove-titre" for="lidar-avant">Devant : <b id="lidar-avant-val">1000</b> mm</label>
+          <input type="range" id="lidar-avant" min="0" max="2000" value="1000">
+        </div>
+        <div class="grove-bloc">
+          <label class="grove-titre" for="lidar-droite">Droite : <b id="lidar-droite-val">1000</b> mm</label>
+          <input type="range" id="lidar-droite" min="0" max="2000" value="1000">
+        </div>
+      </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Console : barre en bas de l'application, masquee par defaut (bouton >_
+       de la barre d'outils). print() du simulateur + sortie serie de la carte. -->
+  <section id="console-panneau" class="replie" aria-label="Console">
+    <div id="console-entete">
+      <h3>Console</h3>
+      <span id="console-onglets" role="tablist">
+        <button id="onglet-console-texte" class="btn-vue actif" role="tab" aria-selected="true" title="Afficher les lignes de texte">Texte</button>
+        <button id="onglet-console-graphique" class="btn-vue" role="tab" aria-selected="false" title="Tracer les valeurs numériques en courbes">Graphique</button>
+      </span>
+      <span id="console-etat">Simulateur : les « afficher dans la console » apparaissent ici.</span>
+      <span id="console-boutons">
+        <button id="btn-console-carte" class="btn-vue" title="Connecter la carte micro:bit branchée en USB pour lire ses print() (Chrome ou Edge)">🔌 Connecter</button>
+        <button id="btn-console-effacer" class="btn-vue" title="Effacer la console" aria-label="Effacer la console">🗑</button>
+        <button id="btn-console-exporter" class="btn-vue" title="Exporter la console dans un fichier Excel (.xlsx)" aria-label="Exporter la console en fichier Excel">📊</button>
+        <button id="btn-console-aide" class="btn-vue" title="Aide : comment utiliser la console" aria-label="Aide sur la console">?</button>
+        <button id="btn-console-fermer" class="btn-vue" title="Masquer la console" aria-label="Masquer la console">✕</button>
+      </span>
+    </div>
+    <pre id="console-sortie" role="log" aria-live="polite"></pre>
+    <div id="console-graphique" class="replie" role="img" aria-label="Courbes des valeurs numériques de la console">
+      <canvas id="console-canevas"></canvas>
+    </div>
+    <form id="console-saisie" autocomplete="off">
+      <input id="console-entree" type="text" placeholder="Envoyer du texte à la carte…" disabled>
+      <button id="console-envoyer" type="submit" class="btn-vue" disabled>Envoyer</button>
+    </form>
+  </section>
+
+  <!-- IA : reconnaissance d'images (camera) et de sons (micro) avec des modeles
+       Teachable Machine. Le moteur est dans ia.js ; les resultats pilotent les
+       blocs « IA » (simulateur et vraie carte, via le port serie de la console). -->
+  <section id="ia-panneau" class="replie" aria-label="Intelligence artificielle">
+    <div id="ia-entete">
+      <h3>IA</h3>
+      <span id="ia-seuil-groupe">
+        <label for="ia-seuil">Seuil de confiance : <b id="ia-seuil-val">80</b> %</label>
+        <input type="range" id="ia-seuil" min="30" max="99" value="80">
+      </span>
+      <label id="ia-carte-label" title="Envoyer aussi les résultats à la vraie carte (connectée par le bouton 🔌 de la console)">
+        <input type="checkbox" id="ia-vers-carte"> Envoyer à la carte
+      </label>
+      <span id="ia-etat-carte"></span>
+      <span id="ia-boutons">
+        <button id="btn-ia-aide" class="btn-vue" title="Aide : comment utiliser l'IA" aria-label="Aide sur l'IA">?</button>
+        <button id="btn-ia-fermer" class="btn-vue" title="Masquer le panneau IA" aria-label="Masquer le panneau IA">✕</button>
+      </span>
+    </div>
+    <div id="ia-colonnes">
+      <div class="ia-colonne" data-genre="vision">
+        <h4>📷 Vision (caméra)</h4>
+        <div class="ia-modele">
+          <input type="text" class="ia-url" placeholder="https://teachablemachine.withgoogle.com/models/…/" spellcheck="false">
+          <button class="btn-vue ia-charger-url" title="Charger le modèle depuis son adresse (nécessite Internet)">Charger</button>
+          <button class="btn-vue ia-charger-fichiers" title="Charger les 3 fichiers du modèle exporté : model.json, metadata.json, weights.bin (fonctionne hors connexion)">Fichiers…</button>
+          <input type="file" class="ia-fichiers" accept=".json,.bin" multiple style="display:none;">
+        </div>
+        <div class="ia-actions">
+          <button class="btn-vue ia-demarrer" disabled>▶ Démarrer</button>
+          <span class="ia-statut">Aucun modèle chargé.</span>
+        </div>
+        <video id="ia-video" class="ia-apercu replie" autoplay muted playsinline></video>
+        <div class="ia-classes"></div>
+        <details class="ia-creer">
+          <summary>✚ Créer un modèle (entraînement)</summary>
+          <p class="ia-creer-aide">Maintenir le bouton de chaque classe pour capturer des images (une vingtaine de plus par seconde).</p>
+          <div class="ia-creer-classes"></div>
+          <div class="ia-creer-actions">
+          <button class="btn-vue ia-camera-capture" title="Allumer la caméra pour capturer des exemples">📷 Caméra</button>
+            <button class="btn-vue ia-ajouter-classe">+ Classe</button>
+            <button class="btn-vue ia-entrainer">🏋 Entraîner</button>
+            <button class="btn-vue ia-enregistrer" disabled title="Télécharger model.json, metadata.json et weights.bin (à recharger avec « Fichiers… »)">💾 Enregistrer</button>
+            <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
+          </div>
+          <div class="ia-creer-statut"></div>
+        </details>
+      </div>
+      <div class="ia-colonne" data-genre="son">
+        <h4>🎤 Son (micro)</h4>
+        <div class="ia-modele">
+          <input type="text" class="ia-url" placeholder="https://teachablemachine.withgoogle.com/models/…/" spellcheck="false">
+          <button class="btn-vue ia-charger-url" title="Charger le modèle depuis son adresse (nécessite Internet)">Charger</button>
+          <button class="btn-vue ia-charger-fichiers" title="Charger les 3 fichiers du modèle exporté : model.json, metadata.json, weights.bin (fonctionne hors connexion)">Fichiers…</button>
+          <input type="file" class="ia-fichiers" accept=".json,.bin" multiple style="display:none;">
+        </div>
+        <div class="ia-actions">
+          <button class="btn-vue ia-demarrer" disabled>▶ Démarrer</button>
+          <span class="ia-statut">Aucun modèle chargé.</span>
+        </div>
+        <div class="ia-classes"></div>
+        <details class="ia-creer">
+          <summary>✚ Créer un modèle (entraînement)</summary>
+          <p class="ia-creer-aide">Cliquer le bouton de chaque classe : 1 seconde de son est enregistrée. Créez une classe « Bruit de fond » (silence).</p>
+          <div class="ia-creer-classes"></div>
+          <div class="ia-creer-actions">
+            <button class="btn-vue ia-ajouter-classe">+ Classe</button>
+            <button class="btn-vue ia-entrainer">🏋 Entraîner</button>
+            <button class="btn-vue ia-enregistrer" disabled title="Télécharger model.json, metadata.json et weights.bin (à recharger avec « Fichiers… »)">💾 Enregistrer</button>
+            <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
+          </div>
+          <div class="ia-creer-statut"></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Signe de vie envoye au serveur local (app.py) : l'exe, qui n'a pas de fenetre
+       console, s'arrete tout seul quand la derniere page est fermee. Sans effet
+       (simple 404) si l'application est servie autrement. -->
+  <script>
+    (function () {
+      const id = Math.random().toString(36).slice(2);
+      const signe = () => { fetch('/_vie?id=' + id, { cache: 'no-store' }).catch(() => {}); };
+      signe();
+      setInterval(signe, 5000);
+      addEventListener('pageshow', signe);
+      addEventListener('pagehide', () => { try { navigator.sendBeacon('/_ferme?id=' + id); } catch (e) { /* tant pis */ } });
+    })();
+  </script>
+
+  <script type="module" src="trois.js"></script>
+  <script type="module" src="deux.js"></script>
+  <script type="module" src="un.js"></script>
+  <script type="module" src="ia.js"></script>
+  <script type="module" src="tuto.js"></script>
+  <script type="module" src="bandeau.js"></script>
+  <script type="module" src="exercices.js"></script>
+  
+  <!-- LOGIQUE DU SIMULATEUR EN PUR PYTHON (BRYTHON) -->
+  <script type="text/python">
+    from browser import window, document, alert
+    import math
+    import re
+    import textwrap
+    import ast
+    import json
+
+    # ------------------------------------------
+    # RECONSTRUCTION DE BLOCS DEPUIS UN FICHIER IMPORTÉ — passerelle AST
+    # ------------------------------------------
+    # Le reste de la reconstruction (mise en correspondance bloc par bloc)
+    # vit côté JS (un.js) : c'est là que sont déjà décrits tous les blocs et
+    # leur générateur, plus simple d'y ajouter aussi leur inverse plutôt que
+    # de dupliquer cette connaissance ici. Ce module Brython n'a qu'un rôle
+    # de passerelle : transformer le texte Python importé en un arbre exploi-
+    # table par JS, via le module `ast` standard (déjà utilisé en interne par
+    # Brython pour se compiler lui-même, donc fiable) — jamais de regex sur
+    # le texte, qui casserait au moindre commentaire ou changement d'indentation.
+    def _fusionner_etendues(a, b):
+        if a is None: return b
+        if b is None: return a
+        debut = a[:2] if a[:2] <= b[:2] else b[:2]
+        fin = a[2:] if a[2:] >= b[2:] else b[2:]
+        return debut + fin
+
+    def _etendue_propre(noeud):
+        l, f = getattr(noeud, 'lineno', None), getattr(noeud, 'end_lineno', None)
+        c, fc = getattr(noeud, 'col_offset', None), getattr(noeud, 'end_col_offset', None)
+        if l is None or f is None or c is None or fc is None:
+            return None
+        return (l, c, f, fc)
+
+    def _segment_source(lignes, etendue):
+        if etendue is None:
+            return None
+        debut, colDebut, fin, colFin = etendue
+        if debut == fin:
+            return lignes[debut - 1][colDebut:colFin]
+        morceaux = [lignes[debut - 1][colDebut:]]
+        morceaux.extend(lignes[debut:fin - 1])
+        morceaux.append(lignes[fin - 1][:colFin])
+        return '\n'.join(morceaux)
+
+    def _ast_vers_json(noeud, lignes_source):
+        """Renvoie (json, etendue) — etendue = (ligne1, col1, ligne2, col2).
+
+        Brython (contrairement à CPython) pose parfois lineno/col_offset
+        d'un noeud composite sur son seul TOKEN OPÉRATEUR plutôt que sur
+        tout son empan : `1 + 2` donne un `BinOp` dont la position ne
+        couvre que le "+" (constaté en comparant aux positions, correctes
+        elles, de ses propres enfants `Constant`). D'où ce calcul par le
+        BAS : l'empan retenu pour un noeud est l'union de sa position
+        propre ET de celles de tous ses descendants — une position
+        propre trop étroite se retrouve alors noyée dans celle, correcte,
+        de ses enfants, sans qu'il faille distinguer les noeuds fiables
+        des autres au cas par cas.
+        """
+        if isinstance(noeud, ast.AST):
+            resultat = {"_type": type(noeud).__name__}
+            etendue = _etendue_propre(noeud)
+            for champ in noeud._fields:
+                valeur_json, etendue_enfant = _ast_vers_json(getattr(noeud, champ, None), lignes_source)
+                resultat[champ] = valeur_json
+                etendue = _fusionner_etendues(etendue, etendue_enfant)
+            # Texte Python d'origine EXACT de ce noeud (pas une reserialisation
+            # via un hypothetique ast.unparse, qui changerait la mise en forme) :
+            # sert de filet pour le bloc de repli "code personnalisé" côté JS,
+            # qui doit garder le fragment tel quel plutôt qu'un texte reconstruit
+            # ou un simple "non reconnu" qui perdrait l'information.
+            try:
+                segment = _segment_source(lignes_source, etendue)
+                if segment is not None:
+                    resultat["_source"] = segment
+            except Exception:
+                pass
+            return resultat, etendue
+        if isinstance(noeud, list):
+            etendue = None
+            elements = []
+            for x in noeud:
+                valeur_json, etendue_enfant = _ast_vers_json(x, lignes_source)
+                elements.append(valeur_json)
+                etendue = _fusionner_etendues(etendue, etendue_enfant)
+            return elements, etendue
+        if isinstance(noeud, bytes):
+            # Un litteral b"..." (ex. valeur par defaut d'un parametre dans
+            # le code des pilotes auto-injectes) n'est pas serialisable en
+            # JSON tel quel. Aucun bloc ne reconstruit une valeur bytes
+            # aujourd'hui : une liste d'entiers suffit a ne pas faire
+            # planter l'analyse du reste de l'arbre.
+            return list(noeud), None
+        # Primitif (str, int, float, bool, None) : deja serialisable tel quel,
+        # et ne porte par definition aucune position propre.
+        return noeud, None
+
+    def analyser_code_python(code):
+        """Renvoie un JSON {ok: True, arbre: ...} ou {ok: False, erreur: "..."}.
+
+        Chaîne JSON plutôt qu'un objet Python direct : la conversion Brython
+        d'un dict Python imbriqué vers un objet JS n'est pas toujours fidèle
+        pour des structures profondes, alors que `json.dumps` + `JSON.parse`
+        côté JS est un aller-retour standard, déjà éprouvé ailleurs dans ce
+        fichier (voir extraireCodeDepuisHex côté JS pour un choix similaire
+        de passer par un format texte plutôt qu'un objet partagé).
+        """
+        try:
+            arbre = ast.parse(code)
+            arbre_json, _ = _ast_vers_json(arbre, code.splitlines())
+            return json.dumps({"ok": True, "arbre": arbre_json})
+        except SyntaxError as e:
+            return json.dumps({"ok": False, "erreur": str(e)})
+        except Exception as e:
+            # Filet de securite : un noeud AST inattendu (ex. une valeur non
+            # serialisable en JSON) ne doit jamais faire planter l'import,
+            # seulement echouer proprement — l'appelant JS retombe alors sur
+            # l'edition manuelle, comme pour un fichier etranger.
+            return json.dumps({"ok": False, "erreur": type(e).__name__ + ': ' + str(e)})
+
+    window.analyserCodePython = analyser_code_python
+
+    # "attendre jusqu'à" (attendre_jusqua) genere "while not (condition):
+    # sleep(10)" - correct sur la vraie carte, ou sleep() met vraiment en
+    # pause et laisse le temps a la condition de changer (bouton, capteur...).
+    # Ici sleep() ne fait que mettre une action en file (voir simu_sleep,
+    # un.js) et rend la main IMMEDIATEMENT : exec() ne peut donc jamais
+    # laisser la condition varier pendant que cette boucle tourne, qui
+    # spinne alors indefiniment en JS synchrone et gele l'onglet - signale
+    # par l'utilisateur ("semble faire planter l'app"). _sleep_compteur
+    # transforme cette boucle infinie en erreur lisible plutot qu'un gel :
+    # remis a 0 avant chaque exec() de premier niveau (voir plus bas).
+    _sleep_compteur = 0
+
+    class _AttenteSimulateur(Exception):
+        '''Levee par sleep() quand _sleep_compteur depasse la limite (voir
+        plus bas) : PAS une erreur de programme. "attendre jusqu'à" pose
+        dans "Repeter indefiniment" est cense se redeclencher a chaque tour
+        de la boucle - sur la vraie carte, tant que le bouton n'est pas
+        appuye, on attend simplement le prochain tour, ce n'est pas un bug.
+        _tour_suivant() l'intercepte donc a part d'une vraie exception, sans
+        bandeau d'erreur : signale par l'utilisateur, un premier correctif
+        qui levait RuntimeError ici affichait un bandeau rouge PERSISTANT
+        des qu'un tour ulterieur retrouvait la condition fausse (bouton
+        relache entre deux tours), alors que le tour precedent avait deja
+        correctement affiche le bon resultat - un faux positif.'''
+        pass
+
+    def sleep(ms):
+        global _sleep_compteur
+        _sleep_compteur += 1
+        if _sleep_compteur > 3000:
+            raise _AttenteSimulateur(
+                "« attendre jusqu'à » n'aboutit pas dans ce tour de "
+                "simulation : la condition attendue ne peut pas changer "
+                "pendant que le simulateur l'attend. Ce bloc fonctionne sur "
+                "la vraie carte ; dans le simulateur, remplacez-le par un "
+                "« si ... alors » vérifié à chaque tour de la boucle."
+            )
+        window.simu_sleep(ms)
+    # print() du programme : sur la carte il part sur le port serie USB, ici
+    # dans la console du panneau code (file d'actions du simulateur, donc dans
+    # l'ordre du programme par rapport aux affichages et aux pauses).
+    def print_console(*args, sep=' ', end='\n'):
+        window.simu_console(str(' ' if sep is None else sep).join([str(a) for a in args]) +
+                            str('\n' if end is None else end))
+
+    # uart du simulateur : sur la carte c'est la liaison USB, ici une file de texte
+    # alimentee par le panneau IA (window.simu_uartPousser, un.js). Le MEME code
+    # genere par les blocs IA (_ia_traiter) tourne donc sur la carte et en simulation.
+    class _UartMock:
+        def init(self, *args, **kwargs): pass
+        def any(self): return bool(window.simu_uartDisponible())
+        def read(self, nbytes=None):
+            texte = str(window.simu_uartLire())
+            return texte.encode('utf-8') if texte else None
+        def readline(self):
+            texte = str(window.simu_uartLireLigne())
+            return texte.encode('utf-8') if texte else None
+        def write(self, donnees):
+            try:
+                texte = donnees.decode('utf-8') if isinstance(donnees, bytes) else str(donnees)
+            except Exception:
+                texte = str(donnees)
+            window.simu_console(texte)
+            return len(donnees)
+
+    def temperature(): return 21
+    # Vrai temps ecoule (voir simu_tempsEcoule, un.js), pas une valeur figee :
+    # necessaire pour que "valeur du chronometre" et "temps d'execution"
+    # avancent en simulation comme sur la vraie carte.
+    def running_time(): return window.simu_tempsEcoule()
+    def set_volume(vol): pass
+
+    class TimeMock:
+        def ticks_us(self): return 0
+
+    class Display:
+        def clear(self): 
+            window.simu_effacerEcran()
+            
+        def show(self, val):
+            # Si c'est une icône ou un motif dessiné, on allume les LEDs
+            if isinstance(val, str) and (":" in val or val in ["HEART", "HAPPY", "SAD", "GHOST", "ARROW_N"]):
+                window.simu_afficherIcone(val)
+            else:
+                # Sinon (Texte ou Nombre), on affiche en mode texte !
+                window.simu_showTexte(str(val))
+                
+        def scroll(self, texte): 
+            window.simu_scrollTexte(str(texte))
+            
+        def set_pixel(self, x, y, val): pass
+        def get_pixel(self, x, y): return 0
+        def read_light_level(self): return 128
+
+    class ImageMock:
+        HEART = "HEART"
+        HAPPY = "HAPPY"
+        SAD = "SAD"
+        GHOST = "GHOST"
+        ARROW_N = "ARROW_N"
+        def __call__(self, pattern=""): return pattern
+
+    class ButtonMock:
+        def __init__(self, id_btn): self.id_btn = id_btn
+        def is_pressed(self):
+            if self.id_btn == 'a': return window.simu_btnA_pressed
+            if self.id_btn == 'b': return window.simu_btnB_pressed
+            return False
+        def get_presses(self): return window.simu_lireClicsBouton(self.id_btn)
+
+    class AccelerometerMock:
+        # was_gesture() consomme le geste : sur la carte, il ne repond vrai
+        # qu'une fois par secousse. is_gesture() se contente de le constater.
+        def was_gesture(self, gesture): return bool(window.simu_consommerGeste(gesture))
+        def is_gesture(self, gesture): return bool(window.simu_gesteActif(gesture))
+        def set_range(self, val): pass
+        def get_x(self): return 0
+        def get_y(self): return 0
+        def get_z(self): return -1024
+        def get_strength(self): return 1024
+        def get_values(self): return (0, 0, -1024)
+
+    class CompassMock:
+        def heading(self): return 0
+        def calibrate(self): pass
+        def is_calibrated(self): return True
+        def get_x(self): return 0
+        def get_y(self): return 0
+        def get_z(self): return 0
+        def get_field_strength(self): return 0
+
+    class SoundEventMock:
+        LOUD = "LOUD"
+        QUIET = "QUIET"
+
+    class MicrophoneMock:
+        def current_event(self): return None
+        def was_event(self, event): return False
+        def sound_level(self): return 0
+        def get_events(self): return ()
+        def set_threshold(self, event, value): pass
+
+    class AudioMock:
+        def play(self, sound): window.simu_jouerSon(str(sound))
+        def stop(self): window.simu_arreterSon()
+
+    class SoundMock:
+        GIGGLE = "GIGGLE"
+        HAPPY = "HAPPY"
+        HELLO = "HELLO"
+        SAD = "SAD"
+        TWINKLE = "TWINKLE"
+
+    class MusicMock:
+        DADADADUM = "DADADADUM"
+        PUNCHLINE = "PUNCHLINE"
+        ENTERTAINER = "ENTERTAINER"
+        PRELUDE = "PRELUDE"
+        ODE = "ODE"
+        NYAN = "NYAN"
+        def play(self, melody): window.simu_jouerMelodie(str(melody))
+        def pitch(self, freq, duration): window.simu_jouerNote(freq, duration)
+        def stop(self): window.simu_arreterSon()
+        def set_tempo(self, ticks, bpm): pass
+
+    class SpeechMock:
+        def say(self, text, speed=120, pitch=100):
+            window.simu_parler(str(text))
+
+    class PinMock:
+        NO_PULL = 0
+        PULL_UP = 1
+        PULL_DOWN = 2
+        RESISTIVE = 0
+        CAPACITIVE = 1
+
+        def __init__(self, id_pin): self.id_pin = id_pin
+        # Le simulateur ne modelise pas de circuit GND (voir is_touched) :
+        # un clic "touche" toujours la broche, quel que soit le mode reel/
+        # capacitif choisi. Existe seulement pour que le code genere par
+        # lorsque_broche/broche_est_pressee (voir un.js,
+        # activerToucheCapacitive) ne plante pas a l'exec ici.
+        def set_touch_mode(self, mode): pass
+        def is_touched(self):
+            if self.id_pin == 'logo': return window.simu_logo_pressed
+            if self.id_pin == '0': return window.simu_pin0_pressed
+            if self.id_pin == '1': return window.simu_pin1_pressed
+            if self.id_pin == '2': return window.simu_pin2_pressed
+            return False
+        # Necessaire aux blocs Grove : le joystick lit une valeur analogique,
+        # les autres pilotes ecrivent sur la broche.
+        def read_analog(self): return int(window.simu_lireAnalogique(self.id_pin))
+        # Les ecritures sont reportees au panneau des LED. Elles y figurent
+        # quelle qu'en soit l'origine : sur la carte aussi, une LED cablee sur
+        # une broche s'allume des qu'on y ecrit, servomoteur compris.
+        def write_analog(self, valeur):
+            window.simu_led(self.id_pin, int(valeur))
+        def write_digital(self, valeur):
+            window.simu_led(self.id_pin, 1023 if int(valeur) else 0)
+        def read_digital(self): return 0
+        def set_pull(self, valeur): pass
+        def set_analog_period(self, periode): pass
+
+    # ---- Peripheriques Grove ----
+    #
+    # Les pilotes reels sont retires du code avant execution (voir plus bas) :
+    # ces classes prennent leur place et dessinent dans le panneau du simulateur.
+
+    class _NeoPixelMock:
+        def __init__(self, broche, nombre):
+            self.n = int(nombre)
+            self.pixels = [(0, 0, 0)] * self.n
+            window.simu_rubanDefinir(self.n)
+            self.show()
+
+        def __len__(self): return self.n
+        def __getitem__(self, i): return self.pixels[int(i)]
+
+        def __setitem__(self, i, couleur):
+            i = int(i)
+            if 0 <= i < self.n:
+                self.pixels[i] = (int(couleur[0]), int(couleur[1]), int(couleur[2]))
+
+        def fill(self, couleur):
+            self.pixels = [(int(couleur[0]), int(couleur[1]), int(couleur[2]))] * self.n
+
+        def clear(self):
+            self.pixels = [(0, 0, 0)] * self.n
+            self.show()
+
+        def show(self):
+            # Chaine "rrggbb,rrggbb,..." : le passage Brython -> JS reste simple.
+            window.simu_rubanAfficher(','.join('%02x%02x%02x' % p for p in self.pixels))
+
+    class _NeoPixelModuleMock:
+        NeoPixel = _NeoPixelMock
+
+    _grove_lum = [100]
+
+    def _grove_teinte(couleur):
+        f = _grove_lum[0] / 100
+        return (int(((couleur >> 16) & 255) * f),
+                int(((couleur >> 8) & 255) * f),
+                int((couleur & 255) * f))
+
+    # Memes motifs de segments que le pilote reel : le simulateur montre donc
+    # exactement ce que la puce recevrait.
+    _TM_SEG_SIMU = (0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F)
+
+    class _Afficheur4Mock:
+        def __init__(self, clk, dio):
+            self.tampon = [0, 0, 0, 0]
+            self.pts = False
+            self._envoyer()
+
+        def _envoyer(self):
+            window.simu_afficheur(','.join('%02x' % v for v in self.tampon), self.pts)
+
+        def effacer(self):
+            self.tampon = [0, 0, 0, 0]
+            self._envoyer()
+
+        def chiffre(self, position, valeur):
+            p = max(0, min(3, int(position)))
+            v = int(valeur)
+            self.tampon[p] = _TM_SEG_SIMU[v % 10] if 0 <= v <= 9 else 0
+            self._envoyer()
+
+        def nombre(self, valeur):
+            v = int(valeur)
+            negatif = v < 0
+            v = abs(v) % 10000
+            for i in range(3, -1, -1):
+                self.tampon[i] = _TM_SEG_SIMU[v % 10]
+                v = v // 10
+            if negatif:
+                self.tampon[0] = 0x40   # segment central seul
+            self._envoyer()
+
+        def points(self, actif):
+            self.pts = bool(actif)
+            self._envoyer()
+
+        def luminosite(self, niveau):
+            window.simu_afficheurLuminosite(int(niveau))
+
+    def _grove_distance_cm(broche): return int(window.simu_distanceCm())
+    def _grove_distance_pouces(broche): return int(int(window.simu_distanceCm()) / 2.54)
+    def _grove_joystick(bx, by, direction): return bool(window.simu_joystickDirection(direction))
+
+    class _CapteurGestesMock:
+        def __init__(self): pass
+        def lire(self): return str(window.simu_gesteGrove())
+
+    class _CapteurTHMock:
+        def __init__(self): pass
+        def temperature(self): return float(window.simu_mesure('temperature'))
+        def humidite(self): return float(window.simu_mesure('humidite'))
+
+    class _EcranLCDMock:
+        def __init__(self): window.simu_lcd('init', '', 0, 0)
+        def effacer(self): window.simu_lcd('effacer', '', 0, 0)
+        def allumer(self): window.simu_lcd('allumer', '', 0, 0)
+        def eteindre(self): window.simu_lcd('eteindre', '', 0, 0)
+        def texte(self, message, x, y): window.simu_lcd('texte', str(message), int(x), int(y))
+
+    # Grove LCD RGB Backlight V4.0 : meme ecran simule que le LCD v1 (un seul
+    # panneau), avec en plus la couleur du fond et son extinction.
+    class _EcranLCDRGBMock:
+        def __init__(self):
+            window.simu_lcd('init', 'rgb', 0, 0)
+            self.couleur = (255, 255, 255)
+        def effacer(self): window.simu_lcd('effacer', '', 0, 0)
+        def allumer(self): window.simu_lcd('allumer', '', 0, 0)
+        def eteindre(self): window.simu_lcd('eteindre', '', 0, 0)
+        def texte(self, message, x, y): window.simu_lcd('texte', str(message), int(x), int(y))
+        def fond(self, r, v, b):
+            r = max(0, min(255, int(r)))
+            v = max(0, min(255, int(v)))
+            b = max(0, min(255, int(b)))
+            self.couleur = (r, v, b)
+            window.simu_lcd('fond', str(r) + ',' + str(v) + ',' + str(b), 0, 0)
+        def retro(self, actif):
+            window.simu_lcd('retro', '1' if actif else '0', 0, 0)
+
+    class _CapteurCouleurMock:
+        def __init__(self): pass
+        def lire(self, canal): return int(window.simu_couleurCanal(canal))
+
+    def _grove_moteur_ecrire(canal, registre, valeur): pass
+    def _grove_moteur_vitesse(canal, vitesse): window.simu_moteur(int(canal), int(vitesse))
+    def _grove_moteur_arret(canal): window.simu_moteur(int(canal), 0)
+    def _grove_moteur_frein(canal): window.simu_moteur(int(canal), 'frein')
+    def _grove_moteur_effacer_defaut(canal): pass
+    def _grove_moteur_defaut(canal): return 0
+
+    class _CapteurSCD30Mock:
+        def __init__(self): pass
+        def lire(self, grandeur): return float(window.simu_mesure(grandeur))
+
+    class _CapteurSCD41Mock:
+        def __init__(self): pass
+        def lire(self, grandeur):
+            valeur = float(window.simu_mesure(grandeur))
+            # Le SCD41 rend le CO2 en entier, contrairement au SCD30.
+            return int(valeur) if grandeur == 'co2' else valeur
+
+    # DHT11/DHT22 : le pilote reel (assembleur, refuse sur V2) n'a pas de sens
+    # cote navigateur. Meme jeu de curseurs temperature/humidite que AHT20/DHT20 :
+    # sur la carte reelle ce sont des capteurs differents, mais rien ne les
+    # distingue a l'usage pour un eleve qui regarde le simulateur.
+    class _CapteurDHT11Mock:
+        def __init__(self, broche=None, decalage=None): pass
+        def temperature(self): return float(window.simu_mesure('temperature'))
+        def humidite(self): return float(window.simu_mesure('humidite'))
+
+    class _CapteurDHT22Mock:
+        def __init__(self, broche=None, decalage=None): pass
+        def temperature(self): return float(window.simu_mesure('temperature'))
+        def humidite(self): return float(window.simu_mesure('humidite'))
+
+    # Maqueen Plus : moteurs et phares sont rejoues avec un delai (comme les
+    # servos), la ligne et la distance sont lues directement, sans file.
+    def _mq_moteur(cote, vitesse): window.simu_maqueenMoteur(str(cote), int(vitesse))
+    def _mq_phare(cote, etat): window.simu_maqueenPhare(str(cote), bool(etat))
+    def _mq_rgb(index, couleur): window.simu_maqueenRgb(int(index), int(couleur))
+    def _mq_ligne_etat(capteur): return bool(window.simu_maqueenLigneEtat(str(capteur)))
+    def _mq_ligne_valeur(capteur): return int(window.simu_maqueenLigneValeur(str(capteur)))
+    def _mq_distance(): return int(window.simu_maqueenDistance())
+
+    # Extensions V3 : pas de panneau dedie (le suiveur de ligne autopilote et
+    # le codeur de roue n'ont pas d'equivalent dans le modele cinematique
+    # simplifie du simulateur) — seuls les deplacements PID font vraiment
+    # bouger le robot, en reutilisant les memes moteurs simules que les blocs
+    # Maqueen ordinaires (voir window.simu_maqueenMoteur plus bas).
+    _MQ_V3_ETAT = {
+        'suiveur': False, 'intersection': 3,
+        'luminosite_gauche': 500, 'luminosite_droite': 500,
+    }
+
+    def _mq_v3_vitesse_suivi(vitesse): pass
+    def _mq_v3_mode_carrefour(mode): pass
+    def _mq_v3_mode_T(mode): pass
+    def _mq_v3_mode_gauche(mode): pass
+    def _mq_v3_mode_droite(mode): pass
+    def _mq_v3_suiveur(actif): _MQ_V3_ETAT['suiveur'] = bool(actif)
+    def _mq_v3_intersection(): return _MQ_V3_ETAT['intersection']
+    def _mq_v3_luminosite(cote):
+        return _MQ_V3_ETAT['luminosite_gauche'] if cote == 'gauche' else _MQ_V3_ETAT['luminosite_droite']
+    def _mq_v3_vitesse_reelle(cote): return 0
+    def _mq_v3_del_carrosserie(cote, couleur): pass
+
+    def _mq_v3_pid_avancer(sens, distance_cm, attendre):
+        v = 150 if sens == 'avant' else -150
+        window.simu_maqueenMoteur('les_deux', v)
+        sleep(min(4000, max(200, int(abs(distance_cm) * 20))))
+        window.simu_maqueenMoteur('les_deux', 0)
+
+    def _mq_v3_pid_tourner(sens, angle, attendre):
+        v = 120
+        if sens == 'gauche':
+            window.simu_maqueenMoteur('gauche', -v)
+            window.simu_maqueenMoteur('droit', v)
+        else:
+            window.simu_maqueenMoteur('gauche', v)
+            window.simu_maqueenMoteur('droit', -v)
+        sleep(min(3000, max(150, int(abs(angle) * 8))))
+        window.simu_maqueenMoteur('les_deux', 0)
+
+    def _mq_v3_pid_stop():
+        window.simu_maqueenMoteur('les_deux', 0)
+
+    # LiDAR matriciel (SEN0628) : pas de piste ni de robot, juste trois
+    # curseurs (gauche/avant/droite) lus en direct, voir le panneau LiDAR.
+    def _lidar_initialiser(adresse, matrice_8x8): pass
+    def _lidar_distance_evitement(distance_mm): window.simu_lidarDistanceEvitement(distance_mm)
+    def _lidar_acquerir(): pass
+    def _lidar_direction(): return int(window.simu_lidarDirection())
+    def _lidar_urgence(): return bool(window.simu_lidarUrgence())
+    def _lidar_cote(cote): return int(window.simu_lidarCote(cote))
+    def _lidar_point(adresse, x, y): return int(window.simu_lidarPoint(x))
+
+    # Maqueen Lite : partage desormais la piste et le robot anime des deux
+    # autres chassis (un seul robot affiche a la fois, voir
+    # rafraichirPisteEtRobots dans un.js) — moteur et capteurs de ligne
+    # pilotent donc vraiment sa position, comme Maqueen Plus/Kitrobot v2.
+    # Servo reste sans effet visuel (aucun panneau dedie pour ca).
+    def _ml_moteur(cote, vitesse): window.simu_mlMoteur(str(cote), int(vitesse))
+    def _ml_distance(): return int(window.simu_mlDistance())
+    def _ml_ligne(cote): return int(window.simu_mlLigne(cote))
+    def _ml_del(cote, etat): window.simu_mlDel(str(cote), bool(etat))
+    def _ml_servo(canal, angle): pass
+
+    # Telecommande infrarouge : pas de vrai signal IR dans un navigateur, donc
+    # pas de decodage NEC ici (contrairement au pilote reel). Le panneau
+    # Maqueen depose la touche choisie dans window.simu_irCommande (bouton
+    # "Simuler l'appui"), consommee ici au tour suivant — meme principe que
+    # was_gesture() pour le geste "secouer" plus haut.
+    _ir_broche = [None]
+    _ir_dernier = [-1]
+
+    # Kitrobot v2 : piste droite depart/arrivee. Contrairement a Maqueen (deux
+    # roues pilotees directement), le pilote reel passe par des servos
+    # montes en miroir (_kb_avancer inverse le cote droit) — un detail de
+    # cablage sans interet ici, donc le mock pilote directement les deux
+    # cotes du modele cinematique (voir avancerKitrobot dans un.js).
+    def _kb_avancer(vitesse):
+        window.simu_kitrobotMoteur('g', vitesse)
+        window.simu_kitrobotMoteur('d', vitesse)
+
+    def _kb_pivoter(sens, vitesse):
+        v = vitesse if sens == 'horaire' else -vitesse
+        window.simu_kitrobotMoteur('g', v)
+        window.simu_kitrobotMoteur('d', -v)
+
+    def _kb_moteur(cote, sens, vitesse):
+        v = vitesse if sens == 'horaire' else -vitesse
+        window.simu_kitrobotMoteur('g' if cote == 'gauche' else 'd', v)
+
+    def _kb_arreter_moteur(cote):
+        window.simu_kitrobotMoteur('g' if cote == 'gauche' else 'd', 0)
+
+    def _kb_arreter():
+        _kb_arreter_moteur('gauche')
+        _kb_arreter_moteur('droit')
+
+    def _kb_case(sens):
+        _kb_avancer(50 if sens == 'avant' else -50)
+        sleep(600)
+        _kb_arreter()
+
+    def _kb_virage(sens):
+        _kb_pivoter(sens, 50)
+        sleep(400)
+        _kb_arreter()
+
+    def _kb_distance(): return int(window.simu_kitrobotDistance())
+
+    def _kb_ligne(cote): return bool(window.simu_kitrobotLigne(str(cote)))
+
+    def _kb_buzzer(frequence, duree_ms):
+        window.simu_kitrobotBuzzer(int(frequence), int(duree_ms))
+
+    # Meme registre generique que le ruban Grove (_grove_obj/_grove_objets) :
+    # 8 LED par defaut si le bloc "definir ruban" n'a pas ete utilise.
+    def _kb_ruban(): return _grove_obj('kb_ruban', lambda: _NeoPixelMock(None, 8))
+
+    def _kb_clignoter():
+        r = _kb_ruban()
+        r.fill((255, 255, 255)); r.show()
+        sleep(150)
+        r.fill((0, 0, 0)); r.show()
+
+    def _kb_del_couleur(index, couleur):
+        r = _kb_ruban()
+        if 0 <= index < len(r):
+            r[index] = _grove_teinte(couleur)
+            r.show()
+
+    def _kb_del_rgb(index, rr, vv, bb):
+        r = _kb_ruban()
+        f = _grove_lum[0] / 100
+        if 0 <= index < len(r):
+            r[index] = (int(rr * f), int(vv * f), int(bb * f))
+            r.show()
+
+    def _kb_hsv(h):
+        i = int(h * 6) % 6
+        f = h * 6 - int(h * 6)
+        p, q, t = 0, int(255 * (1 - f)), int(255 * f)
+        if i == 0: return (255, t, p)
+        if i == 1: return (q, 255, p)
+        if i == 2: return (p, 255, t)
+        if i == 3: return (p, q, 255)
+        if i == 4: return (t, p, 255)
+        return (255, p, q)
+
+    def _kb_arcenciel():
+        r = _kb_ruban()
+        n = len(r)
+        for i in range(n):
+            r[i] = _kb_hsv(i / n)
+        r.show()
+
+    # Servomoteurs : memes bornes que le pilote reel, mais on dessine au lieu
+    # de piloter une broche.
+    _SERVO_ETAT_SIMU = {}
+
+    def _servo_etat(nom):
+        if nom not in _SERVO_ETAT_SIMU:
+            _SERVO_ETAT_SIMU[nom] = [0, 180, False]
+        return _SERVO_ETAT_SIMU[nom]
+
+    def _servo_impulsion(broche, microsecondes, nom=''):
+        us = max(500, min(2500, int(microsecondes)))
+        # 500 us correspond a 0 degre, 2500 us a 180 : on en deduit l orientation.
+        window.simu_servo(nom or '?', 'impulsion', us, (us - 500) * 180 / 2000)
+
+    def _servo_angle(broche, nom, angle):
+        etat = _servo_etat(nom)
+        a = max(etat[0], min(etat[1], int(angle)))
+        window.simu_servo(nom, 'angle', a, a)
+
+    def _servo_arreter(broche, nom):
+        window.simu_servo(nom, 'arret', 0, 0)
+
+    def _servo_continu(broche, nom, vitesse):
+        etat = _servo_etat(nom)
+        v = max(-100, min(100, int(vitesse)))
+        angle = etat[0] + (v + 100) * (etat[1] - etat[0]) / 200
+        angle = max(etat[0], min(etat[1], int(angle)))
+        if etat[2] and angle == (etat[1] - etat[0]) // 2:
+            _servo_arreter(broche, nom)
+        else:
+            window.simu_servo(nom, 'continu', v, angle)
+
+    def _servo_intervalle(nom, mini, maxi):
+        etat = _servo_etat(nom)
+        etat[0] = max(0, min(90, int(mini)))
+        etat[1] = max(90, min(180, int(maxi)))
+
+    def _servo_arret_neutre(nom, actif):
+        _servo_etat(nom)[2] = bool(actif)
+
+    # Meme registre que sur la carte : le peripherique est cree a la premiere
+    # utilisation, le bloc « definir ... » n'etant que facultatif.
+    _grove_objets = {}
+
+    def _grove_obj(nom, fabrique):
+        if nom not in _grove_objets:
+            _grove_objets[nom] = fabrique()
+        return _grove_objets[nom]
+
+    def _grove_ruban(): return _grove_obj('ruban', lambda: _NeoPixelMock(None, 16))
+    def _grove_afficheur(): return _grove_obj('afficheur', lambda: _Afficheur4Mock(None, None))
+    def _grove_gestes(): return _grove_obj('gestes', _CapteurGestesMock)
+    def _grove_th(): return _grove_obj('th', _CapteurTHMock)
+    def _grove_lcd(): return _grove_obj('lcd', _EcranLCDMock)
+    def _grove_lcdrgb(): return _grove_obj('lcdrgb', _EcranLCDRGBMock)
+    def _grove_couleur(): return _grove_obj('couleur', _CapteurCouleurMock)
+    def _grove_scd30(): return _grove_obj('scd30', _CapteurSCD30Mock)
+    def _grove_scd41(): return _grove_obj('scd41', _CapteurSCD41Mock)
+    def _grove_dht11(): return _grove_obj('dht11', _CapteurDHT11Mock)
+    def _grove_dht22(): return _grove_obj('dht22', _CapteurDHT22Mock)
+
+    # La radio manquait a l'environnement : tout programme l'utilisant
+    # s'arretait sur "name 'radio' is not defined".
+    # Radio : le pilote reel est retire, ces substituts prennent sa place.
+    # Aucun message n'arrive tant qu'on n'en injecte pas depuis le panneau.
+    _radio_dernier = ["", "", "", 0]
+
+    def _radio_nombre(texte):
+        try:
+            return int(texte)
+        except:
+            pass
+        try:
+            return float(texte)
+        except:
+            return None
+    class RadioMock:
+        def on(self): pass
+        def off(self): pass
+        def config(self, **kwargs): pass
+        def send(self, message): pass
+        def receive(self): return None
+
+    # reset() redemarre la carte : dans le simulateur, l'ecran s'eteint, le son
+    # se tait, et la suite du programme n'est pas executee.
+    def reset(): window.simu_resetCarte()
+
+    def _diviser_boucle_principale(code):
+        '''Isole la PREMIERE boucle infinie de premier niveau (indentation
+        nulle) : renvoie (avant, corps_sans_indentation, apres), ou None s'il
+        n'y a aucune boucle de premier niveau ou plusieurs (cas rare : voir
+        l'appelant, qui revient alors a l'ancien comportement).
+        textwrap.dedent (et non un retrait fixe de 2 espaces) : le code genere
+        par les blocs utilise 2 espaces (Blockly.Python.INDENT), mais du code
+        tape a la main (edition manuelle, voir un.js) peut tres bien en
+        utiliser 4 ou des tabulations — ne jamais supposer la largeur.'''
+        lignes = code.split("\n")
+        debut = None
+        deuxieme = False
+        for i, ligne in enumerate(lignes):
+            if ligne == "while True:":
+                if debut is None:
+                    debut = i
+                else:
+                    deuxieme = True
+        if debut is None or deuxieme:
+            return None
+        fin = debut + 1
+        while fin < len(lignes) and (lignes[fin] == "" or lignes[fin][:1] in (" ", "\t")):
+            fin += 1
+        avant = "\n".join(lignes[:debut])
+        corps = textwrap.dedent("\n".join(lignes[debut + 1:fin])).strip("\n") or "pass"
+        apres = "\n".join(lignes[fin:])
+        return avant, corps, apres
+
+    # Session persistante entre deux declenchements successifs (voir
+    # continuer_ou_lancer_simulation, plus bas) : tant que le code n'a pas
+    # change, l'environnement Python (variables globales du programme,
+    # objets Grove deja crees, etat des servos...) survit d'un appui de
+    # capteur virtuel au suivant, au lieu d'etre entierement reconstruit a
+    # chaque fois. `_session_env` n'est jamais lu directement ici ; il
+    # n'existe que pour que les fermetures _tour_suivant/_fin_des_tours
+    # (qui, elles, le capturent) restent valides tant que la session l'est.
+    _session_active = False
+    _session_code = None
+
+    _RE_ATTENTE = re.compile(r"^while not \((.*)\):[ \t]*$")
+    _RE_SLEEP10 = re.compile(r"^[ \t]+sleep\(10\)[ \t]*$")
+
+    def _decouper_attentes(code):
+        '''Coupe `code` en [("code", texte), ("attente", condition), ...] a
+        chaque "attendre jusqu'a" de PREMIER NIVEAU (le motif exact que genere
+        attendre_jusqua : `while not (COND):` puis `  sleep(10)`). Une liste
+        d'un seul element signifie qu'il n'y en a aucun.'''
+        lignes = code.split("\n")
+        morceaux = []
+        courant = []
+        i = 0
+        while i < len(lignes):
+            m = _RE_ATTENTE.match(lignes[i])
+            if m and i + 1 < len(lignes) and _RE_SLEEP10.match(lignes[i + 1]):
+                morceaux.append(("code", "\n".join(courant)))
+                morceaux.append(("attente", m.group(1)))
+                courant = []
+                i += 2
+            else:
+                courant.append(lignes[i])
+                i += 1
+        morceaux.append(("code", "\n".join(courant)))
+        return morceaux
+
+    def _executer_morceaux(morceaux, env, rapporter, suite):
+        '''Execute les morceaux dans l'ordre. Un "attendre jusqu'a" bloque
+        vraiment sur la carte ; exec() ne peut pas se mettre en pause, donc on
+        decoupe le code a cet endroit : ce qui precede est execute et son
+        affichage rejoue, PUIS la condition est surveillee (toutes les 25 ms,
+        la page reste reactive : un appui de bouton virtuel peut la rendre
+        vraie), PUIS la suite est executee. `suite()` est appele une fois tout
+        termine. Abandonne sans bruit si une reinitialisation ou un nouveau
+        declenchement a eu lieu entre-temps (jeton de simulation change).'''
+        jeton = window.simu_jeton()
+        index = [0]
+
+        def evaluer(condition):
+            try:
+                return bool(eval(condition, env)), None
+            except Exception as e:
+                return False, e
+
+        def avancer():
+            global _sleep_compteur
+            while index[0] < len(morceaux):
+                genre, contenu = morceaux[index[0]]
+                if genre == "code":
+                    _sleep_compteur = 0
+                    try:
+                        if contenu.strip():
+                            exec(contenu, env)
+                    except Exception as e:
+                        rapporter(e)
+                        window.simuEnCours = False
+                        return
+                    index[0] += 1
+                else:
+                    pret, erreur = evaluer(contenu)
+                    if erreur is not None:
+                        rapporter(erreur)
+                        window.simuEnCours = False
+                        return
+                    if pret:
+                        index[0] += 1
+                        continue
+                    # Occupe : un appui de bouton virtuel ne doit pas
+                    # relancer toute la simulation pendant l'attente.
+                    window.simuEnCours = True
+                    window._simuApresVidageFile = lambda: interroger(contenu)
+                    window.simu_playQueue()
+                    return
+            suite()
+
+        def interroger(condition):
+            if window.simu_jeton() != jeton:
+                return
+            pret, erreur = evaluer(condition)
+            if erreur is not None:
+                rapporter(erreur)
+                window.simuEnCours = False
+                return
+            if pret:
+                index[0] += 1
+                avancer()
+            else:
+                window.setTimeout(lambda: interroger(condition), 25)
+
+        avancer()
+
+    def _demarrer_session(code):
+        '''Reconstruit tout l'environnement Python depuis zero et l'execute
+        une fois ("Au demarrage"). Renvoie 'tours' si une boucle infinie de
+        premier niveau a ete isolee (l'appelant doit alors enchainer avec
+        simu_lancerTours), 'fait' si le programme (sans boucle de premier
+        niveau) a deja tourne d'un bloc, ou 'erreur' si l'execution a
+        echoue (deja signale a l'utilisateur dans les deux cas).'''
+        global _session_active, _session_code, _sleep_compteur
+        window.simu_clearQueue()
+        # Remis a False ici, et pas seulement a la fin d'un passage de tours
+        # (simu_lancerTours, un.js) : depuis que les passages s'enchainent
+        # sans jamais s'arreter tout seuls (voir simu_lancerTours), un
+        # nouveau "Lancer" qui echoue ICI (avant meme le premier tour) doit
+        # quand meme liberer les capteurs virtuels, sinon simuEnCours reste
+        # bloque a True indefiniment (plus rien ne le repasserait a False).
+        window.simuEnCours = False
+        # Pas de session "poursuivable" tant que "Au demarrage" n'est pas
+        # termine (il peut attendre un "attendre jusqu'a", voir
+        # _executer_morceaux) : sinon un capteur virtuel la reprendrait a mi-chemin.
+        _session_active = False
+        # Chaque NOUVELLE session repart de peripheriques neufs — mais une
+        # session simplement POURSUIVIE (voir continuer_ou_lancer_simulation)
+        # ne doit surtout pas passer par ici : c'est justement ce qui doit
+        # persister d'un declenchement au suivant.
+        _grove_objets.clear()
+        _SERVO_ETAT_SIMU.clear()
+        # Les pilotes Grove pilotent de vraies broches : on les retire et ce sont
+        # les classes ci-dessus, injectees dans env, qui prennent le relais.
+        # Exception : le pilote "ia" (lecture des resultats de l'IA sur l'uart) est du
+        # Python pur sans materiel — c'est lui qui doit tourner, avec le faux uart.
+        code_nettoye = re.sub(r"# >>> pilote (\S+).*?# <<< pilote \S+",
+                              lambda m: m.group(0) if m.group(1) == "ia" else "", code, flags=re.S)
+        # replace() sans compte remplace TOUTES les occurrences en Python : un
+        # programme a deux boucles infinies ne fige donc plus l'onglet.
+        for ligne in ["from microbit import *", "import audio", "import music",
+                      "import speech", "import radio", "import time", "import math",
+                      "import random", "import neopixel", "import machine",
+                      "import utime", "import ustruct"]:
+            code_nettoye = code_nettoye.replace(ligne, "")
+
+        env = {
+            'display': Display(), 'Image': ImageMock(), 'sleep': sleep, 'print': print_console, 'uart': _UartMock(),
+            'temperature': temperature, 'running_time': running_time,
+            'set_volume': set_volume, 'time': TimeMock(), 'reset': reset,
+            'button_a': ButtonMock('a'), 'button_b': ButtonMock('b'),
+            'accelerometer': AccelerometerMock(), 'compass': CompassMock(),
+            'microphone': MicrophoneMock(), 'SoundEvent': SoundEventMock(),
+            'audio': AudioMock(), 'Sound': SoundMock(),
+            'music': MusicMock(), 'speech': SpeechMock(), 'radio': RadioMock(),
+            '_radio_dernier': _radio_dernier, '_radio_nombre': _radio_nombre,
+            'pin_logo': PinMock('logo'), 'pin0': PinMock('0'), 'pin1': PinMock('1'), 'pin2': PinMock('2'),
+            'pin8': PinMock('8'), 'pin12': PinMock('12'), 'pin13': PinMock('13'),
+            'pin14': PinMock('14'), 'pin15': PinMock('15'), 'pin16': PinMock('16'),
+            'math': math,
+            # Grove : substituts des pilotes retires du code
+            'neopixel': _NeoPixelModuleMock(), '_grove_lum': _grove_lum,
+            '_grove_teinte': _grove_teinte, '_Afficheur4': _Afficheur4Mock,
+            '_grove_distance_cm': _grove_distance_cm,
+            '_grove_distance_pouces': _grove_distance_pouces,
+            '_grove_joystick': _grove_joystick,
+            '_CapteurGestes': _CapteurGestesMock,
+            '_CapteurTH': _CapteurTHMock, '_EcranLCD': _EcranLCDMock, '_EcranLCDRGB': _EcranLCDRGBMock,
+            '_CapteurCouleur': _CapteurCouleurMock,
+            '_CapteurSCD30': _CapteurSCD30Mock, '_CapteurSCD41': _CapteurSCD41Mock,
+            '_CapteurDHT11': _CapteurDHT11Mock, '_CapteurDHT22': _CapteurDHT22Mock,
+            '_grove_dht11': _grove_dht11, '_grove_dht22': _grove_dht22,
+            '_mq_moteur': _mq_moteur, '_mq_phare': _mq_phare, '_mq_rgb': _mq_rgb,
+            '_mq_ligne_etat': _mq_ligne_etat, '_mq_ligne_valeur': _mq_ligne_valeur,
+            '_mq_distance': _mq_distance,
+            '_mq_v3_vitesse_suivi': _mq_v3_vitesse_suivi, '_mq_v3_mode_carrefour': _mq_v3_mode_carrefour,
+            '_mq_v3_mode_T': _mq_v3_mode_T, '_mq_v3_mode_gauche': _mq_v3_mode_gauche,
+            '_mq_v3_mode_droite': _mq_v3_mode_droite, '_mq_v3_suiveur': _mq_v3_suiveur,
+            '_mq_v3_intersection': _mq_v3_intersection, '_mq_v3_luminosite': _mq_v3_luminosite,
+            '_mq_v3_vitesse_reelle': _mq_v3_vitesse_reelle, '_mq_v3_del_carrosserie': _mq_v3_del_carrosserie,
+            '_mq_v3_pid_avancer': _mq_v3_pid_avancer, '_mq_v3_pid_tourner': _mq_v3_pid_tourner,
+            '_mq_v3_pid_stop': _mq_v3_pid_stop,
+            '_kb_avancer': _kb_avancer, '_kb_pivoter': _kb_pivoter, '_kb_moteur': _kb_moteur,
+            '_kb_arreter_moteur': _kb_arreter_moteur, '_kb_arreter': _kb_arreter,
+            '_kb_case': _kb_case, '_kb_virage': _kb_virage, '_kb_distance': _kb_distance,
+            '_kb_ligne': _kb_ligne, '_kb_buzzer': _kb_buzzer, '_kb_ruban': _kb_ruban,
+            '_kb_clignoter': _kb_clignoter, '_kb_del_couleur': _kb_del_couleur,
+            '_kb_del_rgb': _kb_del_rgb, '_kb_hsv': _kb_hsv, '_kb_arcenciel': _kb_arcenciel,
+            '_ir_broche': _ir_broche, '_ir_dernier': _ir_dernier,
+            '_lidar_initialiser': _lidar_initialiser, '_lidar_distance_evitement': _lidar_distance_evitement,
+            '_lidar_acquerir': _lidar_acquerir, '_lidar_direction': _lidar_direction,
+            '_lidar_urgence': _lidar_urgence, '_lidar_cote': _lidar_cote, '_lidar_point': _lidar_point,
+            '_ml_moteur': _ml_moteur, '_ml_distance': _ml_distance, '_ml_ligne': _ml_ligne,
+            '_ml_del': _ml_del, '_ml_servo': _ml_servo,
+            '_grove_moteur_ecrire': _grove_moteur_ecrire,
+            '_grove_moteur_vitesse': _grove_moteur_vitesse,
+            '_grove_moteur_arret': _grove_moteur_arret,
+            '_grove_moteur_frein': _grove_moteur_frein,
+            '_grove_moteur_effacer_defaut': _grove_moteur_effacer_defaut,
+            '_grove_moteur_defaut': _grove_moteur_defaut,
+            '_grove_objets': _grove_objets, '_grove_obj': _grove_obj,
+            '_grove_ruban': _grove_ruban, '_grove_afficheur': _grove_afficheur,
+            '_grove_gestes': _grove_gestes, '_grove_th': _grove_th,
+            '_grove_lcd': _grove_lcd, '_grove_lcdrgb': _grove_lcdrgb, '_grove_couleur': _grove_couleur,
+            '_grove_scd30': _grove_scd30, '_grove_scd41': _grove_scd41,
+            '_servo_etat': _servo_etat, '_servo_impulsion': _servo_impulsion,
+            '_servo_angle': _servo_angle, '_servo_arreter': _servo_arreter,
+            '_servo_continu': _servo_continu, '_servo_intervalle': _servo_intervalle,
+            '_servo_arret_neutre': _servo_arret_neutre
+        }
+
+        # Le dispatcher radio est defini ICI, et non au niveau du module : il
+        # doit chercher les gestionnaires dans env, la ou exec les cree. Sur la
+        # carte tout vit dans un seul module, la question ne se pose pas.
+        def _radio_traiter():
+            message = window.simu_radioRecevoir()
+            if not message:
+                return
+            message = str(message)
+            _radio_dernier[0] = message
+            _radio_dernier[3] = -42          # force du signal plausible
+            if '=' in message:
+                nom, _, valeur = message.partition('=')
+                _radio_dernier[1] = nom
+                _radio_dernier[2] = valeur
+                if 'on_radio_valeur' in env:
+                    env['on_radio_valeur']()
+                    return
+            nombre = _radio_nombre(message)
+            if nombre is not None and 'on_radio_nombre' in env:
+                env['on_radio_nombre']()
+                return
+            if 'on_radio_texte' in env:
+                env['on_radio_texte']()
+
+        env['_radio_traiter'] = _radio_traiter
+
+        # Meme raison que _radio_traiter juste au-dessus : doit chercher les
+        # gestionnaires "on_ir_..." dans env, pas dans le module.
+        def _ir_traiter():
+            if not window.simu_irEnAttente():
+                return
+            telecommande = str(window.simu_irTelecommande())
+            touche = str(window.simu_irToucheAttente())
+            _ir_dernier[0] = int(window.simu_irCodeAttente())
+            window.simu_irConsommer()
+            nom = "on_ir_" + telecommande + "_" + touche
+            if nom in env:
+                env[nom]()
+
+        env['_ir_traiter'] = _ir_traiter
+
+        def _rapporter_erreur(e):
+            # L'erreur doit remonter a l'ecran : dans la console seule, elle
+            # passait inapercue et la simulation semblait ne rien faire.
+            print("Erreur d'exécution :", e)
+            window.simu_erreur(str(e))
+
+        decoupe = _diviser_boucle_principale(code_nettoye)
+
+        if decoupe is None:
+            # Pas de boucle infinie unique de premier niveau (aucune boucle
+            # trouvee, ou plusieurs blocs "repeter indefiniment" empiles) :
+            # comportement d'origine, le programme entier d'un coup. Un
+            # capteur Maqueen n'y verrait qu'une position figee, mais ce cas
+            # est rare et le filet existant (5 tours d'un coup) reste correct
+            # pour tout le reste (affichage, son, capteurs a curseur). Pas de
+            # session a proprement parler ici (rien a poursuivre plus tard).
+            code_repli = code_nettoye.replace("while True:", "for _ in range(5):")
+            _session_active = False
+            _session_code = None
+
+            def _fini_repli():
+                window.simu_ok()
+                window.simu_playQueue()
+
+            morceaux_repli = _decouper_attentes(code_repli)
+            if len(morceaux_repli) > 1:
+                _executer_morceaux(morceaux_repli, env, _rapporter_erreur, _fini_repli)
+                return 'attente'
+            _sleep_compteur = 0
+            try:
+                exec(code_repli, env)
+                _fini_repli()
+                return 'fait'
+            except Exception as e:
+                _rapporter_erreur(e)
+                return 'erreur'
+
+        avant, corps, apres = decoupe
+
+        def _tour_suivant():
+            global _sleep_compteur
+            _sleep_compteur = 0
+            longueur_avant = window.simu_longueurFile()
+            try:
+                exec(corps, env)
+                return True
+            except _AttenteSimulateur:
+                # Rien a afficher ce tour-ci : conforme a la vraie carte, qui
+                # attendrait juste le prochain declenchement sans planter.
+                # Pas une erreur de programme, donc pas de bandeau rouge -
+                # et on laisse les tours suivants continuer (un declenchement
+                # ulterieur peut encore satisfaire la condition). sleep()
+                # a quand meme empile jusqu'a 3000 faux "sleep(10)" avant
+                # d'abandonner (voir sleep() plus haut) : les retirer avant
+                # qu'ils ne soient rejoues, sinon jusqu'a 30 secondes
+                # d'attente pour rien a chaque tour manque.
+                window.simu_tronquerFile(longueur_avant)
+                return True
+            except Exception as e:
+                _rapporter_erreur(e)
+                return False
+
+        def _fin_des_tours():
+            if apres.strip():
+                try:
+                    exec(apres, env)
+                except Exception as e:
+                    _rapporter_erreur(e)
+                    return
+            window.simu_ok()
+
+        # La suite (executer un tour, vider sa file avec de vrais delais,
+        # enchainer) est pilotee cote JS : voir simu_lancerTours dans un.js.
+        window.simu_tourSuivant = _tour_suivant
+        window.simu_finDesTours = _fin_des_tours
+
+        def _demarrage_termine():
+            global _session_active, _session_code
+            _session_active = True
+            _session_code = code
+
+        morceaux = _decouper_attentes(avant)
+        if len(morceaux) > 1:
+            # "attendre jusqu'à" dans "Au demarrage" : bloquant sur la vraie
+            # carte, donc le programme ne passe a la boucle qu'une fois la
+            # condition vraie. On l'attend vraiment (voir _executer_morceaux)
+            # au lieu d'echouer, puis on enchaine sur les tours.
+            def _suite():
+                _demarrage_termine()
+                window.simu_lancerTours(5)
+            _executer_morceaux(morceaux, env, _rapporter_erreur, _suite)
+            return 'attente'
+
+        _sleep_compteur = 0
+        try:
+            exec(avant, env)
+        except Exception as e:
+            _rapporter_erreur(e)
+            _session_active = False
+            _session_code = None
+            return 'erreur'
+        _demarrage_termine()
+        return 'tours'
+
+    def lancer_simulation(ev):
+        '''Bouton "Lancer la simulation" : redemarre TOUJOURS a zero, y
+        compris si une session etait deja en cours — c'est le sens naturel
+        d'un bouton "Lancer". Voir continuer_ou_lancer_simulation ci-dessous
+        pour la version qui poursuit une session existante, utilisee par les
+        capteurs virtuels.'''
+        code = getattr(window, 'currentPythonCode', '')
+        if not code or "Glissez des blocs" in code:
+            return alert("Aucun code à simuler !")
+        # Un nouveau "Lancer" repart d'une console de simulation vierge (les
+        # lignes venues de la vraie carte, elles, ne sont pas touchees).
+        window.simu_effacerConsole('sim')
+        if _demarrer_session(code) == 'tours':
+            window.simu_lancerTours(5)
+
+    def continuer_ou_lancer_simulation():
+        '''Utilisee par les capteurs virtuels (boutons, broches, logo,
+        secousse, radio...) a la place de lancer_simulation() : si une
+        session est deja active pour EXACTEMENT le meme code, la poursuit
+        (l'environnement Python — variables globales du programme, objets
+        Grove deja crees, etat des servos...) au lieu de tout redemarrer
+        depuis "Au demarrage". Signale par l'utilisateur : « nombre de
+        clics du bouton B = 10 » ne pouvait jamais s'accumuler d'un clic a
+        l'autre, chaque clic isole relancant tout le programme et remettant
+        les variables globales a zero — le compteur cumulatif genere cote
+        bloc (voir P.forBlock['nombre_clics_bouton'], un.js) a besoin de
+        cette fonction pour que l'accumulation survive effectivement d'un
+        declenchement au suivant, la ou lancer_simulation() la remettrait a
+        zero a chaque fois.'''
+        code = getattr(window, 'currentPythonCode', '')
+        if not code or "Glissez des blocs" in code:
+            return
+        global _session_active, _session_code
+        if _session_active and _session_code == code:
+            window.simu_clearQueue()
+            window.simu_lancerTours(5)
+            return
+        if _demarrer_session(code) == 'tours':
+            window.simu_lancerTours(5)
+
+    def invalider_session_simulation():
+        '''Efface la session persistante : le prochain declenchement
+        (bouton "Lancer" ou capteur virtuel) repart de zero. Appelee depuis
+        simu_reinitialiser() (un.js, bouton "Reinitialiser la simulation") —
+        sans quoi "Reinitialiser" laisserait une session perimee en place,
+        qu'un appui sur un capteur virtuel aurait alors poursuivie au lieu
+        de repartir a zero comme demande.'''
+        global _session_active
+        _session_active = False
+
+    window.simu_continuerOuLancer = continuer_ou_lancer_simulation
+    window.simu_invaliderSession = invalider_session_simulation
+    document["run-sim"].bind("click", lancer_simulation)
+  </script>
+  <div id="voile-envoi" role="dialog" aria-modal="true" aria-labelledby="envoi-titre">
+    <div id="fenetre-envoi">
+      <h3 id="envoi-titre">Envoi sur la carte</h3>
+      <p id="envoi-phase" aria-live="polite"></p>
+      <div id="envoi-barre" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="envoi-remplissage"></div>
+      </div>
+      <p id="envoi-pourcent">0 %</p>
+    </div>
+  </div>
+  <div id="voile-aide" role="dialog" aria-modal="true" aria-labelledby="aide-bloc-nom">
+    <div id="fenetre-aide">
+      <div id="aide-entete">
+        <h3 id="aide-titre">Aide sur ce bloc</h3>
+      </div>
+      <p id="aide-bloc-nom"></p>
+      <p id="aide-bloc-texte"></p>
+      <p id="aide-bloc-code-titre">Code MicroPython généré</p>
+      <pre id="aide-bloc-code"></pre>
+      <div id="aide-exemple">
+        <p id="aide-exemple-titre"></p>
+        <p id="aide-exemple-desc"></p>
+        <div id="aide-exemple-blocs"></div>
+        <details id="aide-exemple-details">
+          <summary>Voir le code MicroPython</summary>
+          <pre id="aide-exemple-code"></pre>
+        </details>
+        <button id="aide-inserer" type="button">Insérer cet exemple dans mon espace de travail</button>
+      </div>
+      <button id="aide-fermer" type="button">Fermer</button>
+    </div>
+  </div>
+  <div id="toast-admin"></div>
+</body>
+</html>

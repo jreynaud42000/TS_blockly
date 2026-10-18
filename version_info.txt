@@ -1,0 +1,33 @@
+# UTF-8
+#
+# Ressource de version de l'exe Windows (onglet "Details" des proprietes du fichier).
+# Utilisee par app.spec (version='version_info.txt'). Pour changer de version, modifier
+# filevers/prodvers (nombres) ET les chaines FileVersion/ProductVersion, ainsi que
+# VERSION dans app.py et le texte de #copyright-toolbar dans index.html.
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(2, 0, 0, 0),
+    prodvers=(2, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          '040C04B0',
+          [StringStruct('CompanyName', 'RAJ Editions'),
+           StringStruct('FileDescription', 'Programmation Micro:bit V2 (Blockly)'),
+           StringStruct('FileVersion', 'V2.0E'),
+           StringStruct('InternalName', 'MicrobitBlockly'),
+           StringStruct('OriginalFilename', 'MicrobitBlockly_V2.0E.exe'),
+           StringStruct('ProductName', 'Programmation Micro:bit V2'),
+           StringStruct('ProductVersion', 'V2.0E')])
+      ]),
+    VarFileInfo([VarStruct('Translation', [1036, 1200])])
+  ]
+)

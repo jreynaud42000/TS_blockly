@@ -1,0 +1,230 @@
+// deux.js : Écriture du programme dans le système de fichiers MicroPython.
+//
+// Un programme MicroPython n'est pas « compilé » : il est écrit tel quel dans le
+// petit système de fichiers embarqué à la fin de l'image MicroPython, sous le
+// nom `main.py`. C'est le travail de `@microbit/microbit-fs` — et de lui seul :
+// sans cette étape, le .hex produit ne contient aucun programme.
+//
+// Module EMBARQUE (lib/microbit/microbit-fs.js, microbit-fs 0.10.1, fichier
+// autonome tire d'esm.sh) : plus de CDN, donc hors ligne possible. Il n'a pas
+// d'export par défaut, seulement des exports nommés ; `microbitFsDefaut` reste
+// défini (vide) pour que le code de secours ci-dessous continue de fonctionner.
+import * as microbitFsNommes from './lib/microbit/microbit-fs.js';
+const microbitFsDefaut = undefined;
+
+import { fusionnerHex, isUniversalHex, separateUniversalHex } from './trois.js';
+
+const microbitFs = microbitFsDefaut || microbitFsNommes;
+
+/** Retrouve la classe du système de fichiers quelle que soit la forme du module. */
+function classeSystemeDeFichiers() {
+  const classe =
+    microbitFs?.MicropythonFsHex ||
+    microbitFs?.micropythonFsHex ||
+    microbitFsNommes?.MicropythonFsHex ||
+    microbitFsDefaut?.default?.MicropythonFsHex;
+
+  if (typeof classe !== 'function') {
+    throw new Error(
+      "Le module micro:bit FS n'a pas pu être chargé " +
+      '(fichier lib/microbit/microbit-fs.js absent ou corrompu).'
+    );
+  }
+  return classe;
+}
+
+/**
+ * Refuse tout de suite un firmware incomplet.
+ *
+ * Une copie interrompue laisse un fichier sans enregistrement de fin, dont
+ * l'analyse échoue bien plus loin avec un message incompréhensible. Réutilisée
+ * à la fois pour notre propre `firmware.hex` (sur le disque, à côté du
+ * serveur) et pour un .hex importé par l'utilisateur (dans son navigateur) —
+ * `nomFichier` et le conseil qui suit adaptent le message au bon cas, sinon
+ * un fichier importé invalide affiche un message parlant de "firmware.hex"
+ * et du cache du serveur, sans rapport avec ce que l'utilisateur vient de
+ * choisir.
+ */
+function verifierFirmwareComplet(hex, nomFichier = 'firmware.hex') {
+  if (!/^:00000001FF\s*$/m.test(hex)) {
+    const estNotreFirmware = nomFichier === 'firmware.hex';
+    throw new Error(
+      `${nomFichier} est incomplet : l'enregistrement de fin (:00000001FF) manque ` +
+      `(${hex.length} octets reçus). ` +
+      (estNotreFirmware
+        ? 'Deux causes possibles : le fichier a été copié à moitié, ou le navigateur ' +
+          'ressert une ancienne version en cache — vérifier la taille du fichier sur ' +
+          'le disque, puis recharger par Ctrl+Maj+R.'
+        : "Ce n'est probablement pas un fichier .hex micro:bit valide (ou la copie a été interrompue).")
+    );
+  }
+}
+
+/**
+ * Efface la zone du système de fichiers d'un firmware.
+ *
+ * Un `.hex` téléchargé depuis l'éditeur Python officiel contient déjà un
+ * programme : `MicropythonFsHex` refuse une telle image (« There are files in
+ * the MicropythonFsHex constructor hex file input »). Les bornes de la zone sont
+ * lues dans les données UICR du firmware, jamais déduites de son contenu :
+ * l'effacement ne change donc pas la taille de stockage disponible.
+ *
+ * Le tri se fait directement sur le texte Intel hex, ligne par ligne. Un
+ * enregistrement fait au plus 32 octets et les bornes de la zone sont alignées
+ * sur une page de flash : aucun enregistrement n'est donc à cheval, il suffit de
+ * jeter ceux qui tombent dedans. Les enregistrements d'adresse (types 02 et 04)
+ * et tout ce qui vit ailleurs — dont l'UICR — sont conservés tels quels.
+ *
+ * @param {string} hexIntel  un firmware au format Intel hex
+ * @returns {string} le même firmware, système de fichiers vide
+ */
+function effacerFichiersDuFirmware(hexIntel) {
+  const info = microbitFs.getIntelHexDeviceMemInfo(hexIntel);
+  const debut = info.fsStartAddress;
+  const fin = info.fsEndAddress;
+  if (!(fin > debut)) return hexIntel;
+
+  const gardees = [];
+  let basePoidsFort = 0;
+
+  for (const ligne of hexIntel.split(/\r?\n/)) {
+    if (!ligne.startsWith(':')) {
+      if (ligne.trim()) gardees.push(ligne);
+      continue;
+    }
+    const type = parseInt(ligne.substr(7, 2), 16);
+
+    if (type === 0x04) {
+      // Extended Linear Address : fixe les 16 bits de poids fort.
+      basePoidsFort = parseInt(ligne.substr(9, 4), 16) * 0x10000;
+    } else if (type === 0x02) {
+      // Extended Segment Address : décalage de 4 bits.
+      basePoidsFort = parseInt(ligne.substr(9, 4), 16) * 0x10;
+    } else if (type === 0x00) {
+      const nbOctets = parseInt(ligne.substr(1, 2), 16);
+      const adresse = basePoidsFort + parseInt(ligne.substr(3, 4), 16);
+      // Enregistrement de données situé dans la zone : on le jette.
+      if (adresse < fin && adresse + nbOctets > debut) continue;
+    }
+    gardees.push(ligne);
+  }
+
+  return gardees.join('\n') + '\n';
+}
+
+/**
+ * Construit le système de fichiers, en réparant le firmware s'il n'est pas vierge.
+ *
+ * @param {string|Array<{hex: string, boardId: number}>} entree
+ */
+function construireSystemeDeFichiers(entree) {
+  const MicropythonFsHex = classeSystemeDeFichiers();
+  try {
+    return new MicropythonFsHex(entree);
+  } catch (erreur) {
+    if (!/There are files/i.test(erreur.message)) {
+      throw new Error(
+        "firmware.hex n'est pas une image MicroPython valide pour micro:bit. " +
+        `Détail : ${erreur.message}`
+      );
+    }
+    const nettoyee = Array.isArray(entree)
+      ? entree.map(({ hex, boardId }) => ({ hex: effacerFichiersDuFirmware(hex), boardId }))
+      : effacerFichiersDuFirmware(entree);
+    return new MicropythonFsHex(nettoyee);
+  }
+}
+
+/**
+ * Transforme le code MicroPython en fichier .hex téléchargeable.
+ *
+ * Le chemin `./firmware.hex` convient aussi bien au serveur local qu'à
+ * l'exécutable PyInstaller : `app.py` sert dans les deux cas par HTTP depuis le
+ * dossier où se trouve `index.html`, et le fichier est donc voisin de la page.
+ *
+ * @param {string} codePython  le code généré par Blockly
+ * @returns {Promise<string>}  le contenu du .hex final
+ */
+export async function genererFichierHexFinal(codePython) {
+  // 1. Le firmware MicroPython officiel, posé à côté des fichiers du projet.
+  //
+  // `no-store` est indispensable : un autre projet servi auparavant sur le meme
+  // http://localhost:8000 laisse son propre firmware.hex dans le cache, a la
+  // meme adresse. Le navigateur ressert alors ce fichier-la — abime, dans le cas
+  // qui a motive cette ligne — et l'erreur est incomprehensible puisque le
+  // fichier sur le disque, lui, est parfaitement valide.
+  const reponse = await fetch('./firmware.hex', { cache: 'no-store' });
+  if (!reponse.ok) {
+    throw new Error(
+      `Impossible de lire firmware.hex (HTTP ${reponse.status}). ` +
+      'Placer le firmware MicroPython officiel à côté de index.html.'
+    );
+  }
+  const firmwareDeBase = await reponse.text();
+  verifierFirmwareComplet(firmwareDeBase);
+
+  // 2. Un firmware universel doit être redécoupé en ses images V1/V2 avant
+  //    d'être confié au système de fichiers ; un firmware Intel passe tel quel.
+  const entree = isUniversalHex(firmwareDeBase)
+    ? separateUniversalHex(firmwareDeBase).map(({ hex, boardId }) => ({ hex, boardId }))
+    : firmwareDeBase;
+
+  const systemeDeFichiers = construireSystemeDeFichiers(entree);
+
+  // 3. Le programme est écrit sous le nom `main.py` : c'est celui que la carte
+  //    exécute au démarrage.
+  systemeDeFichiers.write('main.py', codePython);
+
+  const systemeDeFichiersHex = Array.isArray(entree)
+    ? systemeDeFichiers.getUniversalHex()
+    : systemeDeFichiers.getIntelHex();
+
+  // 4. Fusion finale au format universel.
+  return fusionnerHex(firmwareDeBase, systemeDeFichiersHex);
+}
+
+/**
+ * Extrait le programme MicroPython (`main.py`) d'un fichier .hex existant.
+ *
+ * Symétrique de `genererFichierHexFinal` : reconstruit la même base propre
+ * (notre firmware.hex, universel ou non, nettoyé au besoin) puis y importe
+ * le contenu du fichier fourni par l'utilisateur — `importFilesFromHex` lit
+ * la zone système de fichiers directement dans CE hex-là, indépendamment du
+ * firmware sur lequel l'instance a été construite. Vérifié par un aller-retour
+ * complet (génération puis extraction) : le texte relu est identique à
+ * l'original.
+ *
+ * @param {string} hexUtilisateur  contenu texte d'un .hex micro:bit
+ * @returns {Promise<string>}  le code source de main.py
+ */
+export async function extraireCodeDepuisHex(hexUtilisateur) {
+  verifierFirmwareComplet(hexUtilisateur, 'Le fichier importé');
+
+  const reponse = await fetch('./firmware.hex', { cache: 'no-store' });
+  if (!reponse.ok) {
+    throw new Error(
+      `Impossible de lire firmware.hex (HTTP ${reponse.status}). ` +
+      'Placer le firmware MicroPython officiel à côté de index.html.'
+    );
+  }
+  const firmwareDeBase = await reponse.text();
+  verifierFirmwareComplet(firmwareDeBase);
+
+  const entree = isUniversalHex(firmwareDeBase)
+    ? separateUniversalHex(firmwareDeBase).map(({ hex, boardId }) => ({ hex, boardId }))
+    : firmwareDeBase;
+
+  const systemeDeFichiers = construireSystemeDeFichiers(entree);
+  try {
+    systemeDeFichiers.importFilesFromHex(hexUtilisateur);
+  } catch (erreur) {
+    throw new Error(`Ce fichier n'est pas un .hex micro:bit valide. Détail : ${erreur.message}`);
+  }
+  if (!systemeDeFichiers.exists('main.py')) {
+    throw new Error(
+      "Ce fichier .hex ne contient aucun programme (pas de main.py) — " +
+      'probablement un firmware vierge, jamais envoyé sur une carte depuis un éditeur.'
+    );
+  }
+  return systemeDeFichiers.read('main.py');
+}

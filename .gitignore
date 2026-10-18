@@ -1,0 +1,16 @@
+# Produits de PyInstaller : se reconstruisent avec `pyinstaller app.spec`
+build/
+dist/
+__pycache__/
+*.pyc
+
+# Archive du site : se refait a partir de site_web/
+site_web.zip
+
+# Ancienne version de app.py, conservee hors suivi
+Nouveau dossier/
+
+# Fichiers temporaires d'Office et de Windows
+~$*
+Thumbs.db
+desktop.ini
