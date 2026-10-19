@@ -589,8 +589,9 @@ espace pour deux sources. Elle est MASQUEE au depart ; le bouton >_ de la
 barre d'outils l'affiche ou la masque (la croix de sa barre aussi), et la
 zone de blocs se redimensionne en consequence. Elle s'ouvre toute seule a la
 premiere sortie (print du simulateur ou de la carte), sauf si l'utilisateur
-l'a fermee lui-meme. La poignee en bas a droite de la zone de sortie permet
-de l'agrandir. Le bouton "?" de sa barre ouvre l'aide d'utilisation de la
+l'a fermee lui-meme. Sa hauteur se regle en glissant son bord haut (trait orange
+au survol ; souris ou doigt) ; elle est retenue dans le navigateur, et un double-clic sur ce
+bord rend la hauteur de depart. L'espace de blocs garde toujours au moins 150 px. Le bouton "?" de sa barre ouvre l'aide d'utilisation de la
 console (meme fenetre que l'aide d'un bloc ; texte dans TEXTE_AIDE_CONSOLE,
 un.js : a tenir a jour si la console change). Le bouton 📊 exporte toutes les
 lignes affichees dans un fichier Excel .xlsx (console-microbit-AAAAMMJJ-
@@ -1087,8 +1088,17 @@ Panneau IA (bouton 🧠 de la barre d'outils, barre en bas) :
    necessite Internet) OU "Fichiers..." et selectionner d'un coup model.json,
    metadata.json et weights.bin du modele exporte (fonctionne hors connexion).
 2. "Demarrer" : le navigateur demande la camera ou le micro. Les classes
-   s'affichent avec une barre de probabilite ; la classe retenue passe en vert.
+   s'affichent avec une barre de probabilite ; la classe retenue passe en orange.
 3. "Seuil de confiance" (30 a 99 %, 80 par defaut) : en dessous, aucune classe.
+Fenetre IA (oct. 2026, sur le modele de la version Arduino R4) : le bouton IA ouvre une fenetre centree. Bandeau titre
+(« Entrainer l'IA a reconnaitre des objets ou des images »...), onglets Apprentissage immediat / Modele Teachable Machine
+(camera) / Modele Teachable Machine (micro) / QR codes et codes-barres (point bleu : pret, vert : en marche), pied :
+Tout effacer, seuil de confiance, interrupteur « Envoyer a la carte », Termine. Apprentissage immediat : pastilles
+« L'IA doit reconnaitre » ; une carte par classe a gauche (nom modifiable, nombre d'exemples, 🧹 vider, ✕ supprimer,
+« Une photo », « Plusieurs photos » jusqu'a « Arreter », « Ajouter des images » ; sons : « Enregistrer »), « + Ajouter une
+classe » ; a droite la camera (allumee a l'ouverture, eteinte a la fermeture), le test (Demarrer et barres), l'aide et la
+note de confidentialite. Termine, Echap ou un clic sur le voile ferment la fenetre ; une reconnaissance en cours continue
+(bouton IA souligne en vert).
 4. Simulateur : lancer la simulation (sans elle, rien n'est transmis).
    Vraie carte : la connecter par le bouton Connecter de la console, envoyer le
    programme, cocher "Envoyer a la carte".
@@ -1516,3 +1526,90 @@ Modele C (choisi parmi 3 propositions) pour tous les capteurs reglables du panne
 humidite, CO2, lumiere, pression, COV. Chaque section montre un petit module Grove dessine (composant propre a chaque
 capteur), un afficheur numerique vert sur fond noir avec la valeur et son unite, et le curseur dessous. Les id des
 curseurs et des valeurs (grove-temp, grove-temp-val...) sont inchanges : un.js n'a pas eu a changer.
+
+42. SEANCES POUR GROUPES D'ELEVES : DISTRIBUER, RENDRE, RAMASSER (oct. 2026)
+Tout passe par des fichiers, deposes la ou l'enseignant depose deja ses documents (ENT, Moodle, dossier partage, cle USB) :
+aucun serveur, aucun compte, aucune donnee envoyee par l'application. Fichiers : seances.js (fenetres) et exercices.js
+(« mode seance » du moteur d'exercices). Menu Fichier, rubrique « Seance ».
+
+ENSEIGNANT — Fichier > Espace enseignant > Preparer une seance
+- Titre, classe, mode : entrainement (indices, solution, etoiles) ou evaluation (sans aide, 3 essais, note sur 20, duree
+  maximale facultative).
+- Groupes : une ligne par groupe, « Groupe 1 : Lea, Tom » (prenoms facultatifs ; prenoms ou initiales seulement).
+- Exercices : cases a cocher dans la banque (exercices.json, bouton « tout » par niveau), et/ou « Ajouter un exercice a
+  partir du programme ouvert » : titre, consigne, indices, points, et le programme de l'editeur sert de
+    * solution avec controle automatique (l'eleve doit utiliser au moins autant de blocs de chaque type, hors
+      au demarrage, repeter, nombres et textes ; les valeurs ne sont pas comparees),
+    * solution corrigee par l'enseignant (l'eleve clique « J'ai termine »),
+    * point de depart pour l'eleve (corrige par l'enseignant).
+- « Telecharger la seance » : fichier seance_<classe>_<titre>.json, a deposer sur l'ENT. « Ouvrir une seance a
+  modifier » la recharge ; retelechargee, elle garde son identifiant (les eleves retrouvent leur travail).
+  La seance en preparation est gardee sur le poste (brouillon).
+
+ELEVE — Fichier > Ouvrir une seance
+- Choisir le fichier, son groupe, cocher ou ecrire son prenom (ou ceux du binome). Entrainement : liste des exercices
+  de la seance (tous ouverts) ; evaluation : elle demarre aussitot.
+- Le programme de chaque exercice est memorise automatiquement (reprise en revenant sur l'exercice, et apres un
+  rechargement de la page : la seance reste ouverte).
+- « Rendre mon travail » (menu Fichier, liste des exercices, panneau Mission, rapport d'evaluation) : telecharge
+  <classe>_<groupe>_<prenoms>_<titre>.rendu.json, a deposer sur l'ENT. On peut rendre plusieurs fois.
+- « Quitter la seance » (menu Fichier) : retour aux exercices habituels ; le travail reste sur le poste.
+
+ENSEIGNANT — Fichier > Espace enseignant > Ramasser les travaux
+- Glisser les fichiers .rendu.json sur la fenetre (ou les choisir, plusieurs a la fois). Un groupe qui a rendu plusieurs
+  fois : seul le fichier le plus recent est garde. Les fichiers qui ne sont pas des rendus sont signales.
+- Un tableau par seance : groupe, eleves, chaque exercice (✔ reussi et etoiles, ✎ a corriger, … commence, ↷ passe,
+  ✘ echec, · non fait), reussis, note sur 20 en evaluation (* = provisoire : les exercices a corriger comptent 0).
+- Clic sur une case : le programme de l'eleve s'ouvre dans l'editeur (simulateur, code, telechargement .hex).
+- Export CSV (une ligne par eleve : un binome donne deux lignes), impression.
+Limite : un poste partage par plusieurs classes garde le travail de chacun separement (par seance), mais tout eleve du
+poste peut ouvrir la meme seance avec un autre prenom : la confiance reste de mise (pas d'authentification).
+
+43. MODE CLASSE : LA SEANCE SERVIE PAR LE PC DU PROFESSEUR (solution 2, oct. 2026)
+Dossier : blockly_ts_mode_classe (copie Git du projet blockly_ts_adacraft_vilain, qui reste sans mode classe).
+Le PC du professeur fait tourner l'application (lancer_projet.bat, ou l'exe) et sert la seance aux postes de la salle :
+plus de fichier a deposer sur l'ENT, les travaux arrivent tout seuls. Fichiers : classe.py (serveur), app.py (branchement),
+seances.js (fenetres). La solution 1 (fichiers par l'ENT) reste disponible a l'identique.
+
+PROFESSEUR (sur son PC) — Fichier > Espace enseignant > Mode classe
+- Choisir la seance : celle en preparation (onglet « Preparer une seance ») ou un fichier de seance ; « Demarrer le mode classe ».
+- L'ecran affiche l'adresse a ouvrir sur les postes eleves (http://<adresse du PC>:8000), un code de 5 caracteres (a ecrire
+  au tableau) et un QR code de l'adresse (tablettes).
+- Suivi en direct (toutes les 3 s) : connecte (vert) ou non, groupe, eleves, exercice en cours, etat de chaque exercice,
+  reussis, note (evaluation), rendu definitif et son heure. Un clic sur une case ouvre le programme de l'eleve.
+- Les travaux sont enregistres sur le PC dans Documents\MicrobitBlockly\travaux\<date>_<classe>_<titre>\ : un fichier
+  .rendu.json par groupe (meme format que la solution 1 : « Ramasser les travaux » sait les relire), toujours le plus recent.
+  Boutons : ouvrir ce dossier, export CSV (une ligne par eleve), imprimer, arreter le mode classe.
+- Tant que le mode classe est actif, l'exe ne s'arrete pas tout seul quand la page du professeur se ferme.
+
+ELEVE (autre poste de la salle) — ouvrir l'adresse affichee
+- La fenetre « Rejoindre » s'ouvre toute seule (sinon Fichier > Rejoindre la seance de la classe) : code, puis groupe et
+  prenom(s), comme en solution 1.
+- Le travail est envoye au PC du professeur toutes les 20 secondes ; « Rendre mon travail » l'envoie comme rendu definitif
+  (« Travail envoye ✔ hh:mm »). Si le reseau ne repond pas, le travail est telecharge dans un fichier, a donner au professeur.
+
+SECURITE ET RESEAU
+- Les fonctions du professeur (demarrer, suivre, ouvrir les travaux, arreter) ne repondent qu'au PC lui-meme (127.0.0.1) :
+  un poste eleve recoit « reserve au poste de l'enseignant ». Les eleves doivent donner le code ; un travail d'une autre seance,
+  mal forme ou trop gros (plus de 3 Mo) est refuse. Aucun mot de passe : le code suffit pour la duree de la seance.
+- Le PC et les postes eleves doivent etre sur le meme reseau. A la premiere diffusion, Windows peut demander d'autoriser
+  Python (ou l'exe) sur le reseau : accepter pour les reseaux prives. Si les eleves n'arrivent pas a se connecter : pare-feu
+  (port 8000), isolement des clients sur le Wi-Fi, ou reseau eleves separe du reseau professeurs -> administrateur reseau.
+- Le serveur accepte 128 connexions en attente (au lieu de 5) : une classe entiere charge la page en meme temps.
+- Une trentaine de postes chargent chacun environ 5 Mo au demarrage (Blockly, Brython) : quelques secondes sur le reseau
+  de la salle. MediaPipe (27 Mo) ne se charge que si l'eleve utilise l'apprentissage immediat.
+A verifier en classe : le pare-feu et le reseau de l'etablissement, et la charge avec 30 postes reels.
+
+ESPACE ENSEIGNANT PROTEGE (oct. 2026)
+- Postes eleves (page ouverte par l'adresse du PC du professeur) : le bouton « Espace enseignant » est masque et la
+  fenetre refuse de s'ouvrir. Les fonctions du professeur restaient deja refusees par le serveur (127.0.0.1 seulement).
+  Sur le site statique (solution 1) et sur le PC du professeur, rien ne change.
+- Evaluation diffusee : la seance envoyee aux eleves n'a ni solutions ni indices (le moteur n'en a pas besoin en
+  evaluation), et la banque exercices.json (avec ses solutions) n'est plus servie aux postes eleves tant que
+  l'evaluation dure. Le PC du professeur garde la seance complete (seance.json du dossier des travaux).
+  Entrainement : solutions et indices restent envoyes (« Voir la solution »).
+- Code enseignant facultatif (4 chiffres) : Espace enseignant > « 🔒 Code… » pour le definir, le changer ou le supprimer ;
+  « Verrouiller » ferme et redemande le code. Il est demande a l'ouverture, valable 30 minutes (et pour l'onglet), 5 essais
+  puis 1 minute d'attente. Seule son empreinte SHA-256 est gardee, dans ce navigateur. Code oublie : effacer les donnees
+  du site dans les parametres du navigateur (la seance en preparation est effacee aussi). Protection legere : elle evite
+  les ouvertures par curiosite sur le PC du professeur ; elle ne remplace pas le verrouillage de la session Windows.

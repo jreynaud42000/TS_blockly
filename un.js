@@ -5177,31 +5177,49 @@ try {
     // 2. CRÉATION DE L'INTERFACE (TOOLBOX)
     // ==========================================
     // ---------- Couleurs des categories ----------
-    // Une couleur par categorie, UNE seule table : la bande / puce de la colonne de categories ET les blocs de la categorie
-    // la suivent. Demande de l'utilisateur : AUCUNE couleur identique entre deux categories. Les 17 couleurs sont choisies pour
-    // etre aussi differentes que possible (ecart minimal CIE Lab de 26 entre deux couleurs, mesure sur les blocs ET sur les
-    // puces vives), assez sombres pour le texte blanc des blocs (contraste >= 3,9), puis attribuees dans l'ordre de la colonne
-    // de facon que deux categories VOISINES soient tres differentes (ecart >= 97). Les sous-categories (Radio, Grove, Robots)
-    // heritent de leur parent. Pour changer une couleur : modifier la ligne ci-dessous.
+    // Une couleur par categorie, UNE seule table : la puce de la colonne de categories (bandeau.js la recopie depuis la
+    // couleur de la categorie) ET les blocs de la categorie. Demande de l'utilisateur : les blocs ont exactement la couleur
+    // de leur puce. Couleurs alignees sur la version Arduino R4 (EasyBloc) ; Capteurs, Actionneurs, Servos et Robots, sans
+    // equivalent Arduino, ont une couleur choisie la plus eloignee possible des autres. Aucune couleur identique entre deux
+    // categories. Les sous-categories (Radio, Grove, Robots) heritent de leur parent. Sur une couleur claire, le texte du
+    // bloc passe en fonce (voir texteSombreSurBlocsClairs). Pour changer une couleur : modifier la ligne ci-dessous.
     const PALETTE_CATEGORIES = {
-        'Boucles': '#1f5c52',
-        'Temps': '#d50bd5',
-        'Affichage': '#5c521f',
-        'Entrées/Sorties': '#0909b3',
-        'Capteurs': '#915808',
-        'Actionneurs (Audio)': '#2270bf',
-        'Servos': '#910808',
-        'Radio': '#1c8aa0',
-        'IA': '#d50b70',
-        'Grove': '#178255',
-        'Logique': '#a83896',
-        'Variables': '#678217',
-        'Maths': '#6738a8',
-        'Texte': '#d53e0b',
-        'Fonctions': '#123668',
-        'Listes': '#089108',
-        'Robots': '#74062b',
+        'Boucles': '#fd7e14',
+        'Temps': '#15aabf',
+        'Affichage': '#f03e3e',
+        'Entrées/Sorties': '#343a40',
+        'Capteurs': '#d2cc79',
+        'Actionneurs (Audio)': '#622d86',
+        'Servos': '#25f478',
+        'Radio': '#1864ab',
+        'IA': '#9c6644',
+        'Grove': '#2b8a3e',
+        'Logique': '#fcc419',
+        'Variables': '#e64980',
+        'Maths': '#82c91e',
+        'Texte': '#7048e8',
+        'Fonctions': '#cc5de8',
+        'Listes': '#a61e4d',
+        'Robots': '#25f4ca',
     };
+    // Texte des blocs : blanc par defaut ; fonce sur les couleurs claires, ou le blanc contraste a moins de 3:1 (seuil
+    // WCAG, luminance relative) : Boucles, Temps, Capteurs, Servos, Logique, Maths, Robots. Regle CSS par couleur : « un bloc dont le fond a cette
+    // couleur » -> ses propres libelles (enfants directs : les blocs emboites gardent leur propre regle). Sans effet en
+    // contraste eleve (blocs noirs ou blancs, voir index.html).
+    (function texteSombreSurBlocsClairs() {
+        const lum = hex => {
+            const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+            return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        };
+        const FONCE = '#1a1a1a', L_FONCE = lum(FONCE);
+        const claires = Object.values(PALETTE_CATEGORIES).filter(h => 1.05 / (lum(h) + 0.05) < 3);   // blanc sous 3:1 (seuil WCAG)
+        if (!claires.length) return;
+        const style = document.createElement('style');
+        style.textContent = claires.map(h => ':root:not([data-contrast="high"]) g:has(> path.blocklyPath[fill="' + h + '" i]) > g > text.blocklyText:not(.blocklyDropdownText)')
+            .join(',\n') + ' { fill: ' + FONCE + '; }';
+        document.head.appendChild(style);
+        window.blocsTexteFonce = claires;
+    })();
     // Blocs de categories dynamiques de Blockly (absents de la liste du tiroir).
     const BLOCS_PALETTE_SUPPLEMENTAIRES = {
         'Variables': ['variables_get', 'variables_set', 'math_change'],
@@ -5818,6 +5836,18 @@ try {
         ]
       })
     });
+
+    // Boutons ronds (recentrer, +, -) alignes sur la corbeille et regulierement espaces.
+    // Par defaut, Blockly colle + et - (2 px au lieu de 11) et aligne les boutons (32 px de
+    // large) par la droite avec la corbeille (47 px) : leurs centres etaient decales de 7,5 px.
+    // Reglages lus par ZoomControls.position() a chaque redimensionnement.
+    if (window.workspace.zoomControls_) {
+      const zc = window.workspace.zoomControls_;
+      const LARGEUR_CORBEILLE = 47;
+      zc.SMALL_SPACING = zc.LARGE_SPACING;
+      zc.MARGIN_HORIZONTAL += (LARGEUR_CORBEILLE - zc.WIDTH) / 2;
+      Blockly.svgResize(window.workspace);
+    }
 
     // Espace de depart : le demarrage puis la boucle, comme dans MakeCode.
     // Les blocs de premier niveau sont generes dans l'ordre de leur position,
@@ -7399,6 +7429,59 @@ try {
         }).observe(consolePanneau);
     }
 
+    // ---- Redimensionnement de la console par glisser (bord haut) ----
+    // Demande de l'utilisateur : regler la hauteur de la console en glissant son bord haut, comme le simulateur se regle
+    // par son bord gauche. Monter agrandit. La hauteur s'applique aux DEUX vues (texte et graphique, box-sizing:
+    // border-box) ; l'espace de blocs garde toujours au moins 150 px. Retenue dans ce navigateur pour la fois suivante ;
+    // double-clic : hauteur de depart (148 px). Pointer events : souris, stylet et doigt.
+    const redimConsole = document.getElementById('console-redimensionneur');
+    const CLE_HAUTEUR_CONSOLE = 'console_hauteur_v1', HAUTEUR_CONSOLE_DEPART = 148, MIN_CONSOLE = 50, MIN_BLOCS = 150;
+    function poserHauteurConsole(h) {
+        for (const zone of [consoleSortie, zoneGraphique]) {
+            if (!zone) continue;
+            zone.style.height = h + 'px';
+            zone.style.maxHeight = 'none';
+        }
+        planifierGraphique();
+    }
+    try {
+        const memo = Number(localStorage.getItem(CLE_HAUTEUR_CONSOLE));
+        if (memo >= MIN_CONSOLE) poserHauteurConsole(Math.min(memo, Math.round(window.innerHeight * 0.75)));
+    } catch (erreur) { /* stockage indisponible : hauteur de depart */ }
+    if (redimConsole && consoleSortie) {
+        let yDepart = 0, hDepart = 0, hMax = 0;
+        const vueVisible = () => (zoneGraphique && !zoneGraphique.classList.contains('replie')) ? zoneGraphique : consoleSortie;
+        redimConsole.addEventListener('pointerdown', ev => {
+            if (ev.button !== 0) return;
+            yDepart = ev.clientY;
+            hDepart = vueVisible().offsetHeight;
+            const blocs = document.getElementById('main-container');
+            hMax = hDepart + Math.max(0, (blocs ? blocs.getBoundingClientRect().height : 0) - MIN_BLOCS);
+            try { redimConsole.setPointerCapture(ev.pointerId); } catch (erreur) { /* tant pis */ }
+            redimConsole.classList.add('actif');
+            document.body.style.cursor = 'row-resize';
+            document.body.style.userSelect = 'none';
+            ev.preventDefault();
+        });
+        redimConsole.addEventListener('pointermove', ev => {
+            if (!redimConsole.classList.contains('actif')) return;
+            poserHauteurConsole(Math.round(Math.max(MIN_CONSOLE, Math.min(hMax, hDepart - (ev.clientY - yDepart)))));
+        });
+        const relacher = () => {
+            if (!redimConsole.classList.contains('actif')) return;
+            redimConsole.classList.remove('actif');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            try { localStorage.setItem(CLE_HAUTEUR_CONSOLE, String(vueVisible().offsetHeight)); } catch (erreur) { /* rien */ }
+        };
+        redimConsole.addEventListener('pointerup', relacher);
+        redimConsole.addEventListener('pointercancel', relacher);
+        redimConsole.addEventListener('dblclick', () => {
+            poserHauteurConsole(HAUTEUR_CONSOLE_DEPART);
+            try { localStorage.removeItem(CLE_HAUTEUR_CONSOLE); } catch (erreur) { /* rien */ }
+        });
+    }
+
     // ---- Vraie carte : port serie USB (DAPLink, 115200 bauds) ----
     let portSerie = null;
     let lecteurSerie = null;
@@ -7561,6 +7644,9 @@ try {
     }
     window.ouvrirPanneauIA = function () {
         if (iaPanneau && btnVueIA && iaPanneau.classList.contains('replie')) basculerPanneau(btnVueIA, iaPanneau);
+    };
+    window.fermerPanneauIA = function () {
+        if (iaPanneau && btnVueIA && !iaPanneau.classList.contains('replie')) basculerPanneau(btnVueIA, iaPanneau);
     };
 
     // ------------------------------------------
@@ -8524,7 +8610,9 @@ try {
         "AFFICHER OU MASQUER\n" +
         "• Bouton « Console » de la barre d'outils, ou croix ✕ de la console.\n" +
         "• Elle s'ouvre toute seule à la première ligne reçue, sauf si vous l'avez fermée vous-même.\n" +
-        "• Tirez la poignée en bas à droite de la zone de texte pour l'agrandir.\n\n" +
+        "• Changez sa hauteur en glissant son bord haut (le trait orange qui apparaît au survol) : vers le haut " +
+        "pour l'agrandir, vers le bas pour la réduire. La hauteur est retenue pour la fois suivante ; un double-clic " +
+        "sur ce bord rend la hauteur de départ.\n\n" +
         "AVEC LE SIMULATEUR\n" +
         "• Cliquez « Lancer la simulation » : les lignes apparaissent dans l'ordre où le programme les écrit.\n" +
         "• « Lancer la simulation » et « Réinitialiser la simulation » effacent ces lignes. " +
@@ -8577,17 +8665,20 @@ try {
 
     // ---- Aide sur l'IA (bouton « ? » du panneau IA) ----
     const TEXTE_AIDE_IA =
-        "Le panneau IA reconnaît des images (caméra), des gestes, des positions, des sons (micro) et des QR codes. " +
+        "La fenêtre IA (bouton « IA » de la barre d'outils) reconnaît des images (caméra), des gestes, des positions, des " +
+        "sons (micro) et des QR codes. « Terminé » la ferme : une reconnaissance en cours continue (bouton IA souligné en vert). " +
         "Le résultat pilote le programme par les blocs de la catégorie « IA », au choix dans le simulateur ou sur la " +
         "vraie carte. L'image et le son restent dans le navigateur : seul le nom de la classe est transmis.\n\n" +
-        "1. APPRENDRE SES CLASSES : « ⚡ Apprentissage immédiat » (sans entraînement, sans Internet)\n" +
-        "• Choisissez ce que l'IA reconnaît : objets et images, gestes de la main, positions des bras (caméra), ou sons et " +
-        "mots (micro).\n" +
-        "• Allumez « 📷 Caméra » (ou « 🎤 Micro »), puis maintenez « Maintenir » en face d'une classe : des exemples sont " +
-        "ajoutés en rafale. Pour les sons, faites le son (ou dites le mot) plusieurs fois avec un court silence entre deux : " +
-        "chaque son détecté devient un exemple. 🖼 ajoute des exemples depuis des images.\n" +
-        "• Chaque exemple a sa vignette sous sa classe (photo pour les objets, squelette pour les gestes et positions, " +
-        "dessin du timbre pour les sons). Cliquer sur une vignette supprime cet exemple seulement ; 🗑 supprime la classe.\n" +
+        "1. APPRENDRE SES CLASSES : onglet « ⚡ Apprentissage immédiat » (sans entraînement, sans Internet)\n" +
+        "• Choisissez ce que l'IA doit reconnaître : des objets ou des images, des gestes de la main, des positions des bras " +
+        "(caméra), ou des sons ou des mots (micro).\n" +
+        "• La caméra s'allume à l'ouverture de la fenêtre. Sur la carte d'une classe : « 📸 Une photo » ajoute un exemple à " +
+        "chaque clic, « 🎞 Plusieurs photos » en ajoute en rafale jusqu'à « ■ Arrêter », « 📁 Ajouter des images » prend des " +
+        "fichiers .png ou .jpg. Pour les sons : « 🎤 Enregistrer », faites le son (ou dites le mot) plusieurs fois avec un court " +
+        "silence entre deux, puis « ■ Arrêter » : chaque son détecté devient un exemple.\n" +
+        "• Chaque exemple a sa vignette sur la carte de sa classe (photo pour les objets, squelette pour les gestes et positions, " +
+        "dessin du timbre pour les sons). Cliquer sur une vignette supprime cet exemple seulement ; 🧹 efface tous les " +
+        "exemples de la classe ; ✕ supprime la classe ; « Tout effacer » (en bas) repart de deux classes vides.\n" +
         "• Chaque exemple compte aussitôt : « ▶ Démarrer » dès que 2 classes ont des exemples. Renommer une classe met à " +
         "jour les blocs qui l'utilisent.\n" +
         "• Images, gestes et positions pilotent les blocs « vision » ; les sons pilotent les blocs « son ». Un son reconnu " +
@@ -8595,11 +8686,11 @@ try {
         "• L'apprentissage (des nombres, jamais d'images ni de sons) est rangé dans le .py téléchargé et relu à son " +
         "ouverture ; « 💾 Exporter » le met dans un fichier .json à part. Il n'est pas dans le .hex. Les photos des " +
         "vignettes ne sont pas enregistrées (▣ après réouverture) ; squelettes et timbres se redessinent.\n\n" +
-        "2. OU CHARGER UN MODÈLE TEACHABLE MACHINE (colonnes « Vision » et « Son »)\n" +
+        "2. OU CHARGER UN MODÈLE TEACHABLE MACHINE (onglets « Modèle Teachable Machine », caméra et micro)\n" +
         "• Sur teachablemachine.withgoogle.com : « Exporter le modèle », onglet Tensorflow.js. Collez l'adresse puis " +
         "« Charger » (nécessite Internet), ou « Fichiers… » et sélectionnez les 3 fichiers à la fois (model.json, " +
         "metadata.json, weights.bin : fonctionne sans Internet).\n" +
-        "• « Démarrer » : le navigateur demande l'autorisation d'utiliser la caméra ou le micro. Démarrer une colonne " +
+        "• « Démarrer » : le navigateur demande l'autorisation d'utiliser la caméra ou le micro. Démarrer un modèle " +
         "arrête l'apprentissage immédiat du même genre, et inversement.\n\n" +
         "3. PROGRAMMER\n" +
         "• « lorsque l'IA reconnaît <classe> » : exécute les blocs quand cette classe est reconnue. Choisissez la classe dans " +
@@ -8615,7 +8706,7 @@ try {
         "• Le résultat est renvoyé deux fois par seconde ; la carte oublie un résultat de plus de 1,5 s " +
         "(navigateur fermé, câble débranché).\n\n" +
         "5. QR CODES ET CODES-BARRES\n" +
-        "• Colonne « 🔳 QR codes » : « ▶ Lire les codes », puis les blocs « lorsqu'un code QR est lu », " +
+        "• Onglet « 🔳 QR codes et codes-barres » : « ▶ Lire les codes », puis les blocs « lorsqu'un code QR est lu », " +
         "« un code QR est visible », « texte du dernier code QR lu ». « Créer un QR code » en fabrique un à imprimer.\n\n" +
         "LIMITES\n" +
         "• Chrome ou Edge conseillé. La caméra et le micro demandent une page en localhost ou en HTTPS.\n" +

@@ -8,6 +8,12 @@
 //   - le mode evaluation (sans indice ni solution, 3 essais, chronometre, note sur 20, rapport imprimable / CSV).
 // Rien ici ne modifie les blocs, les generateurs ou la simulation : le moteur LIT les blocs du plan de travail
 // (window.workspace) et ne les change que pour (re)poser l'espace de depart ou la solution d'un exercice.
+//
+// Mode SEANCE (seances.js) : l'enseignant distribue un fichier de seance (exercices choisis, groupes, mode).
+// Le moteur prend alors ses exercices dans la seance au lieu de exercices.json, garde la progression a part
+// (cle de stockage propre a la seance), memorise le programme de l'eleve pour chaque exercice, accepte des
+// exercices sans controle automatique (« J'ai termine », correction par l'enseignant) et fabrique le fichier
+// « rendu » (window.exercicesSeance.rendu()).
 
 const CLE = 'exercices_progression_v1';
 const NOM_DEFAUT = 'Élève';
@@ -20,15 +26,17 @@ const fmt = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + '
 const etoiles = n => '★'.repeat(n) + '☆'.repeat(3 - n);
 
 // ---------------------------------------------------------------- donnees (localStorage)
+let seance = null;       // { def, eleves: [...], groupe } quand une seance est ouverte (seances.js)
+const cleStockage = () => (seance ? CLE + ':seance:' + seance.def.id : CLE);
 function lire() {
     try {
-        const d = JSON.parse(localStorage.getItem(CLE) || 'null');
+        const d = JSON.parse(localStorage.getItem(cleStockage()) || 'null');
         if (d && typeof d === 'object') return Object.assign({ profil: NOM_DEFAUT, libre: false, profils: {}, evaluations: [] }, d);
     } catch (erreur) { /* donnees illisibles : on repart de zero */ }
     return { profil: NOM_DEFAUT, libre: false, profils: {}, evaluations: [] };
 }
 let donnees = lire();
-function sauver() { try { localStorage.setItem(CLE, JSON.stringify(donnees)); } catch (erreur) { /* navigation privee */ } }
+function sauver() { try { localStorage.setItem(cleStockage(), JSON.stringify(donnees)); } catch (erreur) { /* navigation privee */ } }
 function profil(nom = donnees.profil) {
     if (!donnees.profils[nom]) donnees.profils[nom] = { faits: {} };
     return donnees.profils[nom];
@@ -39,6 +47,12 @@ let defs = null;          // contenu de exercices.json
 let plat = [];            // tous les exercices, dans l'ordre, avec leur niveau
 async function chargerExercices() {
     if (defs) return defs;
+    if (seance) {
+        defs = { titre: 'Séance « ' + seance.def.titre + ' »',
+                 niveaux: [{ id: 'seance', titre: seance.def.titre, notion: seance.def.classe || '', exercices: seance.def.exercices || [] }] };
+        plat = defs.niveaux[0].exercices.map(e => Object.assign({ niveau: defs.niveaux[0], points: 1 }, e));
+        return defs;
+    }
     try {
         const reponse = await fetch('exercices.json', { cache: 'no-store' });
         if (!reponse.ok) throw new Error('HTTP ' + reponse.status);
@@ -105,6 +119,27 @@ function charger(blocsJson, variables) {
 }
 const espaceVierge = () => !blocs().some(b => !['au_demarrage', 'boucle_infinie'].includes(b.type));
 function reinitialiserEspace() { charger(BLOCS_DEPART); }
+// Seance : on reprend le programme deja commence par l'eleve pour cet exercice, sinon ses blocs de depart.
+function espaceDe(e, reprendre = true) {
+    const p = profil().programmes && profil().programmes[e.id];
+    if (seance && reprendre && p && p.blocs) { Blockly.serialization.workspaces.load(p.blocs, ws()); return; }
+    if (e.depart && e.depart.blocks) { charger(e.depart.blocks, e.depart.variables); return; }
+    reinitialiserEspace();
+}
+// Seance : programme de l'eleve memorise pour chaque exercice (blocs + code Python), pour le fichier rendu.
+let memo = null;
+function memoriserProgramme(id) {
+    if (!seance || !id || !ws()) return;
+    const p = profil();
+    p.programmes = p.programmes || {};
+    p.programmes[id] = { blocs: Blockly.serialization.workspaces.save(ws()),
+                         python: window.genererCodeTest ? window.genererCodeTest(ws()) : '', date: new Date().toISOString() };
+    sauver();
+}
+function idEnCours() {
+    if (!session) return null;
+    return session.mode === 'tp' ? session.id : (session.termine ? null : session.liste[session.idx]);
+}
 
 // ---------------------------------------------------------------- session en cours
 let session = null;      // { mode:'tp'|'eval', ... }
@@ -124,7 +159,8 @@ async function lancerExercice(id) {
     if (!e) return;
     if (session && session.mode === 'eval') return;
     if (!confirmerRemplacement()) return;
-    reinitialiserEspace();
+    if (session && session.mode === 'tp') memoriserProgramme(session.id);
+    espaceDe(e);
     fermerFenetres();
     session = { mode: 'tp', id, debut: Date.now(), indices: 0, solution: false, essais: 0, valide: false };
     afficherPanneau();
@@ -139,9 +175,10 @@ function validerTp() {
     const ancien = fait(e.id);
     profil().faits[e.id] = {
         etoiles: Math.max(n, ancien && ancien.etoiles || 0), indices: s.indices, solution: s.solution || (ancien && ancien.solution) || false,
-        secondes: Math.round((Date.now() - s.debut) / 1000), date: new Date().toISOString()
+        secondes: Math.round((Date.now() - s.debut) / 1000), date: new Date().toISOString(), manuel: !e.regle
     };
     sauver();
+    memoriserProgramme(e.id);
     afficherPanneau();
 }
 
@@ -166,12 +203,13 @@ function voirSolution() {
     planifierVerification();
     afficherPanneau();
 }
-function recommencer() { reinitialiserEspace(); session.valide = false; afficherPanneau(); }
+function recommencer() { espaceDe(exo(session.id), false); session.valide = false; afficherPanneau(); }
 function suivant() {
+    memoriserProgramme(session.id);
     const i = plat.findIndex(e => e.id === session.id);
     const prochain = plat[i + 1];
     if (!prochain) { session = null; masquerPanneau(); ouvrirFenetre('exercices'); return; }
-    reinitialiserEspace();
+    espaceDe(prochain);
     session = { mode: 'tp', id: prochain.id, debut: Date.now(), indices: 0, solution: false, essais: 0, valide: false };
     afficherPanneau();
 }
@@ -185,7 +223,7 @@ function passerTp() {
 function demarrerEvaluation(ids, minutes) {
     if (!ids.length) return;
     if (!confirmerRemplacement()) return;
-    reinitialiserEspace();
+    espaceDe(exo(ids[0]), false);
     fermerFenetres();
     session = { mode: 'eval', nom: donnees.profil, liste: ids, idx: 0, debut: Date.now(), limiteMs: minutes ? minutes * 60000 : 0,
         resultats: [], essais: 0, debutExo: Date.now(), termine: false, etat: '' };
@@ -205,6 +243,7 @@ function chronoEval() {
 }
 function enregistrerResultat(ok, points) {
     const e = exo(session.liste[session.idx]);
+    memoriserProgramme(e.id);
     session.resultats.push({ id: e.id, titre: e.titre, ok, essais: session.essais, points, sur: e.points,
         secondes: Math.round((Date.now() - session.debutExo) / 1000) });
 }
@@ -213,6 +252,14 @@ function validerEval() {
     if (!s || s.mode !== 'eval' || s.etat) return;
     const e = exo(s.liste[s.idx]);
     s.essais++;
+    // Exercice sans controle automatique (cree par l'enseignant) : remis tel quel, a corriger.
+    if (!e.regle) {
+        enregistrerResultat(null, 0);
+        s.resultats[s.resultats.length - 1].aCorriger = true;
+        s.etat = 'remis';
+        afficherPanneau();
+        return;
+    }
     if (regleOk(e.regle)) {
         enregistrerResultat(true, Math.round(e.points * PART_POINTS[Math.min(s.essais, ESSAIS_MAX) - 1] * 100) / 100);
         s.etat = 'reussi';
@@ -236,7 +283,7 @@ function suivantEval() {
     s.idx++;
     s.essais = 0; s.etat = ''; s.debutExo = Date.now();
     if (s.idx >= s.liste.length) { terminerEvaluation(''); return; }
-    reinitialiserEspace();
+    espaceDe(exo(s.liste[s.idx]), false);
     afficherPanneau();
 }
 function abandonner() {
@@ -303,6 +350,8 @@ function creerPanneau() {
         else if (a === 'passer-eval') passerEval();
         else if (a === 'suivant-eval') suivantEval();
         else if (a === 'abandonner') abandonner();
+        else if (a === 'termine') validerTp();
+        else if (a === 'rendre' && window.seanceRendre) window.seanceRendre();
     });
     return p;
 }
@@ -328,7 +377,14 @@ function afficherPanneau() {
         if (session.valide) {
             html += '<p class="ex-ok">✔ Bien joué ! ' + etoiles(etoilesPour(session)) + (session.solution ? ' (solution vue)' : '') + '</p>';
             html += '<div class="ex-boutons"><button class="ex-primaire" data-act="suivant">' + (plat[plat.findIndex(x => x.id === e.id) + 1] ? 'Exercice suivant ▶' : 'Terminer 🎉') + '</button>' +
-                '<button data-act="recommencer">Recommencer</button><button data-act="liste">Liste</button></div>';
+                '<button data-act="recommencer">Recommencer</button><button data-act="liste">Liste</button>' +
+                (seance ? '<button data-act="rendre">📤 Rendre mon travail</button>' : '') + '</div>';
+        } else if (!e.regle) {
+            html += '<p class="ex-attente">Cet exercice sera corrigé par ton professeur : clique sur « J\'ai terminé » quand ton programme est prêt.</p>';
+            html += '<div class="ex-boutons"><button class="ex-primaire" data-act="termine">✔ J\'ai terminé</button>' +
+                (session.indices < indices.length ? '<button data-act="indice">💡 Indice (' + session.indices + '/' + indices.length + ')</button>' : '') +
+                (e.solution ? '<button data-act="solution">Solution</button>' : '') +
+                '<button data-act="recommencer">Recommencer</button><button data-act="passer">Passer</button><button data-act="liste">Liste</button></div>';
         } else {
             html += '<p class="ex-attente">Le contrôle se fait tout seul : pose tes blocs, la validation apparaît quand c\'est bon.</p>';
             html += '<div class="ex-boutons">' +
@@ -344,7 +400,10 @@ function afficherPanneau() {
             '<span id="ex-chrono">' + esc(chronoEval()) + '</span><button data-act="reduire" title="Réduire / agrandir">–</button></div>';
         html += '<div class="ex-corps"><div class="ex-niveau">' + esc(e.id) + ' · ' + esc(e.titre) + ' · ' + e.points + ' pt' + (e.points > 1 ? 's' : '') + '</div>';
         html += '<p class="ex-consigne">' + esc(e.consigne) + '</p>';
-        if (s.etat === 'reussi') {
+        if (s.etat === 'remis') {
+            html += '<p class="ex-ok">✔ Exercice remis : ton professeur le corrigera.</p><div class="ex-boutons"><button class="ex-primaire" data-act="suivant-eval">' +
+                (s.idx + 1 >= s.liste.length ? 'Terminer ▶' : 'Exercice suivant ▶') + '</button></div>';
+        } else if (s.etat === 'reussi') {
             html += '<p class="ex-ok">✔ Exercice validé.</p><div class="ex-boutons"><button class="ex-primaire" data-act="suivant-eval">' +
                 (s.idx + 1 >= s.liste.length ? 'Terminer ▶' : 'Exercice suivant ▶') + '</button></div>';
         } else if (s.etat === 'echec') {
@@ -381,7 +440,11 @@ async function ouvrirFenetre(onglet = 'exercices') {
     const nomActuel = donnees.profil;
     const noms = Object.keys(donnees.profils);
     let contenu = '<div class="ex-haut"><h2>🎓 ' + esc(defs.titre || 'Exercices') + '</h2><button class="ex-x" data-f="fermer" title="Fermer">✕</button></div>';
-    contenu += '<div class="ex-profil"><label>Nom de l\'élève <input id="ex-nom" type="text" value="' + esc(nomActuel) + '" maxlength="40" list="ex-noms" autocomplete="off"></label>' +
+    if (seance) {
+        contenu += '<div class="ex-seance">' + esc(seance.def.classe ? seance.def.classe + ' · ' : '') + esc(seance.groupe) + ' · <b>' + esc(seance.eleves.join(', ')) + '</b>' +
+            '<span class="ex-boutons"><button class="ex-primaire" data-a="rendre">📤 Rendre mon travail</button><button data-a="quitter-seance">Quitter la séance</button></span></div>';
+    }
+    contenu += '<div class="ex-profil"' + (seance ? ' hidden' : '') + '><label>Nom de l\'élève <input id="ex-nom" type="text" value="' + esc(nomActuel) + '" maxlength="40" list="ex-noms" autocomplete="off"></label>' +
         '<datalist id="ex-noms">' + noms.map(n => '<option value="' + esc(n) + '">').join('') + '</datalist>' +
         '<label class="ex-libre"><input id="ex-libre" type="checkbox"' + (donnees.libre ? ' checked' : '') + '> Accès libre (tout déverrouiller)</label></div>';
     contenu += '<div class="ex-onglets"><button data-onglet="exercices">Exercices</button><button data-onglet="evaluation">Évaluation</button><button data-onglet="resultats">Résultats</button></div>';
@@ -428,6 +491,8 @@ async function ouvrirFenetre(onglet = 'exercices') {
         } else if (act === 'imprimer') window.print();
         else if (act === 'rapport') ouvrirRapport(donnees.evaluations[Number(a.dataset.i)]);
         else if (act === 'csv-classe') telecharger('classe.csv', csvClasse(), 'text/csv');
+        else if (act === 'rendre' && window.seanceRendre) window.seanceRendre();
+        else if (act === 'quitter-seance' && window.seanceQuitter) window.seanceQuitter();
     });
     v.addEventListener('change', ev => {
         if (ev.target.id === 'ex-import-fichier') importerProgression(ev.target.files, () => montrer('resultats'));
@@ -492,19 +557,21 @@ function htmlResultats() {
 
 function ouvrirRapport(r) {
     if (!r) return;
-    const lignes = r.details.map(d => '<tr><td>' + esc(d.id) + '</td><td>' + esc(d.titre) + '</td><td>' + (d.nonFait ? 'non traité' : d.ok ? '✔ réussi' : d.essais === 0 ? '↷ passé' : '✘ échec') +
+    const lignes = r.details.map(d => '<tr><td>' + esc(d.id) + '</td><td>' + esc(d.titre) + '</td><td>' + (d.nonFait ? 'non traité' : d.aCorriger ? '✎ à corriger' : d.ok ? '✔ réussi' : d.essais === 0 ? '↷ passé' : '✘ échec') +
         '</td><td>' + d.essais + '</td><td>' + fmt(d.secondes) + '</td><td>' + d.points + ' / ' + d.sur + '</td></tr>').join('');
     const v = voile('<div class="ex-haut"><h2>📝 Rapport d\'évaluation</h2><button class="ex-x ex-noprint" data-f="fermer" title="Fermer">✕</button></div>' +
         '<p><b>' + esc(r.nom) + '</b> — ' + esc(new Date(r.date).toLocaleString('fr-FR')) + ' — durée ' + fmt(r.secondes) + (r.motif ? ' (' + esc(r.motif) + ')' : '') + '</p>' +
         '<p class="ex-grand">Note : <b>' + r.note + ' / 20</b> <small>(' + r.points + ' point' + (r.points > 1 ? 's' : '') + ' sur ' + r.total + ')</small></p>' +
         '<table class="ex-table"><tr><th>N°</th><th>Exercice</th><th>Résultat</th><th>Essais</th><th>Temps</th><th>Points</th></tr>' + lignes + '</table>' +
-        '<div class="ex-boutons ex-noprint"><button class="ex-primaire" data-a="imprimer">🖨 Imprimer</button><button data-a="csv">Exporter (CSV)</button>' +
+        '<div class="ex-boutons ex-noprint">' + (seance ? '<button class="ex-primaire" data-a="rendre">📤 Rendre mon travail</button>' : '') +
+        '<button' + (seance ? '' : ' class="ex-primaire"') + ' data-a="imprimer">🖨 Imprimer</button><button data-a="csv">Exporter (CSV)</button>' +
         '<button data-a="json">Exporter (JSON)</button><button data-f="fermer">Fermer</button></div>', 'ex-rapport');
     v.addEventListener('click', ev => {
         if (ev.target.closest('[data-f="fermer"]')) fermerFenetres();
         const a = ev.target.closest('[data-a]');
         if (!a) return;
         if (a.dataset.a === 'imprimer') window.print();
+        else if (a.dataset.a === 'rendre' && window.seanceRendre) window.seanceRendre();
         else if (a.dataset.a === 'csv') telecharger('evaluation_' + r.nom + '.csv', csvRapport(r), 'text/csv');
         else if (a.dataset.a === 'json') telecharger('evaluation_' + r.nom + '.json', JSON.stringify(r, null, 2), 'application/json');
     });
@@ -598,6 +665,9 @@ style.textContent = `
 .ex-haut { display: flex; align-items: center; justify-content: space-between; }
 .ex-haut h2 { margin: 0; font-size: 18px; color: #ff7a33; }
 .ex-x { width: 28px; height: 28px; padding: 0 !important; }
+.ex-seance { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0; padding: 8px 10px;
+  border-radius: 6px; background: rgba(255, 85, 1, .12); border: 1px solid #ff5501; }
+.ex-seance .ex-boutons { margin: 0; }
 .ex-profil { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; margin: 10px 0; }
 .ex-profil input[type=text] { padding: 4px 8px; border-radius: 4px; border: 1px solid var(--bordure-chrome, #555); background: var(--fond-saisie, #202020); color: var(--texte-saisie, #e6e6e6); }
 .ex-onglets { display: flex; gap: 4px; border-bottom: 2px solid #ff5501; margin-bottom: 10px; }
@@ -631,10 +701,65 @@ function brancher() {
     const aide = $('#ex-menu-btn'), evalu = $('#ex-eval-menu-btn');
     if (aide) aide.addEventListener('click', () => ouvrirFenetre('exercices'));
     if (evalu) evalu.addEventListener('click', () => ouvrirFenetre('evaluation'));
-    if (ws()) ws().addChangeListener(ev => { if (!ev.isUiEvent) planifierVerification(); });
+    if (ws()) ws().addChangeListener(ev => {
+        if (ev.isUiEvent) return;
+        planifierVerification();
+        // Seance : le programme en cours est memorise (une seconde apres la derniere modification).
+        if (seance && idEnCours()) { clearTimeout(memo); const id = idEnCours(); memo = setTimeout(() => memoriserProgramme(id), 1000); }
+    });
     window.addEventListener('beforeunload', ev => { if (session && session.mode === 'eval') { ev.preventDefault(); ev.returnValue = ''; } });
 }
 brancher();
+
+// ---------------------------------------------------------------- seance (appele par seances.js)
+window.exercicesSeance = {
+    /** Ouvre une seance : exercices, progression et programmes propres a cette seance et a ces eleves. */
+    activer(def, eleves, groupe) {
+        if (session && session.mode === 'eval') return false;
+        session = null; masquerPanneau(); fermerFenetres();
+        seance = { def, eleves, groupe };
+        defs = null;
+        donnees = lire();
+        donnees.profil = eleves.join(' et ');
+        donnees.libre = true;               // en seance, tous les exercices sont ouverts
+        sauver();
+        return true;
+    },
+    quitter() {
+        if (session && session.mode === 'eval') return false;
+        session = null; masquerPanneau(); fermerFenetres();
+        seance = null; defs = null; donnees = lire();
+        return true;
+    },
+    active: () => seance,
+    enEvaluation: () => !!(session && session.mode === 'eval'),
+    async ouvrir() { await chargerExercices(); ouvrirFenetre('exercices'); },
+    async evaluer() { await chargerExercices(); demarrerEvaluation(plat.map(e => e.id), Number(seance && seance.def.minutes) || 0); },
+    /** Contenu du fichier rendu : chaque exercice avec son statut et le programme de l'eleve. */
+    rendu() {
+        if (!seance) return null;
+        const id = idEnCours();
+        if (id) memoriserProgramme(id);
+        const p = profil(), prog = p.programmes || {};
+        const evaluation = donnees.evaluations.filter(r => r.nom === donnees.profil).slice(-1)[0] || null;
+        const exercices = (seance.def.exercices || []).map(e => {
+            const f = p.faits[e.id], d = evaluation && evaluation.details.find(x => x.id === e.id);
+            let statut = 'non fait';
+            if (d) statut = d.nonFait ? 'non fait' : d.aCorriger ? 'à corriger' : d.ok ? 'réussi' : d.essais === 0 ? 'passé' : 'échec';
+            else if (f) statut = f.passe ? 'passé' : f.manuel ? 'à corriger' : 'réussi';
+            else if (prog[e.id]) statut = 'commencé';
+            return { id: e.id, titre: e.titre, statut, etoiles: f && !f.passe ? f.etoiles : 0, indices: f ? f.indices || 0 : 0,
+                     solutionVue: !!(f && f.solution), secondes: d ? d.secondes : f ? f.secondes || 0 : 0,
+                     essais: d ? d.essais : null, points: d ? d.points : null, sur: d ? d.sur : (e.points || 1),
+                     blocs: prog[e.id] ? prog[e.id].blocs : null, python: prog[e.id] ? prog[e.id].python : '' };
+        });
+        return { format: 'rendu-microbit', version: 1, date: new Date().toISOString(),
+                 seance: { id: seance.def.id, titre: seance.def.titre, classe: seance.def.classe || '', mode: seance.def.mode || 'tp' },
+                 groupe: seance.groupe, eleves: seance.eleves, exercices,
+                 evaluation: evaluation ? { note: evaluation.note, points: evaluation.points, total: evaluation.total,
+                                            secondes: evaluation.secondes, motif: evaluation.motif } : null };
+    },
+};
 
 window.exercicesTest = { chargerExercices, regleOk, correspond, lancerExercice, ouvrirFenetre, demarrerEvaluation, validerEval,
     etat: () => ({ session, donnees }), plat: () => plat, reinitialiserEspace, charger, validerTp };

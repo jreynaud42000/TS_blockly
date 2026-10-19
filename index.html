@@ -195,6 +195,7 @@
       display: block; width: 100%; text-align: left; padding: 8px 14px; margin: 0; border: none; background: none;
       cursor: pointer; font-size: 13px; font-weight: normal; font-family: var(--font); color: #333; border-radius: 0; white-space: nowrap;
     }
+    .tb-dropdown-menu button[hidden] { display: none; }   /* sinon « display: block » ci-dessus affiche les boutons masques */
     .tb-dropdown-menu button:hover { background: #f0f0f0; }
     .tb-dropdown-menu button:disabled, .tb-dropdown-menu button:disabled:hover { color: #999; background: none; cursor: not-allowed; }
     .menu-titre { padding: 8px 14px 3px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #888; }
@@ -445,6 +446,13 @@
         border-top: 2px solid var(--fond-chrome); }
     :root[data-contrast="high"] #console-panneau { border-top-width: 2px; border-top-color: #ffffff; }
     #console-entete { display: flex; align-items: center; gap: 12px; }
+    /* Bord haut de la console : barre a glisser (souris ou doigt) pour regler la hauteur (un.js, « redimensionnement
+       de la console »). Double-clic : hauteur de depart. Elle deborde de 4 px au-dessus pour etre facile a attraper. */
+    #console-panneau { position: relative; }
+    #console-redimensionneur { position: absolute; left: 0; right: 0; top: -5px; height: 9px; cursor: row-resize; z-index: 6;
+        touch-action: none; }
+    #console-redimensionneur::after { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 3px; background: transparent; }
+    #console-redimensionneur:hover::after, #console-redimensionneur.actif::after { background: #cf4400; }
     #console-entete h3 { margin: 0; color: #ff7a33; font-size: 13px; text-transform: uppercase; flex: 0 0 auto; }
     #console-boutons { display: flex; gap: 6px; white-space: nowrap; flex: 0 0 auto; }
     #console-boutons button { font-size: 12px; padding: 4px 10px; margin: 0; background: #4a4a4a; }
@@ -454,7 +462,9 @@
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* resize: vertical = poignee en bas a droite pour agrandir la zone de sortie ;
        la barre grandit alors et l'espace de blocs se reduit (voir ResizeObserver, un.js). */
-    #console-sortie { height: 130px; min-height: 50px; max-height: 60vh; overflow: auto; resize: vertical;
+    /* border-box : la hauteur lue (offsetHeight) et la hauteur posee (style.height) mesurent la meme chose ;
+       sinon chaque bascule Texte / Graphique ajoutait bordures et marges (+20 px) et la console grandissait sans fin. */
+    #console-sortie { box-sizing: border-box; height: 148px; min-height: 50px; max-height: 60vh; overflow: auto; resize: vertical;
         margin: 6px 0; padding: 8px;
         background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome);
         border-radius: 4px; font: 12px/1.45 Consolas, "DejaVu Sans Mono", monospace; white-space: pre-wrap;
@@ -464,7 +474,7 @@
     #console-onglets button:hover { background: #5e5e5e; }
     #console-onglets button.actif { background: #cf4400; }
     /* Vue graphique : meme gabarit et meme poignee de redimensionnement que la sortie texte. */
-    #console-graphique { height: 130px; min-height: 50px; max-height: 60vh; resize: vertical; overflow: hidden;
+    #console-graphique { box-sizing: border-box; height: 148px; min-height: 50px; max-height: 60vh; resize: vertical; overflow: hidden;
         margin: 6px 0; position: relative; background: var(--fond-saisie);
         border: 1px solid var(--bordure-chrome); border-radius: 4px; }
     #console-canevas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
@@ -1234,7 +1244,7 @@
     .blocklyToolboxCategory > .blocklyTreeRow.blocklyTreeSelected {
         background-color: var(--ec-cat-sel) !important; box-shadow: inset 3px 0 0 var(--ec-cat-lisere); }
     .blocklyToolboxCategory > .blocklyTreeRow.blocklyTreeSelected .blocklyTreeLabel { color: var(--ec-cat-sel-txt) !important; }
-    /* Pastille : couleur exacte de la version Arduino (posee dans --puce par bandeau.js), fin liseré (blanc, noir ou blanc epais selon le mode). */
+    /* Pastille : couleur exacte de la categorie et de ses blocs (posee dans --puce par bandeau.js), fin liseré (blanc, noir ou blanc epais selon le mode). */
     .blocklyToolboxCategory .blocklyTreeRow::before {
         background: var(--puce, #888);
         box-shadow: 0 0 0 var(--ec-puce-lisere-w) var(--ec-puce-lisere); }
@@ -1286,6 +1296,125 @@
     :root[data-contrast="high"]:not([data-theme="light"]) .blocklyIconShape { fill: #000 !important; stroke: #fff; stroke-width: 1.5px; }
     :root[data-contrast="high"]:not([data-theme="light"]) .blocklyIconSymbol { fill: #fff !important; }
     :root[data-contrast="high"]:not([data-theme="light"]) .blocklyBlock image { filter: grayscale(1) brightness(1.6); }
+    /* ═══ Fenetre IA (oct. 2026, sur le modele de la version Arduino R4) : le bouton IA ouvre une fenetre centree sur un
+       voile. Bandeau titre (il suit le type d'apprentissage), onglets (apprentissage immediat, modeles Teachable Machine
+       camera et micro, QR codes), contenu, pied (Tout effacer, seuil, envoi a la carte, Termine). Apprentissage immediat :
+       pastilles du type, une carte par classe a gauche (Une photo / Plusieurs photos / Ajouter des images, ou Enregistrer
+       pour les sons), camera, test et aide a droite. Couleurs : --texte-code (clair / sombre) par color-mix ; contraste
+       eleve : bords pleins. Comportement : fin d'ia.js (onglets, pastilles, pied, fermeture) et ia-immediat.js (cartes). */
+    #ia-panneau { --ia-or: #cf4400; --ia-or-vif: #f76707; --ia-or-texte: #ff8f50;
+        --ia-doux: color-mix(in srgb, var(--texte-code) 64%, transparent);
+        --ia-trait: color-mix(in srgb, var(--texte-code) 16%, transparent);
+        --ia-trait-fort: color-mix(in srgb, var(--texte-code) 32%, transparent);
+        --ia-fond-carte: color-mix(in srgb, var(--texte-code) 4%, transparent); }
+    :root[data-theme="light"] #ia-panneau { --ia-or-texte: #a8430f; }
+    :root #ia-panneau { position: fixed; inset: 0; z-index: 8000; display: flex; align-items: center; justify-content: center;
+        padding: 16px; max-height: none; overflow: hidden; background: rgba(0, 0, 0, 0.5); border: none; }
+    #ia-fenetre { display: flex; flex-direction: column; width: min(1140px, 100%); max-height: 100%; border-radius: 12px; overflow: hidden;
+        background: var(--ec-code, var(--fond-code)); color: var(--texte-code); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45); }
+    :root[data-contrast="high"] #ia-fenetre { border: 3px solid var(--ec-code-bord); box-shadow: none; }
+    #ia-entete { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: nowrap; gap: 12px; padding: 12px 16px 12px 22px;
+        background: var(--ia-or); color: #fff; }
+    #ia-entete h3 { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; margin: 0; color: #fff; font-size: 18px;
+        text-transform: none; letter-spacing: 0; }
+    #ia-boutons button { background: rgba(255, 255, 255, 0.18); color: #fff; border: none; border-radius: 8px; padding: 5px 11px; }
+    #ia-boutons button:hover { background: rgba(255, 255, 255, 0.32); }
+    #ia-onglets { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--ia-trait); }
+    #ia-onglets .ia-onglet { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 11px 12px 8px; font-size: 13px;
+        background: transparent; color: var(--ia-doux); border: none; border-bottom: 3px solid transparent; border-radius: 0; }
+    #ia-onglets .ia-onglet:hover { background: var(--ia-fond-carte); color: var(--texte-code); }
+    #ia-onglets .ia-onglet.actif { color: var(--texte-code); border-bottom-color: var(--ia-or-vif); }
+    .ia-onglet-point { width: 8px; height: 8px; border-radius: 50%; }
+    .ia-onglet-point[data-etat="pret"] { background: #339af0; }
+    .ia-onglet-point[data-etat="marche"] { background: #40c057; }
+    #btn-vue-ia.ia-en-marche { box-shadow: inset 0 -3px 0 #40c057; }
+    #ia-colonnes { display: block; flex: 1 1 auto; min-height: 0; overflow: auto; margin: 0; padding: 18px 22px; }
+    #ia-colonnes > .ia-colonne { display: none; min-width: 0; margin: 0; padding: 0; background: transparent; border: none; border-radius: 0; }
+    #ia-panneau[data-onglet="immediat"] .ia-colonne[data-genre="immediat"], #ia-panneau[data-onglet="vision"] .ia-colonne[data-genre="vision"],
+    #ia-panneau[data-onglet="son"] .ia-colonne[data-genre="son"], #ia-panneau[data-onglet="qr"] .ia-colonne[data-genre="qr"] { display: block; }
+    .ia-colonne > h4 { display: none; }
+    .ia-colonne[data-genre="vision"], .ia-colonne[data-genre="son"], .ia-colonne[data-genre="qr"] { max-width: 760px; }
+    .ia-intro { margin: 0 0 12px; font-size: 14px; line-height: 1.45; color: var(--ia-doux); }
+    #ia-pied { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; padding: 12px 22px;
+        border-top: 1px solid var(--ia-trait); background: var(--ia-fond-carte); }
+    #ia-pied button { margin: 0; border-radius: 8px; font-size: 14px; }
+    #ia-pied .ia-pied-effacer { padding: 8px 16px; background: transparent; color: var(--texte-code); border: 1px solid var(--ia-trait-fort); }
+    #ia-pied .ia-pied-effacer:hover { background: var(--ia-fond-carte); }
+    #ia-panneau:not([data-onglet="immediat"]) .ia-pied-effacer { visibility: hidden; transition: none; }
+    #ia-pied .ia-pied-termine { margin-left: auto; padding: 9px 22px; font-size: 15px; background: var(--ia-or); color: #fff; border: none; }
+    #ia-pied .ia-pied-termine:hover { background: #b33a00; }
+    #ia-seuil-groupe { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+    #ia-seuil { accent-color: var(--ia-or-vif); width: 140px; }
+    .ia-pilule { display: inline-block; min-width: 3.4em; text-align: center; padding: 1px 9px; border-radius: 999px; font-size: 12px;
+        background: color-mix(in srgb, var(--ia-or-vif) 20%, transparent); color: var(--texte-code); }
+    #ia-carte-label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+    #ia-vers-carte { appearance: none; -webkit-appearance: none; position: relative; width: 34px; height: 20px; margin: 0; flex: 0 0 auto;
+        border-radius: 999px; background: color-mix(in srgb, var(--texte-code) 28%, transparent); cursor: pointer; transition: background .15s; }
+    #ia-vers-carte::before { content: ''; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; }
+    #ia-vers-carte:checked { background: var(--ia-or-vif); }
+    #ia-vers-carte:checked::before { left: 16px; }
+    #ia-vers-carte:focus-visible { outline: 2px solid var(--ia-or-vif); outline-offset: 2px; }
+    #ia-etat-carte { flex: 0 1 auto; }
+    /* Boutons, champs et barres des onglets */
+    .ia-colonne button { border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; background: transparent;
+        color: var(--texte-code); border: 1px solid var(--ia-trait-fort); }
+    .ia-colonne button:hover:not(:disabled) { background: color-mix(in srgb, var(--texte-code) 9%, transparent); }
+    .ia-colonne button:disabled { opacity: 0.45; }
+    .ia-colonne button.ia-demarrer { background: var(--ia-or); border-color: var(--ia-or); color: #fff; }
+    .ia-colonne button.ia-demarrer:hover:not(:disabled) { background: #b33a00; }
+    .ia-colonne button.en-marche, .ia-colonne button.ia-demarrer.en-marche, .ia-colonne button.ia-imm-camera.en-marche,
+    .ia-colonne button.enregistre { background: #e03131; border-color: #e03131; color: #fff; }
+    .ia-url, .ia-ex-nom, .ia-imm-type { border-radius: 8px !important; }
+    .ia-url { font-size: 13px !important; padding: 7px 10px !important; }
+    .ia-statut, .ia-creer-aide, .ia-ex-n, .ia-classe-pct, .ia-creer > summary { color: var(--ia-doux); }
+    .ia-statut { font-size: 13px; }
+    .ia-classe { font-size: 13px; }
+    .ia-classe-barre { height: 9px; border: none; border-radius: 999px; background: color-mix(in srgb, var(--texte-code) 13%, transparent); }
+    .ia-classe-barre > i { border-radius: 999px; background: color-mix(in srgb, var(--texte-code) 38%, transparent); }
+    .ia-classe.retenue .ia-classe-barre > i { background: var(--ia-or-vif); }
+    .ia-classe.retenue .ia-classe-nom { color: var(--ia-or-texte); }
+    .ia-apercu, .ia-imm-vignette { border-radius: 8px; }
+    /* Apprentissage immediat */
+    .ia-imm-choix { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 18px; }
+    .ia-imm-choix-titre { font-size: 14px; }
+    .ia-imm-type-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .ia-imm-pastilles { display: flex; flex-wrap: wrap; gap: 8px; }
+    .ia-colonne button.ia-pastille { border-radius: 999px; padding: 7px 16px; font-size: 14px; color: var(--ia-or-texte); border-color: var(--ia-or-vif); }
+    .ia-colonne button.ia-pastille[aria-pressed="true"] { background: var(--ia-or); border-color: var(--ia-or); color: #fff; }
+    .ia-imm-grille { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(260px, 1fr); gap: 20px; align-items: start; }
+    @media (max-width: 760px) { .ia-imm-grille { grid-template-columns: minmax(0, 1fr); } }
+    .ia-creer-classes { display: flex; flex-direction: column; gap: 12px; }
+    .ia-colonne .ia-imm-ex { display: block; margin: 0; padding: 14px 18px; border: 1px solid var(--ia-trait); border-radius: 10px; background: var(--ia-fond-carte); }
+    .ia-ex-haut { display: flex; align-items: center; gap: 8px; }
+    .ia-colonne .ia-ex-nom { flex: 1 1 auto; min-width: 0; font-size: 17px; font-weight: 600; padding: 3px 6px;
+        background: transparent; color: var(--texte-code); border: 1px solid transparent; }
+    .ia-colonne .ia-ex-nom:hover, .ia-colonne .ia-ex-nom:focus { border-color: var(--ia-trait-fort); }
+    .ia-ex-compte { flex: 0 0 auto; font-size: 13px; color: var(--ia-doux); white-space: nowrap; margin-right: 4px; }
+    .ia-ex-compte .ia-ex-n { color: inherit; }
+    .ia-colonne button.ia-ex-icone { padding: 3px 7px; font-size: 15px; font-weight: normal; border-color: transparent; background: transparent; }
+    .ia-ex-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .ia-ex-actions button { padding: 7px 12px; font-size: 14px; color: var(--ia-or-texte) !important; border-color: var(--ia-or-vif) !important; }
+    .ia-colonne .ia-ex-actions button.enregistre { color: #fff !important; }
+    .ia-colonne .ia-imm-vignettes { margin-top: 10px; max-height: 84px; }
+    .ia-colonne button.ia-ajouter-classe { margin-top: 12px; padding: 8px 16px; font-size: 14px; color: var(--ia-or-texte); border: 1px dashed var(--ia-or-vif); }
+    .ia-imm-note { margin: 14px 0 8px; font-size: 13px; color: var(--ia-doux); }
+    .ia-creer-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .ia-colonne .ia-imm-cadre { position: relative; width: 100%; height: auto; aspect-ratio: 16 / 10; margin: 0; border-radius: 8px; background: #111; }
+    .ia-imm-cadre.eteint > video, .ia-imm-cadre.eteint > canvas { visibility: hidden; }
+    .ia-imm-cadre-vide { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; color: #8a8a8a; font-size: 13px; }
+    .ia-imm-cadre.eteint > .ia-imm-cadre-vide { display: flex; }
+    .ia-colonne.type-sons .ia-imm-cadre { display: none; }
+    .ia-colonne .ia-imm-niveau { width: 100%; height: 14px; margin: 0 0 6px; }
+    .ia-imm-capteur { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 10px 0 12px; }
+    .ia-colonne .ia-creer-statut { flex: 1 1 160px; margin: 0; font-size: 14px; line-height: 1.4; color: var(--texte-code); min-height: 0; }
+    .ia-imm-test { padding-top: 12px; border-top: 1px solid var(--ia-trait); }
+    .ia-imm-test .ia-classes { margin-top: 8px; }
+    .ia-colonne .ia-imm-droite .ia-creer-aide, .ia-imm-prive { margin: 14px 0 0; font-size: 13px; line-height: 1.45; color: var(--ia-doux); }
+    :root[data-contrast="high"] .ia-colonne .ia-imm-ex { background: transparent; border: 2px solid var(--ec-code-bord); }
+    :root[data-contrast="high"] .ia-colonne button, :root[data-contrast="high"] #ia-pied .ia-pied-effacer { border: 2px solid var(--texte-code); }
+    :root[data-contrast="high"] .ia-statut, :root[data-contrast="high"] .ia-creer-aide, :root[data-contrast="high"] .ia-imm-prive,
+    :root[data-contrast="high"] .ia-imm-note, :root[data-contrast="high"] .ia-ex-compte, :root[data-contrast="high"] .ia-intro,
+    :root[data-contrast="high"] #ia-onglets .ia-onglet { color: var(--texte-code); }
   </style>
 </head>
 
@@ -1329,6 +1458,13 @@
         <button id="tb-telecharger-xml" disabled title="Non disponible dans cette version">Télécharger .xml</button>
         <button id="download-btn">Télécharger .hex</button>
         <button id="download-py-btn">Télécharger .py</button>
+        <!-- Seances pour groupes d'eleves (seances.js) : distribuer, rendre et ramasser des exercices par fichiers -->
+        <div class="menu-titre">Séance</div>
+        <button id="seance-rejoindre-btn" hidden title="Rejoindre la séance diffusée par le poste du professeur (mode classe)">🏫 Rejoindre la séance de la classe</button>
+        <button id="seance-ouvrir-btn" title="Ouvrir le fichier de séance donné par le professeur">📂 Ouvrir une séance…</button>
+        <button id="seance-rendre-btn" disabled title="Télécharger son travail pour le déposer sur l'ENT">📤 Rendre mon travail</button>
+        <button id="seance-quitter-btn" hidden>Quitter la séance</button>
+        <button id="seance-enseignant-btn" title="Préparer une séance, ramasser les travaux des élèves">👩‍🏫 Espace enseignant…</button>
       </div>
     </div>
 
@@ -2056,6 +2192,8 @@
   <!-- Console : barre en bas de l'application, masquee par defaut (bouton >_
        de la barre d'outils). print() du simulateur + sortie serie de la carte. -->
   <section id="console-panneau" class="replie" aria-label="Console">
+    <div id="console-redimensionneur" role="separator" aria-orientation="horizontal" aria-label="Hauteur de la console"
+         title="Glisser pour changer la hauteur de la console (double-clic : hauteur de départ)"></div>
     <div id="console-entete">
       <h3>Console</h3>
       <span id="console-onglets" role="tablist">
@@ -2084,28 +2222,28 @@
   <!-- IA : reconnaissance d'images (camera) et de sons (micro) avec des modeles
        Teachable Machine. Le moteur est dans ia.js ; les resultats pilotent les
        blocs « IA » (simulateur et vraie carte, via le port serie de la console). -->
-  <section id="ia-panneau" class="replie" aria-label="Intelligence artificielle">
+  <section id="ia-panneau" class="replie" data-onglet="immediat" aria-label="Intelligence artificielle">
+   <div id="ia-fenetre" role="dialog" aria-modal="true" aria-labelledby="ia-fenetre-titre">
     <div id="ia-entete">
-      <h3>IA</h3>
-      <span id="ia-seuil-groupe">
-        <label for="ia-seuil">Seuil de confiance : <b id="ia-seuil-val">80</b> %</label>
-        <input type="range" id="ia-seuil" min="30" max="99" value="80">
-      </span>
-      <label id="ia-carte-label" title="Envoyer aussi les résultats à la vraie carte (connectée par le bouton 🔌 de la console)">
-        <input type="checkbox" id="ia-vers-carte"> Envoyer à la carte
-      </label>
-      <span id="ia-etat-carte"></span>
+      <h3 id="ia-fenetre-titre"><span aria-hidden="true">🧠</span> <span id="ia-titre-texte">Entraîner l'IA à reconnaître des objets ou des images</span></h3>
       <span id="ia-boutons">
         <button id="btn-ia-aide" class="btn-vue" title="Aide : comment utiliser l'IA" aria-label="Aide sur l'IA">?</button>
-        <button id="btn-ia-fermer" class="btn-vue" title="Masquer le panneau IA" aria-label="Masquer le panneau IA">✕</button>
+        <button id="btn-ia-fermer" class="btn-vue" title="Fermer la fenêtre IA (la reconnaissance en cours continue)" aria-label="Fermer la fenêtre IA">✕</button>
       </span>
+    </div>
+    <div id="ia-onglets" role="tablist" aria-label="Modes de l'IA">
+      <button type="button" class="ia-onglet" role="tab" data-onglet="immediat">⚡ Apprentissage immédiat <span class="ia-onglet-point" aria-hidden="true"></span></button>
+      <button type="button" class="ia-onglet" role="tab" data-onglet="vision">📷 Modèle Teachable Machine (caméra) <span class="ia-onglet-point" aria-hidden="true"></span></button>
+      <button type="button" class="ia-onglet" role="tab" data-onglet="son">🎤 Modèle Teachable Machine (micro) <span class="ia-onglet-point" aria-hidden="true"></span></button>
+      <button type="button" class="ia-onglet" role="tab" data-onglet="qr">🔳 QR codes et codes-barres <span class="ia-onglet-point" aria-hidden="true"></span></button>
     </div>
     <div id="ia-colonnes">
       <!-- Apprentissage immediat (sans entrainement) et QR codes : moteur dans ia-immediat.js.
-           Resultats envoyes comme ceux de la colonne Vision (genre "vision") et en "qr". -->
-      <div class="ia-colonne" data-genre="immediat">
-        <h4>⚡ Apprentissage immédiat (caméra)</h4>
-        <div class="ia-modele">
+           Resultats envoyes comme ceux de l'onglet Vision (genre "vision") et en "qr". -->
+      <div class="ia-colonne" data-genre="immediat" role="tabpanel">
+        <h4>Apprentissage immédiat <small class="ia-sous-titre">caméra</small></h4>
+        <div class="ia-modele ia-imm-choix">
+          <span class="ia-imm-choix-titre">L'IA doit reconnaître :</span>
           <label class="ia-imm-type-label">Reconnaître :
             <select class="ia-imm-type" title="Ce que l'IA apprend à reconnaître">
               <option value="images">objets et images</option>
@@ -2114,32 +2252,42 @@
               <option value="sons">sons et mots (micro)</option>
             </select>
           </label>
-          <button class="btn-vue ia-imm-camera" title="Allumer la caméra pour ajouter des exemples">📷 Caméra</button>
         </div>
-        <div class="ia-actions">
-          <button class="btn-vue ia-demarrer" disabled>▶ Démarrer</button>
-          <span class="ia-statut">Ajoutez des exemples à au moins 2 classes.</span>
-        </div>
-        <div class="ia-imm-cadre replie"><video class="ia-imm-video" autoplay muted playsinline></video><canvas class="ia-imm-calque"></canvas></div>
-        <div class="ia-imm-niveau replie" title="Volume du micro au-dessus du bruit de fond (vert : son détecté)"><i></i></div>
-        <div class="ia-classes"></div>
-        <details class="ia-creer" open>
-          <summary>✚ Exemples (aucun entraînement : chaque exemple compte aussitôt)</summary>
-          <p class="ia-creer-aide">Maintenir le bouton d'une classe pour ajouter des exemples pris par la caméra, ou 🖼 pour des images. Gestes et positions : seul le squelette est gardé, jamais la photo.</p>
-          <div class="ia-creer-classes"></div>
-          <div class="ia-creer-actions">
-            <button class="btn-vue ia-ajouter-classe">+ Classe</button>
-            <button class="btn-vue ia-imm-exporter" title="Télécharger l'apprentissage dans un fichier .json (il est aussi rangé dans le .py téléchargé)">💾 Exporter</button>
-            <button class="btn-vue ia-imm-importer" title="Ouvrir un apprentissage enregistré (.json)">📂 Importer</button>
-            <button class="btn-vue ia-tout-effacer" title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
+        <div class="ia-imm-grille">
+          <div class="ia-imm-gauche">
+            <div class="ia-creer-classes"></div>
+            <button class="btn-vue ia-ajouter-classe">+ Ajouter une classe</button>
+            <p class="ia-imm-note">Évitez les accents et les caractères spéciaux dans les noms des classes : ils peuvent s'afficher sur un écran Grove, qui ne sait pas les montrer.</p>
+            <div class="ia-creer-actions">
+              <button class="btn-vue ia-imm-exporter" title="Télécharger l'apprentissage dans un fichier .json (il est aussi rangé dans le .py téléchargé)">💾 Exporter</button>
+              <button class="btn-vue ia-imm-importer" title="Ouvrir un apprentissage enregistré (.json)">📂 Importer</button>
+              <button class="btn-vue ia-tout-effacer" hidden title="Supprimer toutes les classes et leurs exemples">🗑 Tout effacer</button>
+            </div>
+            <input type="file" class="ia-imm-fichiers" accept="image/png,image/jpeg,image/webp" multiple style="display:none;">
+            <input type="file" class="ia-imm-import-fichier" accept=".json,application/json" style="display:none;">
           </div>
-          <input type="file" class="ia-imm-fichiers" accept="image/png,image/jpeg,image/webp" multiple style="display:none;">
-          <input type="file" class="ia-imm-import-fichier" accept=".json,application/json" style="display:none;">
-          <div class="ia-creer-statut"></div>
-        </details>
+          <div class="ia-imm-droite">
+            <div class="ia-imm-cadre eteint" data-toujours="1"><video class="ia-imm-video" autoplay muted playsinline></video><canvas class="ia-imm-calque"></canvas><span class="ia-imm-cadre-vide">Caméra éteinte</span></div>
+            <div class="ia-imm-niveau replie" title="Volume du micro au-dessus du bruit de fond (vert : son détecté)"><i></i></div>
+            <div class="ia-imm-capteur">
+              <button class="btn-vue ia-imm-camera" title="Allumer la caméra pour ajouter des exemples">📷 Caméra</button>
+              <span class="ia-creer-statut" aria-live="polite"></span>
+            </div>
+            <div class="ia-imm-test">
+              <div class="ia-actions">
+                <button class="btn-vue ia-demarrer" disabled title="Tester : l'IA reconnaît en continu et envoie la classe au programme">▶ Démarrer</button>
+                <span class="ia-statut">Ajoutez des exemples à au moins 2 classes.</span>
+              </div>
+              <div class="ia-classes"></div>
+            </div>
+            <p class="ia-creer-aide"></p>
+            <p class="ia-imm-prive"></p>
+          </div>
+        </div>
       </div>
-      <div class="ia-colonne" data-genre="vision">
-        <h4>📷 Vision : modèle Teachable Machine (caméra)</h4>
+      <div class="ia-colonne" data-genre="vision" role="tabpanel">
+        <h4>Vision <small class="ia-sous-titre">modèle Teachable Machine · caméra</small></h4>
+        <p class="ia-intro">Un modèle d'images fait sur Teachable Machine (teachablemachine.withgoogle.com) : collez son adresse puis « Charger » (nécessite Internet), ou « Fichiers… » et ses trois fichiers model.json, metadata.json et weights.bin (fonctionne hors connexion).</p>
         <div class="ia-modele">
           <input type="text" class="ia-url" placeholder="https://teachablemachine.withgoogle.com/models/…/" spellcheck="false">
           <button class="btn-vue ia-charger-url" title="Charger le modèle depuis son adresse (nécessite Internet : le modèle est téléchargé depuis les serveurs de Google ; aucune image ni aucun son n'y est envoyé). Sans Internet, utilisez « Fichiers… ».">Charger</button>
@@ -2152,10 +2300,11 @@
         </div>
         <video id="ia-video" class="ia-apercu replie" autoplay muted playsinline></video>
         <div class="ia-classes"></div>
-        <p class="ia-creer-aide">Pour créer vos propres classes d'images, utilisez « ⚡ Apprentissage immédiat ».</p>
+        <p class="ia-creer-aide">Pour créer vos propres classes d'images, utilisez l'onglet « ⚡ Apprentissage immédiat ».</p>
       </div>
-      <div class="ia-colonne" data-genre="son">
-        <h4>🎤 Son : modèle Teachable Machine (micro)</h4>
+      <div class="ia-colonne" data-genre="son" role="tabpanel">
+        <h4>Son <small class="ia-sous-titre">modèle Teachable Machine · micro</small></h4>
+        <p class="ia-intro">Un modèle de sons fait sur Teachable Machine : collez son adresse puis « Charger » (nécessite Internet), ou « Fichiers… » et ses trois fichiers (fonctionne hors connexion).</p>
         <div class="ia-modele">
           <input type="text" class="ia-url" placeholder="https://teachablemachine.withgoogle.com/models/…/" spellcheck="false">
           <button class="btn-vue ia-charger-url" title="Charger le modèle depuis son adresse (nécessite Internet : le modèle est téléchargé depuis les serveurs de Google ; aucune image ni aucun son n'y est envoyé). Sans Internet, utilisez « Fichiers… ».">Charger</button>
@@ -2167,17 +2316,18 @@
           <span class="ia-statut">Aucun modèle chargé.</span>
         </div>
         <div class="ia-classes"></div>
-        <p class="ia-creer-aide">Pour créer vos propres classes de sons, utilisez « ⚡ Apprentissage immédiat » (sons et mots).</p>
+        <p class="ia-creer-aide">Pour créer vos propres classes de sons, utilisez l'onglet « ⚡ Apprentissage immédiat » (des sons ou des mots).</p>
       </div>
-      <div class="ia-colonne" data-genre="qr">
-        <h4>🔳 QR codes et codes-barres (caméra)</h4>
+      <div class="ia-colonne" data-genre="qr" role="tabpanel">
+        <h4>QR codes <small class="ia-sous-titre">et codes-barres · caméra</small></h4>
+        <p class="ia-intro">La caméra lit les QR codes et les codes-barres ; leur texte arrive dans le programme (blocs de la catégorie IA).</p>
         <div class="ia-actions">
           <button class="btn-vue ia-demarrer">▶ Lire les codes</button>
           <span class="ia-statut">Arrêté.</span>
         </div>
         <div class="ia-imm-cadre replie"><video class="ia-imm-video" autoplay muted playsinline></video></div>
         <div class="ia-qr-texte"></div>
-        <details class="ia-creer">
+        <details class="ia-creer" open>
           <summary>✚ Créer un QR code à imprimer</summary>
           <div class="ia-modele">
             <input type="text" class="ia-url ia-qr-a-creer" maxlength="200" placeholder="Texte du QR code (ex. : avancer)" spellcheck="false">
@@ -2188,6 +2338,20 @@
         </details>
       </div>
     </div>
+    <div id="ia-pied">
+      <button type="button" class="btn-vue ia-pied-effacer" title="Supprimer toutes les classes et leurs exemples">Tout effacer</button>
+      <span id="ia-seuil-groupe">
+        <label for="ia-seuil">Seuil de confiance</label>
+        <input type="range" id="ia-seuil" min="30" max="99" value="80">
+        <span class="ia-pilule"><b id="ia-seuil-val">80</b> %</span>
+      </span>
+      <label id="ia-carte-label" title="Envoyer aussi les résultats à la vraie carte (connectée par le bouton 🔌 de la console)">
+        <input type="checkbox" id="ia-vers-carte"> Envoyer à la carte
+      </label>
+      <span id="ia-etat-carte"></span>
+      <button type="button" class="btn-vue ia-pied-termine">Terminé</button>
+    </div>
+   </div>
   </section>
 
   <!-- Signe de vie envoye au serveur local (app.py) : l'exe, qui n'a pas de fenetre
@@ -2213,6 +2377,7 @@
   <script type="module" src="tuto.js"></script>
   <script type="module" src="bandeau.js"></script>
   <script type="module" src="exercices.js"></script>
+  <script type="module" src="seances.js"></script>
   
   <!-- LOGIQUE DU SIMULATEUR EN PUR PYTHON (BRYTHON) -->
   <script type="text/python">
