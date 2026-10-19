@@ -1329,6 +1329,12 @@
         <button id="tb-telecharger-xml" disabled title="Non disponible dans cette version">Télécharger .xml</button>
         <button id="download-btn">Télécharger .hex</button>
         <button id="download-py-btn">Télécharger .py</button>
+        <!-- Seances pour groupes d'eleves (seances.js) : distribuer, rendre et ramasser des exercices par fichiers -->
+        <div class="menu-titre">Séance</div>
+        <button id="seance-ouvrir-btn" title="Ouvrir le fichier de séance donné par le professeur">📂 Ouvrir une séance…</button>
+        <button id="seance-rendre-btn" disabled title="Télécharger son travail pour le déposer sur l'ENT">📤 Rendre mon travail</button>
+        <button id="seance-quitter-btn" hidden>Quitter la séance</button>
+        <button id="seance-enseignant-btn" title="Préparer une séance, ramasser les travaux des élèves">👩‍🏫 Espace enseignant…</button>
       </div>
     </div>
 
@@ -2213,6 +2219,7 @@
   <script type="module" src="tuto.js"></script>
   <script type="module" src="bandeau.js"></script>
   <script type="module" src="exercices.js"></script>
+  <script type="module" src="seances.js"></script>
   
   <!-- LOGIQUE DU SIMULATEUR EN PUR PYTHON (BRYTHON) -->
   <script type="text/python">

@@ -1516,3 +1516,41 @@ Modele C (choisi parmi 3 propositions) pour tous les capteurs reglables du panne
 humidite, CO2, lumiere, pression, COV. Chaque section montre un petit module Grove dessine (composant propre a chaque
 capteur), un afficheur numerique vert sur fond noir avec la valeur et son unite, et le curseur dessous. Les id des
 curseurs et des valeurs (grove-temp, grove-temp-val...) sont inchanges : un.js n'a pas eu a changer.
+
+42. SEANCES POUR GROUPES D'ELEVES : DISTRIBUER, RENDRE, RAMASSER (oct. 2026)
+Tout passe par des fichiers, deposes la ou l'enseignant depose deja ses documents (ENT, Moodle, dossier partage, cle USB) :
+aucun serveur, aucun compte, aucune donnee envoyee par l'application. Fichiers : seances.js (fenetres) et exercices.js
+(« mode seance » du moteur d'exercices). Menu Fichier, rubrique « Seance ».
+
+ENSEIGNANT — Fichier > Espace enseignant > Preparer une seance
+- Titre, classe, mode : entrainement (indices, solution, etoiles) ou evaluation (sans aide, 3 essais, note sur 20, duree
+  maximale facultative).
+- Groupes : une ligne par groupe, « Groupe 1 : Lea, Tom » (prenoms facultatifs ; prenoms ou initiales seulement).
+- Exercices : cases a cocher dans la banque (exercices.json, bouton « tout » par niveau), et/ou « Ajouter un exercice a
+  partir du programme ouvert » : titre, consigne, indices, points, et le programme de l'editeur sert de
+    * solution avec controle automatique (l'eleve doit utiliser au moins autant de blocs de chaque type, hors
+      au demarrage, repeter, nombres et textes ; les valeurs ne sont pas comparees),
+    * solution corrigee par l'enseignant (l'eleve clique « J'ai termine »),
+    * point de depart pour l'eleve (corrige par l'enseignant).
+- « Telecharger la seance » : fichier seance_<classe>_<titre>.json, a deposer sur l'ENT. « Ouvrir une seance a
+  modifier » la recharge ; retelechargee, elle garde son identifiant (les eleves retrouvent leur travail).
+  La seance en preparation est gardee sur le poste (brouillon).
+
+ELEVE — Fichier > Ouvrir une seance
+- Choisir le fichier, son groupe, cocher ou ecrire son prenom (ou ceux du binome). Entrainement : liste des exercices
+  de la seance (tous ouverts) ; evaluation : elle demarre aussitot.
+- Le programme de chaque exercice est memorise automatiquement (reprise en revenant sur l'exercice, et apres un
+  rechargement de la page : la seance reste ouverte).
+- « Rendre mon travail » (menu Fichier, liste des exercices, panneau Mission, rapport d'evaluation) : telecharge
+  <classe>_<groupe>_<prenoms>_<titre>.rendu.json, a deposer sur l'ENT. On peut rendre plusieurs fois.
+- « Quitter la seance » (menu Fichier) : retour aux exercices habituels ; le travail reste sur le poste.
+
+ENSEIGNANT — Fichier > Espace enseignant > Ramasser les travaux
+- Glisser les fichiers .rendu.json sur la fenetre (ou les choisir, plusieurs a la fois). Un groupe qui a rendu plusieurs
+  fois : seul le fichier le plus recent est garde. Les fichiers qui ne sont pas des rendus sont signales.
+- Un tableau par seance : groupe, eleves, chaque exercice (✔ reussi et etoiles, ✎ a corriger, … commence, ↷ passe,
+  ✘ echec, · non fait), reussis, note sur 20 en evaluation (* = provisoire : les exercices a corriger comptent 0).
+- Clic sur une case : le programme de l'eleve s'ouvre dans l'editeur (simulateur, code, telechargement .hex).
+- Export CSV (une ligne par eleve : un binome donne deux lignes), impression.
+Limite : un poste partage par plusieurs classes garde le travail de chacun separement (par seance), mais tout eleve du
+poste peut ouvrir la meme seance avec un autre prenom : la confiance reste de mise (pas d'authentification).

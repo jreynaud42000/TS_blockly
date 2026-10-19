@@ -3323,7 +3323,7 @@ envoyer `lib/` par lots ou utiliser GitHub Desktop. L'appel `/_vie` (cœur de l'
 renvoie 404 sur un site statique : sans conséquence. Respecter la casse des noms de fichiers.
 
 **Exécutable** : `python -m PyInstaller app.spec --noconfirm`. `datas` : `index.html`, `un.js`, `deux.js`, `trois.js`, `ia.js`, `tuto.js`,
-`ia-son-immediat.js`, `ia-immediat.js`, `bandeau.js`, `exercices.js`, `exercices.json`, `firmware.hex`, `logo.png`, `readme.txt`, `lib` — **tout nouveau fichier utilisé par la page doit y être
+`ia-son-immediat.js`, `ia-immediat.js`, `bandeau.js`, `exercices.js`, `seances.js`, `exercices.json`, `firmware.hex`, `logo.png`, `readme.txt`, `lib` — **tout nouveau fichier utilisé par la page doit y être
 ajouté**. Le numéro de version est à tenir identique à **quatre** endroits : `VERSION` (`app.py`), `version_info.txt` (nombres + chaînes),
 `name=` (`app.spec`) et `#copyright-toolbar` (`index.html`). Vérifier l'archive sans lancer l'exe :
 `from PyInstaller.archive.readers import CArchiveReader; CArchiveReader(chemin).toc`. Port 8000 : si un autre serveur l'occupe, l'exe risque de ne pas démarrer
@@ -3415,4 +3415,19 @@ le signe pouce ″ (U+2033). Vérifier la syntaxe d'un module avec `node --check
 **PIÈGE nº 78 — MicroPython de la V1** : pas d'affectation par tranche dans un `bytearray`, et `str(pin0)` donne le même texte
 pour toutes les broches : écrire octet par octet, et indexer l'état des boutons par `id(broche)`.
 
-Fournis le code complet des fichiers du §1 (et les modules des §22 à §28), prêt à être posé dans un dossier.
+## 29. Séances pour groupes d'élèves (`seances.js` + mode séance d'`exercices.js`)
+
+Distribution et ramassage par **fichiers** (ENT, Moodle, dossier partagé) : ni serveur ni compte. `seance-microbit`
+(id, titre, classe, mode tp/eval, minutes, groupes [{nom, eleves}], exercices au format d'`exercices.json` plus `depart`)
+et `rendu-microbit` (séance, groupe, élèves, exercices avec statut, étoiles, points, `blocs` = `workspaces.save`, `python`,
+évaluation). `exercices.js` : `window.exercicesSeance` (`activer`, `quitter`, `active`, `enEvaluation`, `ouvrir`, `evaluer`,
+`rendu`) ; en séance, clé de stockage propre (`exercices_progression_v1:seance:<id>`), tous les exercices ouverts,
+programme mémorisé 1 s après chaque modification et à chaque changement d'exercice (`espaceDe` le reprend), exercices
+**sans règle** : « J'ai terminé » en entraînement, « remis, à corriger » en évaluation (0 point provisoire). Contrôle
+automatique d'un exercice créé par l'enseignant : `{ tous: [{ bloc, min }] }` compté sur sa solution, hors blocs neutres.
+Ramassage : dédoublonnage par (séance, groupe, élèves) en gardant la date la plus récente ; CSV une ligne par élève.
+
+**PIÈGE nº 79 — séance active et rechargement** : la séance ouverte est rangée dans `seance_active_v1` et réactivée au
+chargement, sinon l'élève qui actualise la page perd le fil (son travail, lui, est sous la clé propre à la séance).
+
+Fournis le code complet des fichiers du §1 (et les modules des §22 à §29), prêt à être posé dans un dossier.
