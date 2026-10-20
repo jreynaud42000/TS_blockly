@@ -6619,12 +6619,27 @@ try {
     // 666px une fois la colonne masquee), `Blockly.svgResize()` reste
     // necessaire ensuite car Blockly ne s'apercoit jamais tout seul qu'on
     // lui a change sa place (meme motif que partout ailleurs dans ce fichier).
+    //
+    // Masquer la colonne deplace l'origine de la zone de travail de sa largeur (201 px, davantage avec le zoom du
+    // navigateur) : sans compensation, tout le contenu glissait d'autant vers la gauche — y compris le bloc tenu,
+    // qui se retrouvait loin a gauche du pointeur (« pointeur dans le vide » quand on prend un bloc par sa droite).
+    // On fait donc defiler la zone de travail du meme ecart, dans l'autre sens : rien ne bouge a l'ecran, ni au
+    // masquage, ni au retour de la colonne apres le lacher. Ecart residuel (defilement borne par Blockly) : la
+    // translation du canevas est recalee directement.
     const boiteAOutils = window.workspace.getToolbox();
     if (boiteAOutils) {
+        const espace = window.workspace;
+        const origineX = () => espace.getMetrics().absoluteLeft + espace.scrollX;   // abscisse ecran de l'origine du canevas
         window.workspace.addChangeListener((evenement) => {
             if (evenement.type !== Blockly.Events.BLOCK_DRAG) return;
+            const avant = origineX();
             boiteAOutils.setVisible(!evenement.isStart);
-            Blockly.svgResize(window.workspace);
+            Blockly.svgResize(espace);
+            const ecart = origineX() - avant;
+            if (Math.abs(ecart) < 0.5) return;
+            espace.scroll(espace.scrollX - ecart, espace.scrollY);
+            // translate() attend la position ecran complete du canevas (marge de la colonne comprise).
+            if (Math.abs(origineX() - avant) >= 0.5) espace.translate(avant, espace.scrollY + espace.getMetrics().absoluteTop);
         });
     }
 
@@ -6760,6 +6775,28 @@ try {
         }
     });
 
+    // Themes de saison (menu Affichage > Saison, bandeau.js) : variantes du sombre en contraste normal.
+    const THEME_HALLOWEEN = Blockly.Theme.defineTheme('halloweenMicrobitV2', {
+        base: THEME_SOMBRE_NORMAL,
+        fontStyle: POLICE_BLOCS,
+        componentStyles: {
+            workspaceBackgroundColour: '#141414',
+            toolboxBackgroundColour: '#0f0d12',
+            flyoutBackgroundColour: '#1f1a24',
+            scrollbarColour: '#6b4a80'
+        }
+    });
+    const THEME_NOEL = Blockly.Theme.defineTheme('noelMicrobitV2', {
+        base: THEME_SOMBRE_NORMAL,
+        fontStyle: POLICE_BLOCS,
+        componentStyles: {
+            workspaceBackgroundColour: '#0d1b2a',
+            toolboxBackgroundColour: '#08131f',
+            flyoutBackgroundColour: '#13263a',
+            scrollbarColour: '#4a6a8a'
+        }
+    });
+
     function themeClairActif() {
         return document.documentElement.dataset.theme === 'light';
     }
@@ -6768,11 +6805,13 @@ try {
     }
     function appliquerThemeBlockly() {
         const clair = themeClairActif(), eleve = contrasteEleveActif();
+        const saison = { halloween: THEME_HALLOWEEN, noel: THEME_NOEL }[document.documentElement.dataset.saison];
         const theme = clair
             ? (eleve ? THEME_CLAIR_ELEVE : THEME_CLAIR_NORMAL)
-            : (eleve ? THEME_SOMBRE_ELEVE : THEME_SOMBRE_NORMAL);
-        window.workspace.setTheme(theme);
+            : (eleve ? THEME_SOMBRE_ELEVE : (saison || THEME_SOMBRE_NORMAL));
+        if (window.workspace.getTheme() !== theme) window.workspace.setTheme(theme);
     }
+    new MutationObserver(appliquerThemeBlockly).observe(document.documentElement, { attributes: true, attributeFilter: ['data-saison'] });
 
     const btnTheme = document.getElementById('btn-theme');
     function appliquerTheme(clair) {
