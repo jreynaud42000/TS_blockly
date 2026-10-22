@@ -8,6 +8,20 @@
        un flash visible de l'etat par defaut (sombre, contraste normal)
        avant de basculer vers le choix memorise. -->
   <script>
+    // Multi-editeur radio (multi.html) : chaque carte (?editeur=1 ou 2) range ses donnees a part (seance, exercices...)
+    // pour que les deux editeurs de la page ne s'ecrasent pas ; les reglages d'affichage restent communs.
+    (function () {
+      var ed = new URLSearchParams(location.search).get('editeur');
+      if (ed !== '1' && ed !== '2') return;
+      document.documentElement.dataset.editeur = ed;
+      var COMMUNES = ['themeApp', 'contrasteApp', 'saisonApp', 'blockly_ts_config_admin', 'tuto-accueil-masque',
+                      'console_hauteur_v1', 'ia_onglets_teachable_v1', 'code_enseignant_v1'];
+      var prefixe = 'multi' + ed + ':', S = Storage.prototype, lire = S.getItem, ecrire = S.setItem, effacer = S.removeItem;
+      var cle = function (k) { k = String(k); return COMMUNES.indexOf(k) >= 0 ? k : prefixe + k; };
+      S.getItem = function (k) { return lire.call(this, cle(k)); };
+      S.setItem = function (k, v) { return ecrire.call(this, cle(k), v); };
+      S.removeItem = function (k) { return effacer.call(this, cle(k)); };
+    })();
     try {
       if (localStorage.getItem('themeApp') === 'light') {
         document.documentElement.dataset.theme = 'light';
@@ -15,13 +29,15 @@
       if (localStorage.getItem('contrasteApp') === 'high') {
         document.documentElement.dataset.contrast = 'high';
       }
-      // Theme de saison (bandeau.js) : « auto » = Halloween du 15 octobre au 2 novembre, Noel en decembre.
+      // Theme de saison (bandeau.js) : « auto » = Halloween du 15 octobre au 2 novembre, salon Educatech Expo
+      // du 2 au 4 decembre 2026, Noel le reste de decembre.
       var saison = localStorage.getItem('saisonApp');
       if (saison === 'auto') {
         var d = new Date(), m = d.getMonth() + 1, j = d.getDate();
-        saison = (m === 10 && j >= 15) || (m === 11 && j <= 2) ? 'halloween' : (m === 12 ? 'noel' : '');
+        saison = (m === 10 && j >= 15) || (m === 11 && j <= 2) ? 'halloween'
+          : (d.getFullYear() === 2026 && m === 12 && j >= 2 && j <= 4) ? 'salon' : (m === 12 ? 'noel' : '');
       }
-      if (saison === 'halloween' || saison === 'noel') document.documentElement.dataset.saison = saison;
+      if (saison === 'halloween' || saison === 'noel' || saison === 'salon') document.documentElement.dataset.saison = saison;
     } catch (erreur) { /* localStorage indisponible (navigation privee...) : tant pis, etat par defaut */ }
   </script>
 
@@ -176,6 +192,9 @@
     #tb-logo { display: flex; align-items: center; padding: 3px 6px; margin-right: 2px; flex-shrink: 0;
       background: #fff; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
     #tb-logo img { height: 24px; width: auto; display: block; }
+    /* Multi-editeur radio : numero de la carte (bandeau.js) */
+    #tb-carte { flex-shrink: 0; margin: 0 4px; padding: 3px 9px; border-radius: 999px; background: #fff; color: var(--couleur-bandeau);
+      font-weight: 700; font-size: 13px; white-space: nowrap; }
 
     /* Nom du fichier : encadre blanc, texte de la couleur du bandeau (champ de saisie : un clic permet de le renommer) */
     #tb-nomfichier {
@@ -571,6 +590,13 @@
     .ia-qr-texte.vu { color: #2ecc71; font-weight: bold; }
     .ia-qr-image { display: block; width: 160px; height: 160px; image-rendering: pixelated; margin-top: 6px; }
     .ia-qr-image.replie { display: none; }
+    /* Planche de QR codes (ia-immediat.js : imprimerPlancheQR) */
+    .ia-qr-liste { display: block; box-sizing: border-box; width: 100%; max-width: 520px; margin: 4px 0 8px; padding: 8px 10px; resize: vertical;
+        background: var(--fond-saisie); color: var(--texte-saisie); border: 1px solid var(--bordure-chrome); border-radius: 6px;
+        font: 13px/1.4 Consolas, "DejaVu Sans Mono", monospace; }
+    .ia-qr-planche-options { flex-wrap: wrap; gap: 10px; align-items: center; }
+    .ia-qr-planche-options label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+    .ia-qr-planche-statut { display: block; min-height: 1.2em; margin-top: 6px; font-size: 12px; color: var(--ia-doux, #b8b8b8); }
     /* Boutons de zoom ronds et corbeille de Blockly : leurs icones sont gris fonce, quasi invisibles sur fond sombre.
        On les inverse (clair sur sombre) dans les themes sombres ; le theme clair garde les icones d'origine. */
     :root:not([data-theme="light"]) .blocklyZoom > image { filter: invert(1) brightness(1.15); opacity: 1; }
@@ -1115,10 +1141,19 @@
        animee par des images cles, dont la duree vient de la vitesse. */
     .servo { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px; }
     /* Premier lot Grove : bouton poussoir, buzzer, relais, ecran OLED. */
-    .grove-bouton-poussoir { width: 56px; height: 56px; border-radius: 50%; border: 4px solid #3b3f46; background: #d93a2b;
-        color: #fff; font-size: 11px; font-weight: 600; cursor: pointer; margin: 4px auto; display: block;
-        box-shadow: 0 3px 0 #8f2419; touch-action: none; user-select: none; }
-    .grove-bouton-poussoir.enfonce { transform: translateY(3px); box-shadow: 0 0 0 #8f2419; background: #b52e21; }
+    /* Bouton poussoir Grove dessine (meme carte que le potentiometre) : le capuchon s'enfonce tant qu'on appuie
+       ou que « maintenu enfonce » est coche (un.js). */
+    .grove-bouton-poussoir { display: block; margin: 2px auto 4px; padding: 0; border: 0; background: none; cursor: pointer;
+        touch-action: none; user-select: none; border-radius: 8px; }
+    .grove-bouton-poussoir:hover { background: none; }
+    .grove-bouton-poussoir:focus-visible { outline: 2px solid #4dabf7; outline-offset: 2px; }
+    .grove-bouton-poussoir svg { display: block; }
+    .bp-socle { fill: #2b2f36; }
+    .bp-coin { fill: #8a9099; }
+    .bp-ombre { fill: #15171b; }
+    .bp-capuchon { fill: #4a4f57; stroke: #5d636c; stroke-width: 1.5; transition: transform 0.05s; }
+    .grove-bouton-poussoir.enfonce .bp-capuchon { transform: translateY(3px); fill: #2f3339; stroke: #69db7c; stroke-width: 2.5; }   /* liseré vert : enfoncé */
+    .grove-bouton-poussoir.enfonce .bp-ombre { fill: #2b2f36; }
     .grove-sortie { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 2px 0; }
     .buzzer-pastille { width: 14px; height: 14px; border-radius: 50%; background: #3b3f46; border: 2px solid #6b7480; box-sizing: border-box; }
     .buzzer-pastille.on { background: #ffb020; border-color: #ffd27a; animation: buzzer-vibre 0.12s linear infinite; }
@@ -1248,51 +1283,95 @@
        Decorations dans #deco-saison (cree par bandeau.js) : jamais cliquables, animations coupees si
        le systeme demande de reduire les animations. */
     :root[data-saison="halloween"]:not([data-theme="light"]):not([data-contrast="high"]) {
-      --bandeau-sombre: #d65200; --accent-fonce: #3a1f4d;
-      --fond-saisie: #0b0a0d; --texte-saisie: #f0e6d8; --fond-code: #121014; --bordure-chrome: #4a2e5e;
-      --ec-page: #0f0f0f; --ec-cat-hover: #2a1f33; --ec-cat-sel: #3a2547; --ec-cat-lisere: #ff7a1a;
-      --ec-grille: #2e2620; --ec-flyout: #1f1a24;
-      --ec-sim: #141414; --ec-bord: #3a2547; --ec-code: #121014; --ec-code-bord: #3a2547;
-      --ec-pan: #1f1a24; --ec-pan-bord: #3a2547; --ec-sep: #3a2547;
+      --bandeau-sombre: #2b1740; --accent-fonce: #ff7a1a;
+      --fond-saisie: #0c0814; --texte-saisie: #f3e8ff; --fond-code: #120c1c; --bordure-chrome: #4a2e5e;
+      --ec-page: #0c0814; --ec-cat-hover: #2a1f3a; --ec-cat-sel: #3a2552; --ec-cat-lisere: #ff7a1a;
+      --ec-grille: #2a2036; --ec-flyout: #1d1530;
+      --ec-sim: #120c1c; --ec-bord: #3a2552; --ec-code: #120c1c; --ec-code-bord: #3a2552;
+      --ec-pan: #1d1530; --ec-pan-bord: #3a2552; --ec-sep: #3a2552;
     }
     :root[data-saison="noel"]:not([data-theme="light"]):not([data-contrast="high"]) {
-      --bandeau-sombre: #b3122e; --accent-fonce: #d4a017;
+      --bandeau-sombre: #b3122e; --accent-fonce: #f1f3f5;
       --fond-saisie: #08131f; --texte-saisie: #e3eefa; --fond-code: #0b1826; --bordure-chrome: #2a4a6b;
-      --ec-page: #0a1622; --ec-cat-hover: #1b3350; --ec-cat-sel: #22405f; --ec-cat-lisere: #d4a017;
+      --ec-page: #0a1622; --ec-cat-hover: #1b3350; --ec-cat-sel: #22405f; --ec-cat-lisere: #ffd43b;
       --ec-grille: #1c2e44; --ec-flyout: #13263a;
       --ec-sim: #0d1b2a; --ec-bord: #22405f; --ec-code: #0b1826; --ec-code-bord: #22405f;
       --ec-pan: #13263a; --ec-pan-bord: #22405f; --ec-sep: #22405f;
     }
-    :root[data-saison]:not([data-theme="light"]):not([data-contrast="high"]) #toolbar { border-bottom-color: var(--accent-fonce); }   /* filet violet (Halloween) ou or (Noel) */
-    #tb-saison, #deco-saison { display: none; }
+    :root[data-saison="salon"]:not([data-theme="light"]):not([data-contrast="high"]) {
+      --bandeau-sombre: #4b3a9e; --accent-fonce: #e0218a;
+      --fond-saisie: #0c1030; --texte-saisie: #e6e9ff; --fond-code: #0f1438; --bordure-chrome: #2f3a7a;
+      --ec-page: #0c1030; --ec-cat-hover: #222a63; --ec-cat-sel: #2c3577; --ec-cat-lisere: #2bb3a0;
+      --ec-grille: #222a5c; --ec-flyout: #171c47;
+      --ec-sim: #12163a; --ec-bord: #2c3577; --ec-code: #0f1438; --ec-code-bord: #2c3577;
+      --ec-pan: #171c47; --ec-pan-bord: #2c3577; --ec-sep: #2c3577;
+    }
+    :root[data-saison="salon"]:not([data-theme="light"]):not([data-contrast="high"]) #toolbar { background: linear-gradient(90deg, #1f9e8f, #6a2c91); }
+    /* Filet du bandeau : neige (Noel) ; rayures « bonbon » orange, jaune, blanc (Halloween) ; magenta (salon). */
+    :root[data-saison]:not([data-theme="light"]):not([data-contrast="high"]) #toolbar { border-bottom-color: var(--accent-fonce); }
+    :root[data-saison="halloween"]:not([data-theme="light"]):not([data-contrast="high"]) #toolbar {
+      border-bottom: 4px solid #ff7a1a;
+      border-image: repeating-linear-gradient(90deg, #ff7a1a 0 18px, #ffd43b 18px 36px, #fff4e6 36px 54px) 1; }
+    #tb-saison, #deco-saison, #guirlande-saison { display: none; }
     :root[data-saison]:not([data-theme="light"]):not([data-contrast="high"]) #tb-saison { display: block; font-size: 20px; line-height: 1; margin: 0 2px; user-select: none; }
     :root[data-saison]:not([data-theme="light"]):not([data-contrast="high"]) #deco-saison {
       display: block; position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 60; }
-    #deco-saison span { position: absolute; line-height: 1; }
-    /* Halloween : toile dans le coin, araignee au bout de son fil, fantome qui flotte, citrouille pres de la corbeille. */
-    .deco-toile { top: -6px; right: -6px; font-size: 72px; opacity: 0.35; }
-    .deco-fil { top: 0; right: 120px; width: 0; height: 70px; border-left: 1px solid rgba(220,220,220,0.45);
-      animation: deco-fil 5s ease-in-out infinite alternate; }
-    .deco-araignee { right: 109px; top: 66px; font-size: 22px; opacity: 0.8; animation: deco-araignee 5s ease-in-out infinite alternate; }
-    .deco-fantome { right: 50px; top: 34%; font-size: 40px; opacity: 0.28; animation: deco-flotte 4s ease-in-out infinite alternate; }
-    .deco-citrouille { right: 96px; bottom: 28px; font-size: 32px; opacity: 0.9; }
-    @keyframes deco-fil { to { height: 120px; } }
-    @keyframes deco-araignee { to { transform: translateY(50px); } }
-    @keyframes deco-flotte { to { transform: translateY(-18px); } }
-    /* Noel : deux couches de flocons qui tombent a des vitesses differentes, sapin pres de la corbeille. */
-    .deco-neige { inset: 0; opacity: 0.7;
+    #deco-saison > * { position: absolute; display: none; }
+    :root[data-saison="halloween"] #deco-saison > .deco-halloween, :root[data-saison="noel"] #deco-saison > .deco-noel,
+    :root[data-saison="salon"] #deco-saison > .deco-salon { display: block; }
+    #deco-saison svg { overflow: visible; }
+
+    /* Halloween « Nuit hantee » : lune, manoir aux fenetres allumees, chauves-souris, toile, citrouilles, brume. */
+    .deco-lune { top: 16px; right: 64px; width: 70px; height: 70px; filter: drop-shadow(0 0 18px rgba(255, 232, 163, 0.45)); }
+    .deco-toile { top: 0; right: 0; width: 110px; height: 110px; opacity: 0.55; }
+    .deco-manoir { right: 100px; bottom: 0; width: 190px; height: 130px; }
+    .deco-citrouilles { right: 300px; bottom: 6px; width: 96px; height: 46px; }
+    .deco-chauves { top: 24px; right: 160px; width: 280px; height: 110px; }
+    .deco-chauves .chauve { animation: deco-vole 6s ease-in-out infinite; transform-box: fill-box; }
+    .deco-chauves .chauve:nth-child(2) { animation-duration: 7.5s; animation-delay: -2s; }
+    .deco-chauves .chauve:nth-child(3) { animation-duration: 5s; animation-delay: -4s; }
+    @keyframes deco-vole { 0%, 100% { transform: translate(0, 0) scaleY(1); } 25% { transform: translate(-40px, -10px) scaleY(0.6); }
+      50% { transform: translate(-70px, 6px) scaleY(1); } 75% { transform: translate(-30px, 12px) scaleY(0.6); } }
+    .deco-brume { left: 0; right: 0; bottom: 0; height: 80px;
+      background: linear-gradient(to top, rgba(200, 190, 230, 0.2), rgba(200, 190, 230, 0)); animation: deco-brume 7s ease-in-out infinite alternate; }
+    @keyframes deco-brume { to { opacity: 0.45; } }
+    .deco-lueur { animation: deco-lueur 2.4s ease-in-out infinite; }
+    .deco-lueur-2 { animation: deco-lueur 2.4s ease-in-out -1.2s infinite; }
+    @keyframes deco-lueur { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* Noel « Village enneige » : guirlande sous le bandeau, flocons de trois tailles, collines, sapins, etoile. */
+    :root[data-saison="noel"]:not([data-theme="light"]):not([data-contrast="high"]) #guirlande-saison {
+      display: block; position: absolute; left: 0; top: calc(100% + 1px); width: 100%; height: 26px; pointer-events: none; overflow: hidden; }
+    .deco-neige { inset: 0; opacity: 0.75;
       background-image: radial-gradient(circle, #fff 2.4px, transparent 3.2px), radial-gradient(circle, #cfe8ff 1.5px, transparent 2.2px);
       background-size: 110px 110px, 70px 70px; background-position: 0 0, 35px 20px;
       animation: deco-neige 14s linear infinite; }
-    .deco-neige-2 { opacity: 0.45; background-size: 160px 160px, 95px 95px; background-position: 50px 30px, 10px 60px; animation-duration: 22s; }
+    .deco-neige-2 { opacity: 0.5; background-size: 160px 160px, 95px 95px; background-position: 50px 30px, 10px 60px; animation-name: deco-neige-2; animation-duration: 22s; }
+    .deco-neige-3 { opacity: 0.85; background-image: radial-gradient(circle, #fff 3.6px, transparent 4.6px); background-size: 230px 230px; background-position: 90px 0;
+      animation-name: deco-neige-3; animation-duration: 11s; }
     @keyframes deco-neige { to { background-position: 30px 110px, 50px 90px; } }
-    .deco-neige-2 { animation-name: deco-neige-2; }
     @keyframes deco-neige-2 { to { background-position: 30px 190px, 0 155px; } }
-    .deco-sapin { right: 96px; bottom: 26px; font-size: 34px; }
-    .deco-etoile { top: 10px; right: 16px; font-size: 26px; opacity: 0.8; }
-    #deco-saison .deco-halloween, #deco-saison .deco-noel { display: none; }
-    :root[data-saison="halloween"] #deco-saison .deco-halloween, :root[data-saison="noel"] #deco-saison .deco-noel { display: block; }
-    @media (prefers-reduced-motion: reduce) { #deco-saison span { animation: none !important; } }
+    @keyframes deco-neige-3 { to { background-position: 130px 230px; } }
+    .deco-collines { left: 0; right: 0; bottom: 0; width: 100%; height: 70px; opacity: 0.9; }
+    .deco-sapins { right: 110px; bottom: 14px; width: 150px; height: 70px; }
+    .deco-etoile { top: 14px; right: 30px; width: 34px; height: 34px; filter: drop-shadow(0 0 8px rgba(255, 212, 59, 0.6)); }
+    /* Salon Educatech Expo (2-4 decembre 2026, stand K3) : pistes de circuit qui s'allument, badge du stand,
+       banniere defilante pour les visiteurs. */
+    .deco-circuit-haut { top: 96px; right: 0; width: 320px; height: 190px; }   /* sous le badge du stand */
+    .deco-circuit-bas { left: 230px; bottom: 30px; width: 260px; height: 120px; }
+    .deco-piste { stroke-dasharray: 8 8; animation: deco-piste 3s linear infinite; }
+    @keyframes deco-piste { from { stroke-dashoffset: 32; } to { stroke-dashoffset: 0; } }
+    .deco-badge-salon { top: 14px; right: 24px; padding: 8px 12px; border-radius: 8px; border: 1px solid #e0218a;
+      background: rgba(224, 33, 138, 0.16); color: #ffd6ec; font: 13px/1.35 var(--font); text-align: right; }
+    .deco-badge-salon b { display: block; color: #ffffff; font-size: 14px; }
+    .deco-badge-salon .stand { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; background: #2bb3a0; color: #04211d; font-weight: 700; }
+    .deco-banniere-salon { left: 0; right: 0; bottom: 0; height: 26px; overflow: hidden; white-space: nowrap; background: #e0218a; color: #ffffff;
+      font: 600 13px/26px var(--font); opacity: 0.94; }
+    .deco-banniere-salon span { display: inline-block; padding-left: 24px; animation: deco-defile 20s linear infinite; }   /* texte repete 4 fois : -25 % boucle sans a-coup */
+    @keyframes deco-defile { from { transform: translateX(0); } to { transform: translateX(-25%); } }
+    @media (prefers-reduced-motion: reduce) {
+      #deco-saison *, #guirlande-saison * { animation: none !important; }
+      .deco-banniere-salon span { padding-left: 24px; } }
 
     /* Colonne des categories : fond et bord droit (le fond lui-meme vient du theme Blockly, voir un.js). */
     .blocklyToolboxDiv { border-right: var(--ec-cat-bord-droit); box-sizing: border-box; }
@@ -1321,6 +1400,10 @@
     .injectionDiv .blocklyFlyout { outline: var(--ec-flyout-contour); }
     .injectionDiv .blocklyFlyout .blocklyFlyoutLabelText, .injectionDiv .blocklyFlyoutLabelText {
         fill: var(--ec-label) !important; font-style: italic; font-weight: var(--ec-label-fw); }
+
+    /* Trait entre deux groupes de blocs d'une meme sous-categorie (un.js : titres groupe-flyout). */
+    .trait-groupe-flyout { stroke: var(--ec-label); stroke-opacity: 0.45; stroke-width: 1px; }
+    :root[data-contrast="high"] .trait-groupe-flyout { stroke-opacity: 1; stroke-width: 2px; }
 
     /* Simulation, panneau de code, console : fond, bord et separateur (« :root » = specificite superieure aux regles d'origine). */
     :root #simulator-container { background: var(--ec-sim); border-left: var(--ec-bord-w) solid var(--ec-bord); }
@@ -1383,6 +1466,9 @@
         background: transparent; color: var(--ia-doux); border: none; border-bottom: 3px solid transparent; border-radius: 0; }
     #ia-onglets .ia-onglet:hover { background: var(--ia-fond-carte); color: var(--texte-code); }
     #ia-onglets .ia-onglet.actif { color: var(--texte-code); border-bottom-color: var(--ia-or-vif); }
+    #ia-onglets .ia-onglet[hidden] { display: none; }   /* onglets Teachable Machine caches tant que la case n'est pas cochee (ia.js) */
+    .ia-imm-option { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; font-size: 12px; color: var(--ia-doux); cursor: pointer; }
+    .ia-imm-option input { margin: 0; cursor: pointer; }
     .ia-onglet-point { width: 8px; height: 8px; border-radius: 50%; }
     .ia-onglet-point[data-etat="pret"] { background: #339af0; }
     .ia-onglet-point[data-etat="marche"] { background: #40c057; }
@@ -1499,7 +1585,8 @@
         <button id="aff-saison-aucune">Aucune</button>
         <button id="aff-saison-halloween">🎃 Halloween</button>
         <button id="aff-saison-noel">🎄 Noël</button>
-        <button id="aff-saison-auto" title="Halloween du 15 octobre au 2 novembre, Noël en décembre">📅 Selon la date</button>
+        <button id="aff-saison-salon" title="Salon Educatech Expo, 2 au 4 décembre 2026, stand K3">🎓 Salon Educatech Expo</button>
+        <button id="aff-saison-auto" title="Halloween du 15 octobre au 2 novembre, salon Educatech Expo du 2 au 4 décembre 2026, Noël le reste de décembre">📅 Selon la date</button>
         <button id="btn-theme" class="btn-vue" style="display:none" title="Passer au thème clair">Thème</button>
         <button id="btn-contraste" class="btn-vue" style="display:none" title="Passer en contraste élevé">Contraste élevé</button>
       </div>
@@ -1522,6 +1609,9 @@
         <button id="tb-telecharger-xml" disabled title="Non disponible dans cette version">Télécharger .xml</button>
         <button id="download-btn">Télécharger .hex</button>
         <button id="download-py-btn">Télécharger .py</button>
+        <!-- Multi-editeur radio (multi.html) : deux editeurs cote a cote, leurs simulations communiquent par radio -->
+        <div class="menu-titre">Radio</div>
+        <button id="multi-editeur-btn" title="Ouvre deux éditeurs côte à côte dans un nouvel onglet : les deux cartes simulées communiquent par radio">📡 Multi-éditeur radio (2 cartes)</button>
         <!-- Seances pour groupes d'eleves (seances.js) : distribuer, rendre et ramasser des exercices par fichiers -->
         <div class="menu-titre">Séance</div>
         <button id="seance-rejoindre-btn" hidden title="Rejoindre la séance diffusée par le poste du professeur (mode classe)">🏫 Rejoindre la séance de la classe</button>
@@ -1836,7 +1926,19 @@
         <!-- Premier lot Grove (un.js : simu_groveEntree, simu_groveSortie, simu_oled) -->
         <div class="grove-bloc" id="grove-sec-bouton">
           <span class="grove-titre">Bouton poussoir</span>
-          <button id="grove-bouton-appui" class="grove-bouton-poussoir" title="Maintenir enfoncé pour appuyer sur le bouton">Appuyer</button>
+          <button id="grove-bouton-appui" class="grove-bouton-poussoir" title="Maintenir enfoncé pour appuyer sur le bouton" aria-label="Bouton poussoir Grove : maintenir pour appuyer">
+            <svg viewBox="0 0 120 100" width="96" height="80" aria-hidden="true">
+              <rect class="pot-carte" x="18" y="8" width="84" height="88" rx="6"/>
+              <circle class="pot-trou" cx="26" cy="16" r="3"/><circle class="pot-trou" cx="94" cy="16" r="3"/>
+              <rect class="pot-connecteur" x="44" y="84" width="32" height="10" rx="2"/>
+              <text class="pot-texte" x="60" y="81" text-anchor="middle">Button</text>
+              <rect class="bp-socle" x="38" y="28" width="44" height="44" rx="4"/>
+              <circle class="bp-coin" cx="43" cy="33" r="2"/><circle class="bp-coin" cx="77" cy="33" r="2"/>
+              <circle class="bp-coin" cx="43" cy="67" r="2"/><circle class="bp-coin" cx="77" cy="67" r="2"/>
+              <circle class="bp-ombre" cx="60" cy="53" r="14"/>
+              <circle class="bp-capuchon" cx="60" cy="50" r="14"/>
+            </svg>
+          </button>
           <label class="grove-case"><input type="checkbox" id="grove-bouton-maintenu"> maintenu enfoncé</label>
         </div>
 
@@ -2400,6 +2502,23 @@
           </div>
           <canvas class="ia-qr-image replie"></canvas>
         </details>
+        <details class="ia-creer ia-qr-planche">
+          <summary>🖨 Planche de QR codes à imprimer (A4)</summary>
+          <p class="ia-intro">Un texte par ligne : chaque ligne donne un QR code. Une ligne écrite deux fois donne deux exemplaires.</p>
+          <textarea class="ia-qr-liste" rows="5" spellcheck="false" placeholder="avancer&#10;reculer&#10;gauche&#10;droite&#10;stop"></textarea>
+          <div class="ia-modele ia-qr-planche-options">
+            <label>Taille :
+              <select class="ia-qr-taille">
+                <option value="petit">petits (3,5 cm, 20 par page)</option>
+                <option value="moyen" selected>moyens (5,5 cm, 12 par page)</option>
+                <option value="grand">grands (8 cm, 6 par page)</option>
+              </select>
+            </label>
+            <label class="ia-qr-avec-texte"><input type="checkbox" class="ia-qr-legende" checked> Texte sous chaque code</label>
+            <button class="btn-vue ia-qr-imprimer">🖨 Imprimer la planche</button>
+          </div>
+          <span class="ia-qr-planche-statut" aria-live="polite"></span>
+        </details>
       </div>
     </div>
     <div id="ia-pied">
@@ -2674,6 +2793,8 @@
             if self.id_btn == 'b': return window.simu_btnB_pressed
             return False
         def get_presses(self): return window.simu_lireClicsBouton(self.id_btn)
+        # Vrai une fois par appui depuis le dernier appel, comme sur la carte (« lorsque le bouton est pressé »).
+        def was_pressed(self): return bool(window.simu_consommerAppui(self.id_btn))
 
     class AccelerometerMock:
         # was_gesture() consomme le geste : sur la carte, il ne repond vrai
@@ -3241,11 +3362,15 @@
             return float(texte)
         except:
             return None
+    # Radio entre simulateurs (un.js, simu_radio*) : les messages envoyes partent vers les autres editeurs du
+    # navigateur (multi-editeur radio, ou deux onglets) qui ont la radio allumee sur le meme groupe et le meme canal.
     class RadioMock:
-        def on(self): pass
-        def off(self): pass
-        def config(self, **kwargs): pass
-        def send(self, message): pass
+        def on(self): window.simu_radioEtat('allumee', 1)
+        def off(self): window.simu_radioEtat('allumee', 0)
+        def config(self, **kwargs):
+            if 'group' in kwargs: window.simu_radioEtat('groupe', int(kwargs['group']))
+            if 'channel' in kwargs: window.simu_radioEtat('canal', int(kwargs['channel']))
+        def send(self, message): window.simu_radioEmettre(str(message))
         def receive(self): return None
 
     # reset() redemarre la carte : dans le simulateur, l'ecran s'eteint, le son

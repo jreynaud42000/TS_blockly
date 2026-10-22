@@ -447,8 +447,26 @@ try {
         this.appendStatementInput("DO").setCheck(null);
         this.setColour(300);
     }};
+    // Un declenchement par appui (comme MakeCode), pas a chaque tour tant que le bouton reste enfonce : sur la carte,
+    // la scrutation par is_pressed() rappelait le gestionnaire en boucle (message radio envoye sans fin, bouton B
+    // noye). A et B : was_pressed(), memorise par la carte. A+B : front montant de « les deux enfonces », qui
+    // consomme aussi les appuis de A et de B pour ne pas declencher en plus « lorsque A » et « lorsque B ».
     P.forBlock['lorsque_bouton'] = function(block) {
         importerMicrobit();
+        if (block.getFieldValue('BOUTON') === 'ab') {
+            pilote('boutons', [
+                '_boutons_ab_avant = [False]',
+                '',
+                'def _boutons_ab():',
+                '    appuye = button_a.is_pressed() and button_b.is_pressed()',
+                '    front = appuye and not _boutons_ab_avant[0]',
+                '    _boutons_ab_avant[0] = appuye',
+                '    if front:',
+                '        button_a.was_pressed()',
+                '        button_b.was_pressed()',
+                '    return front',
+            ]);
+        }
         return declarerGestionnaire('on_button_pressed_' + block.getFieldValue('BOUTON'), P.statementToCode(block, 'DO'));
     };
 
@@ -948,7 +966,9 @@ try {
             '    paquet = radio.receive_full()',
             '    if paquet is None:',
             '        return',
-            '    message = str(paquet[0], "utf-8")',
+            // receive_full() rend les octets bruts : radio.send() les fait preceder d'un en-tete de 3 octets
+            // (sur la carte, le message s'affichait « ?salut »). receive() fait la meme chose : str(...)[3:].
+            '    message = str(paquet[0][3:], "utf-8")',
             '    _radio_dernier[0] = message',
             '    _radio_dernier[3] = paquet[1]',
             '    g = globals()',
@@ -2816,7 +2836,7 @@ try {
         return ['_grove_th().temperature()', P.ORDER_FUNCTION_CALL];
     };
 
-    // --- DHT11 et DHT22 : experimental, fiables uniquement sur micro:bit V1 ---
+    // --- DHT11 et DHT22 : assembleur sur micro:bit V1, machine.time_pulse_us sur V2 (experimental) ---
     //
     // Assemblage ARM Thumb repris de rhubarbdog/microbit-dht11 (MIT), seule
     // implementation DHT11 connue pour micro:bit-MicroPython qui fonctionne
@@ -2832,12 +2852,14 @@ try {
     // decrit lui-meme comme instable : une mesure valide toutes les ~20
     // secondes environ (issue #93, depot micropython-microbit-v2 de la
     // fondation micro:bit). Le decalage bit-a-bit ci-dessous (DHT_DECALAGE),
-    // lui, n'a jamais ete revalide pour le V2 par personne. Plutot que de
-    // deviner un decalage invisible dans un mauvais resultat, la lecture
-    // refuse proprement sur V2 (machine.freq() les distingue) : _mesurer()
-    // renvoie alors False et les blocs -1, plutot qu'une valeur fausse sans
-    // avertissement. Utiliser AHT20/DHT20 (en I²C, fiable sur V1 et V2) si la
-    // carte peut etre un V2.
+    // lui, n'a jamais ete revalide pour le V2 par personne.
+    // Sur V2 (machine.freq() les distingue), une autre lecture prend donc le
+    // relais (oct. 2026) : machine.time_pulse_us mesure la duree de chaque
+    // impulsion haute (bit 0 ~27 us, bit 1 ~70 us), sans assembleur ni decalage
+    // de broche ; la somme de controle ecarte une lecture fausse, jusqu'a 3
+    // essais. Experimental tant qu'elle n'est pas validee sur de vraies cartes
+    // et de vrais capteurs : en cas d'echec, les blocs renvoient -1, jamais une
+    // valeur fausse. L'AHT20/DHT20 (I²C) reste le choix le plus sur sur V2.
 
     const DHT_DECALAGE = {
         pin0: 3, pin1: 2, pin2: 1, pin8: 18, pin12: 20,
@@ -2960,12 +2982,48 @@ try {
             '            accumulateur = 0',
             '    return octets',
             '',
+            '# micro:bit V2 (64 MHz) : l\'assembleur ci-dessus echantillonne trop vite.',
+            '# On mesure plutot la duree de chaque impulsion haute avec',
+            '# machine.time_pulse_us : bit 0 = environ 27 us, bit 1 = environ 70 us.',
+            '# Entre deux bits, la ligne reste basse 50 us : c\'est le temps dont la',
+            '# boucle dispose pour relancer la mesure suivante (assez sur V2).',
+            'def _dht_mesurer_octets_v2(broche, depart_ms):',
+            '    mesure = machine.time_pulse_us',
+            '    hauts = [0] * 41',
+            '    import gc',
+            '    gc.collect()   # pas de ramasse-miettes pendant la lecture',
+            '    broche.write_digital(1)',
+            '    sleep(50)',
+            '    broche.write_digital(0)   # signal de depart',
+            '    sleep(depart_ms)',
+            '    broche.read_digital()     # la carte lache la ligne',
+            '    broche.set_pull(broche.PULL_UP)',
+            '    if mesure(broche, 0, 1000) < 0:   # reponse du capteur : bas ~80 us',
+            '        return None',
+            '    for i in range(41):   # haut ~80 us de la reponse, puis les 40 bits',
+            '        hauts[i] = mesure(broche, 1, 1000)',
+            '    octets = bytearray(5)',
+            '    for i in range(40):',
+            '        duree = hauts[i + 1]',
+            '        if duree < 0:',
+            '            return None   # impulsion manquee : mesure a refaire',
+            '        octets[i // 8] = (octets[i // 8] << 1) | (1 if duree > 48 else 0)',
+            '    if octets[4] != (octets[0] + octets[1] + octets[2] + octets[3]) & 0xFF:',
+            '        return None',
+            '    return octets',
+            '',
             '# Commun aux deux capteurs : signal de depart, capture, verification du',
-            '# nombre de bits recus. Renvoie les 5 octets bruts, ou None si la carte',
-            '# est un V2 ou si la mesure a echoue (capteur absent, bruit, ...).',
-            'def _dht_mesurer_octets(broche, decalage):',
+            '# nombre de bits recus. Renvoie les 5 octets bruts, ou None si la mesure',
+            '# a echoue (capteur absent, bruit, ...). V2 : lecture par time_pulse_us,',
+            '# jusqu\'a 3 essais (une impulsion peut etre manquee).',
+            'def _dht_mesurer_octets(broche, decalage, depart_ms=20):',
             '    if machine.freq() > 20000000:',
-            '        return None   # V2 : refus volontaire, voir en tete de pilote',
+            '        for essai in range(3):',
+            '            octets = _dht_mesurer_octets_v2(broche, depart_ms)',
+            '            if octets is not None:',
+            '                return octets',
+            '            sleep(1100)',
+            '        return None',
             '    tampon = bytearray(320)',
             '    limite = (len(tampon) // 4) * 4',
             '    for i in range(limite, len(tampon)):',
@@ -3018,7 +3076,7 @@ try {
             '        self.t, self.h = -1, -1',
             '',
             '    def _mesurer(self):',
-            '        octets = _dht_mesurer_octets(self._p, self._d)',
+            '        octets = _dht_mesurer_octets(self._p, self._d, 2)   # depart : 1 a 10 ms pour le DHT22',
             '        sleep(2000)   # le DHT22 refuse une nouvelle lecture avant ~2 s',
             '        if octets is None:',
             '            return False',
@@ -3050,7 +3108,8 @@ try {
             this.setNextStatement(true, null);
             this.setColour(COULEUR_GROVE);
             this.setTooltip("Facultatif : sans ce bloc, le " + nomCapteur + " est pris sur P1. " +
-                "Fiable uniquement sur micro:bit V1 — sur V2, les mesures renvoient -1 (voir readme.txt §7).");
+                "Sur micro:bit V2, lecture expérimentale : -1 si la mesure échoue (voir readme.txt §7). " +
+                "L'AHT20/DHT20 (I²C) reste le plus fiable.");
         }};
         P.forBlock[type] = function(block) {
             piloteDht();
@@ -3067,9 +3126,9 @@ try {
                 ]), "GRANDEUR");
             this.setOutput(true, "Number");
             this.setColour(COULEUR_GROVE);
-            this.setTooltip("Renvoie -1 sur micro:bit V2 : ce capteur n'est fiable que sur le V1, " +
-                "protocole minuté en assembleur incompatible avec l'horloge du V2. Utiliser AHT20/DHT20 " +
-                "(module I²C ci-dessus) à la place si la carte peut être un V2.");
+            this.setTooltip("Mesure du capteur (une mesure par seconde au plus pour le DHT11, toutes les 2 s pour le DHT22). " +
+                "Sur micro:bit V2, lecture expérimentale : -1 si la mesure échoue, jamais une valeur fausse. " +
+                "L'AHT20/DHT20 (module I²C) reste le plus fiable.");
         }};
         P.forBlock[type] = function(block) {
             piloteDht();
@@ -5109,6 +5168,16 @@ try {
             // Config enregistree par une version anterieure aux couleurs : completer
             // les champs manquants plutot que de planter au premier acces.
             if (!config.categories.colors) config.categories.colors = {};
+            // Categorie « Affichage » renommee « Matrice LED » (oct. 2026) : une config enregistree avant garde ses reglages.
+            const RENOMMEES = { 'Affichage': 'Matrice LED' };
+            const c = config.categories;
+            for (const [ancien, nouveau] of Object.entries(RENOMMEES)) {
+                c.order = (c.order || []).map(n => (n === ancien ? nouveau : n));
+                c.hidden = (c.hidden || []).map(n => (n === ancien ? nouveau : n));
+                for (const table of [c.labels, c.colors]) {
+                    if (table && ancien in table && !(nouveau in table)) { table[nouveau] = table[ancien]; delete table[ancien]; }
+                }
+            }
             for (const parent in config.groupes) {
                 if (!config.groupes[parent].colors) config.groupes[parent].colors = {};
             }
@@ -5186,7 +5255,7 @@ try {
     const PALETTE_CATEGORIES = {
         'Boucles': '#fd7e14',
         'Temps': '#15aabf',
-        'Affichage': '#f03e3e',
+        'Matrice LED': '#f03e3e',
         'Entrées/Sorties': '#343a40',
         'Capteurs': '#d2cc79',
         'Actionneurs (Audio)': '#622d86',
@@ -5230,7 +5299,7 @@ try {
     // Ordre voulu par l'utilisateur (la table sert aussi d'ordre « par defaut » du panneau administrateur, qui part de
     // TOOLBOX_ORIGINAL). Les categories qui n'y figurent pas (robots, LiDAR) restent
     // a la suite, dans leur ordre d'origine. « Communication » est renommee « Radio ». « Graphique » n'existe pas encore.
-    const ORDRE_CATEGORIES = ['Boucles', 'Temps', 'Affichage', 'Entrées/Sorties', 'Capteurs', 'Actionneurs (Audio)', 'Servos', 'Radio', 'IA', 'Grove',
+    const ORDRE_CATEGORIES = ['Boucles', 'Temps', 'Matrice LED', 'Entrées/Sorties', 'Capteurs', 'Actionneurs (Audio)', 'Servos', 'Radio', 'IA', 'Grove',
                               'Logique', 'Variables', 'Maths', 'Texte', 'Fonctions', 'Listes'];
     const NOMS_ROBOTS = ['Maqueen Plus', 'Maqueen Lite', 'Kitrobot v2', 'LiDAR'];   // regroupes dans « Robots »
     const CATEGORIE_LISTES = {
@@ -5254,6 +5323,11 @@ try {
         const rang = c => { const i = ORDRE_CATEGORIES.indexOf(c.name); return i === -1 ? ORDRE_CATEGORIES.length : i; };
         const indexInitial = new Map(cats.map((c, i) => [c, i]));
         cats.sort((a, b) => rang(a) - rang(b) || indexInitial.get(a) - indexInitial.get(b));   // tri stable
+        // Sous-categories de Grove par ordre alphabetique (accents et majuscules ignores, ordre francais).
+        const grove = cats.find(c => c.kind === 'category' && c.name === 'Grove');
+        if (grove && Array.isArray(grove.contents)) {
+            grove.contents.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'fr', { sensitivity: 'base' }));
+        }
         // Les quatre robots deviennent des sous-menus d'une categorie « Robots », placee en dernier.
         const robots = cats.filter(c => c.kind === 'category' && NOMS_ROBOTS.includes(c.name));
         if (robots.length) {
@@ -5338,7 +5412,7 @@ try {
             ]
           },
           {
-            "kind": "category", "name": "Affichage", "colour": "160",
+            "kind": "category", "name": "Matrice LED", "colour": "160",
             "contents": [
               { "kind": "block", "type": "afficher_valeur", "inputs": { "VALEUR": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour !" } } } } },
               { "kind": "block", "type": "faire_defiler", "inputs": { "VALEUR": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour !" } } } } },
@@ -5575,10 +5649,24 @@ try {
             "kind": "category", "name": "Grove", "colour": String(COULEUR_GROVE),
             "contents": [
             {
+            // LED, barre de LED et ruban RGB reunis : un titre par module, un trait fin entre deux modules (comme « Affichage »).
             "kind": "category", "name": "LED", "colour": String(COULEUR_GROVE),
             "contents": [
+              { "kind": "label", "text": "LED" },
               { "kind": "block", "type": "grove_led_etat" },
-              { "kind": "block", "type": "grove_led_luminosite", "inputs": { "NIVEAU": { "shadow": { "type": "math_number", "fields": { "NUM": "1023" } } } } }
+              { "kind": "block", "type": "grove_led_luminosite", "inputs": { "NIVEAU": { "shadow": { "type": "math_number", "fields": { "NUM": "1023" } } } } },
+              { "kind": "label", "text": "Barre de LED", "web-class": "groupe-flyout" },
+              { "kind": "block", "type": "grove_barre_niveau", "inputs": { "NIVEAU": { "shadow": { "type": "math_number", "fields": { "NUM": "5" } } } } },
+              { "kind": "block", "type": "grove_barre_led", "inputs": { "LED": { "shadow": { "type": "math_number", "fields": { "NUM": "1" } } } } },
+              { "kind": "label", "text": "Ruban RGB (WS2813)", "web-class": "groupe-flyout" },
+              { "kind": "block", "type": "grove_ruban_definir" },
+              { "kind": "block", "type": "grove_ruban_couleur" },
+              { "kind": "block", "type": "grove_ruban_effacer" },
+              { "kind": "block", "type": "grove_ruban_couleur_index", "inputs": { "INDEX": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_ruban_effacer_index", "inputs": { "INDEX": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_ruban_perso", "inputs": { "R": { "shadow": { "type": "math_number", "fields": { "NUM": "255" } } }, "V": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "B": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_ruban_perso_index", "inputs": { "INDEX": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "R": { "shadow": { "type": "math_number", "fields": { "NUM": "255" } } }, "V": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "B": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_ruban_luminosite", "inputs": { "NIVEAU": { "shadow": { "type": "math_number", "fields": { "NUM": "100" } } } } }
             ]
             },
             {
@@ -5589,42 +5677,50 @@ try {
               ]
             },
             {
-            "kind": "category", "name": "Relais", "colour": String(COULEUR_GROVE),
+            // Relais, pilote moteur et pilote 16 servos reunis : un titre par module, un trait fin entre deux modules.
+            "kind": "category", "name": "Moteurs et relais", "colour": String(COULEUR_GROVE),
             "contents": [
-              { "kind": "block", "type": "grove_relais" }
+              { "kind": "label", "text": "Relais" },
+              { "kind": "block", "type": "grove_relais" },
+              { "kind": "label", "text": "Pilote moteur", "web-class": "groupe-flyout" },
+              { "kind": "block", "type": "grove_moteur_vitesse", "inputs": { "VITESSE": { "shadow": { "type": "math_number", "fields": { "NUM": "30" } } } } },
+              { "kind": "block", "type": "grove_moteur_action" },
+              { "kind": "block", "type": "grove_moteur_defaut" },
+              { "kind": "label", "text": "Pilote 16 servos (PCA9685)", "web-class": "groupe-flyout" },
+              { "kind": "block", "type": "grove_pca_init" },
+              { "kind": "block", "type": "grove_pca_angle", "inputs": { "VOIE": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "ANGLE": { "shadow": { "type": "math_number", "fields": { "NUM": "90" } } } } },
+              { "kind": "block", "type": "grove_pca_continu", "inputs": { "VOIE": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "VITESSE": { "shadow": { "type": "math_number", "fields": { "NUM": "50" } } } } }
               ]
             },
             {
-            "kind": "category", "name": "Ruban RGB (WS2813)", "colour": String(COULEUR_GROVE),
+            // Afficheur 4 digits, ecrans LCD (simple et RGB) et OLED reunis : un titre par module, un trait fin
+            // entre deux modules (classe groupe-flyout, trait dessine par decorerGroupesFlyout plus bas).
+            "kind": "category", "name": "Affichage", "colour": String(COULEUR_GROVE),
             "contents": [
-              { "kind": "block", "type": "grove_ruban_definir" },
-              { "kind": "block", "type": "grove_ruban_couleur" },
-              { "kind": "block", "type": "grove_ruban_effacer" },
-              { "kind": "block", "type": "grove_ruban_couleur_index", "inputs": { "INDEX": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
-              { "kind": "block", "type": "grove_ruban_effacer_index", "inputs": { "INDEX": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
-              { "kind": "block", "type": "grove_ruban_perso", "inputs": { "R": { "shadow": { "type": "math_number", "fields": { "NUM": "255" } } }, "V": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "B": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
-              { "kind": "block", "type": "grove_ruban_perso_index", "inputs": { "INDEX": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "R": { "shadow": { "type": "math_number", "fields": { "NUM": "255" } } }, "V": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "B": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
-              { "kind": "block", "type": "grove_ruban_luminosite", "inputs": { "NIVEAU": { "shadow": { "type": "math_number", "fields": { "NUM": "100" } } } } },
-
-              ]
-            },
-            {
-            "kind": "category", "name": "Afficheur 4 digits", "colour": String(COULEUR_GROVE),
-            "contents": [
+              { "kind": "label", "text": "Afficheur 4 digits" },
               { "kind": "block", "type": "grove_4d_definir" },
               { "kind": "block", "type": "grove_4d_nombre", "inputs": { "VALEUR": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
               { "kind": "block", "type": "grove_4d_chiffre", "inputs": { "VALEUR": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "POSITION": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
               { "kind": "block", "type": "grove_4d_points" },
               { "kind": "block", "type": "grove_4d_luminosite", "inputs": { "NIVEAU": { "shadow": { "type": "math_number", "fields": { "NUM": "7" } } } } },
               { "kind": "block", "type": "grove_4d_effacer" },
-
-              ]
-            },
-            {
-            "kind": "category", "name": "Barre de LED", "colour": String(COULEUR_GROVE),
-            "contents": [
-              { "kind": "block", "type": "grove_barre_niveau", "inputs": { "NIVEAU": { "shadow": { "type": "math_number", "fields": { "NUM": "5" } } } } },
-              { "kind": "block", "type": "grove_barre_led", "inputs": { "LED": { "shadow": { "type": "math_number", "fields": { "NUM": "1" } } } } }
+              { "kind": "label", "text": "Écran LCD 16x2", "web-class": "groupe-flyout" },
+              { "kind": "block", "type": "grove_lcd_init" },
+              { "kind": "block", "type": "grove_lcd_texte", "inputs": { "TEXTE": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour" } } }, "X": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "Y": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_lcd_effacer" },
+              { "kind": "block", "type": "grove_lcd_alimenter" },
+              { "kind": "label", "text": "Écran LCD 16x2 RGB (rétroéclairage couleur)", "web-class": "groupe-flyout" },
+              { "kind": "block", "type": "grove_lcdrgb_init" },
+              { "kind": "block", "type": "grove_lcdrgb_texte", "inputs": { "TEXTE": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour" } } }, "X": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "Y": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_lcdrgb_effacer" },
+              { "kind": "block", "type": "grove_lcdrgb_alimenter" },
+              { "kind": "block", "type": "grove_lcdrgb_fond_couleur" },
+              { "kind": "block", "type": "grove_lcdrgb_fond_rvb", "inputs": { "R": { "shadow": { "type": "math_number", "fields": { "NUM": "255" } } }, "V": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "B": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_lcdrgb_retro" },
+              { "kind": "label", "text": "Écran OLED 0,96″", "web-class": "groupe-flyout" },
+              { "kind": "block", "type": "grove_oled_init" },
+              { "kind": "block", "type": "grove_oled_texte", "inputs": { "TEXTE": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour" } } }, "X": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "Y": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
+              { "kind": "block", "type": "grove_oled_effacer" }
               ]
             },
             {
@@ -5680,40 +5776,28 @@ try {
               ]
             },
             {
-            "kind": "category", "name": "Température & humidité", "colour": String(COULEUR_GROVE),
+            // Capteurs d'environnement reunis (temperature et humidite, DHT11, DHT22, CO2, pression, qualite de l'air) :
+            // un titre par module, un trait fin entre deux modules (comme « Affichage »).
+            "kind": "category", "name": "Environnement", "colour": String(COULEUR_GROVE),
             "contents": [
+              { "kind": "label", "text": "Température & humidité (capteur I²C)" },
               { "kind": "block", "type": "grove_th_init" },
               { "kind": "block", "type": "grove_th_mesure" },
+              { "kind": "label", "text": "DHT11", "web-class": "groupe-flyout" },
               { "kind": "block", "type": "grove_dht11_definir" },
               { "kind": "block", "type": "grove_dht11_mesure" },
+              { "kind": "label", "text": "DHT22", "web-class": "groupe-flyout" },
               { "kind": "block", "type": "grove_dht22_definir" },
               { "kind": "block", "type": "grove_dht22_mesure" },
-
-              ]
-            },
-            {
-            "kind": "category", "name": "Écran LCD 16x2", "colour": String(COULEUR_GROVE),
-            "contents": [
-              { "kind": "block", "type": "grove_lcd_init" },
-              { "kind": "block", "type": "grove_lcd_texte", "inputs": { "TEXTE": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour" } } }, "X": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "Y": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
-              { "kind": "block", "type": "grove_lcd_effacer" },
-              { "kind": "block", "type": "grove_lcd_alimenter" },
-              { "kind": "block", "type": "grove_lcdrgb_init" },
-              { "kind": "block", "type": "grove_lcdrgb_texte", "inputs": { "TEXTE": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour" } } }, "X": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "Y": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
-              { "kind": "block", "type": "grove_lcdrgb_effacer" },
-              { "kind": "block", "type": "grove_lcdrgb_alimenter" },
-              { "kind": "block", "type": "grove_lcdrgb_fond_couleur" },
-              { "kind": "block", "type": "grove_lcdrgb_fond_rvb", "inputs": { "R": { "shadow": { "type": "math_number", "fields": { "NUM": "255" } } }, "V": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "B": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
-              { "kind": "block", "type": "grove_lcdrgb_retro" },
-
-              ]
-            },
-            {
-            "kind": "category", "name": "Écran OLED 0,96″", "colour": String(COULEUR_GROVE),
-            "contents": [
-              { "kind": "block", "type": "grove_oled_init" },
-              { "kind": "block", "type": "grove_oled_texte", "inputs": { "TEXTE": { "shadow": { "type": "text", "fields": { "TEXT": "Bonjour" } } }, "X": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "Y": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } } } },
-              { "kind": "block", "type": "grove_oled_effacer" }
+              { "kind": "label", "text": "CO₂ (SCD30 / SCD41)", "web-class": "groupe-flyout" },
+              { "kind": "block", "type": "grove_scd30_init" },
+              { "kind": "block", "type": "grove_scd30_lire" },
+              { "kind": "block", "type": "grove_scd41_init" },
+              { "kind": "block", "type": "grove_scd41_lire" },
+              { "kind": "label", "text": "Pression (BMP280)", "web-class": "groupe-flyout" },
+              { "kind": "block", "type": "grove_bmp280" },
+              { "kind": "label", "text": "Qualité de l'air (SGP30)", "web-class": "groupe-flyout" },
+              { "kind": "block", "type": "grove_sgp30" }
               ]
             },
             {
@@ -5722,44 +5806,6 @@ try {
               { "kind": "block", "type": "grove_couleur_init" },
               { "kind": "block", "type": "grove_couleur_lire" },
 
-              ]
-            },
-            {
-            "kind": "category", "name": "Pilote moteur", "colour": String(COULEUR_GROVE),
-            "contents": [
-              { "kind": "block", "type": "grove_moteur_vitesse", "inputs": { "VITESSE": { "shadow": { "type": "math_number", "fields": { "NUM": "30" } } } } },
-              { "kind": "block", "type": "grove_moteur_action" },
-              { "kind": "block", "type": "grove_moteur_defaut" },
-
-              ]
-            },
-            {
-            "kind": "category", "name": "Pilote 16 servos (PCA9685)", "colour": String(COULEUR_GROVE),
-            "contents": [
-              { "kind": "block", "type": "grove_pca_init" },
-              { "kind": "block", "type": "grove_pca_angle", "inputs": { "VOIE": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "ANGLE": { "shadow": { "type": "math_number", "fields": { "NUM": "90" } } } } },
-              { "kind": "block", "type": "grove_pca_continu", "inputs": { "VOIE": { "shadow": { "type": "math_number", "fields": { "NUM": "0" } } }, "VITESSE": { "shadow": { "type": "math_number", "fields": { "NUM": "50" } } } } }
-              ]
-            },
-            {
-            "kind": "category", "name": "CO₂ (SCD30 / SCD41)", "colour": String(COULEUR_GROVE),
-            "contents": [
-              { "kind": "block", "type": "grove_scd30_init" },
-              { "kind": "block", "type": "grove_scd30_lire" },
-              { "kind": "block", "type": "grove_scd41_init" },
-              { "kind": "block", "type": "grove_scd41_lire" }
-            ]
-            },
-            {
-            "kind": "category", "name": "Pression (BMP280)", "colour": String(COULEUR_GROVE),
-            "contents": [
-              { "kind": "block", "type": "grove_bmp280" }
-              ]
-            },
-            {
-            "kind": "category", "name": "Qualité de l'air (SGP30)", "colour": String(COULEUR_GROVE),
-            "contents": [
-              { "kind": "block", "type": "grove_sgp30" }
               ]
             },
             {
@@ -5881,7 +5927,7 @@ try {
 
     // Sous-menus masques la premiere fois que l'admin les rencontre (avant
     // toute config sauvegardee pour ce parent). Rien aujourd'hui — le DHT11 et
-    // le DHT22 vivent dans « Température & humidité », visibles comme le
+    // le DHT22 vivent dans « Environnement » (Grove), visibles comme le
     // reste : seuls le tooltip et le refus au runtime sur V2 (voir
     // piloteDht()) les distinguent desormais. Mecanisme garde pour un usage
     // futur.
@@ -6627,6 +6673,26 @@ try {
     // masquage, ni au retour de la colonne apres le lacher. Ecart residuel (defilement borne par Blockly) : la
     // translation du canevas est recalee directement.
     const boiteAOutils = window.workspace.getToolbox();
+
+    // Trait fin et continu au-dessus des titres de groupe de la colonne de blocs (titres « web-class »: groupe-flyout,
+    // par exemple Grove > Affichage) : Blockly ne sait faire que des espaces, le trait est ajoute a chaque ouverture.
+    const tiroir = boiteAOutils && boiteAOutils.getFlyout && boiteAOutils.getFlyout();
+    if (tiroir && typeof tiroir.show === 'function') {
+        const afficherTiroir = tiroir.show.bind(tiroir);
+        tiroir.show = function (contenu) {
+            afficherTiroir(contenu);
+            const largeur = tiroir.getWidth ? tiroir.getWidth() : 0;
+            tiroir.getWorkspace().getCanvas().querySelectorAll('.groupe-flyout').forEach(titre => {
+                if (titre.querySelector('.trait-groupe-flyout')) return;
+                const x = titre.transform.baseVal.consolidate() ? titre.transform.baseVal.consolidate().matrix.e : 0;
+                const trait = Blockly.utils.dom.createSvgElement('line', {
+                    class: 'trait-groupe-flyout', x1: 0, y1: -12, x2: Math.max(40, largeur - 2 * x), y2: -12,
+                }, null);
+                titre.insertBefore(trait, titre.firstChild);
+            });
+        };
+    }
+
     if (boiteAOutils) {
         const espace = window.workspace;
         const origineX = () => espace.getMetrics().absoluteLeft + espace.scrollX;   // abscisse ecran de l'origine du canevas
@@ -6797,6 +6863,17 @@ try {
         }
     });
 
+    const THEME_SALON = Blockly.Theme.defineTheme('salonMicrobitV2', {   // salon Educatech Expo 2026 (bandeau.js)
+        base: THEME_SOMBRE_NORMAL,
+        fontStyle: POLICE_BLOCS,
+        componentStyles: {
+            workspaceBackgroundColour: '#12163a',
+            toolboxBackgroundColour: '#0c1030',
+            flyoutBackgroundColour: '#171c47',
+            scrollbarColour: '#4b5bb0'
+        }
+    });
+
     function themeClairActif() {
         return document.documentElement.dataset.theme === 'light';
     }
@@ -6805,7 +6882,7 @@ try {
     }
     function appliquerThemeBlockly() {
         const clair = themeClairActif(), eleve = contrasteEleveActif();
-        const saison = { halloween: THEME_HALLOWEEN, noel: THEME_NOEL }[document.documentElement.dataset.saison];
+        const saison = { halloween: THEME_HALLOWEEN, noel: THEME_NOEL, salon: THEME_SALON }[document.documentElement.dataset.saison];
         const theme = clair
             ? (eleve ? THEME_CLAIR_ELEVE : THEME_CLAIR_NORMAL)
             : (eleve ? THEME_SOMBRE_ELEVE : (saison || THEME_SOMBRE_NORMAL));
@@ -7064,6 +7141,7 @@ try {
         return ligne;
     }
 
+    window.consoleAjouterLigne = (texte, source) => ecrireConsole(String(texte) + '\n', source || 'info');   // radio entre simulateurs
     function ecrireConsole(texte, source) {
         if (!consoleSortie) return;
         if (source !== 'info') ouvrirConsoleAuto();
@@ -8418,11 +8496,11 @@ try {
     exemple(['grove_th_init'], 'Humidité du capteur', "Initialise le capteur, puis affiche l'humidité (en %) chaque seconde.",
         [exStart(exB('grove_th_init')), exLoop(exAff(exB('grove_th_mesure', { GRANDEUR: 'h' })), exWait(1))]);
     exemple(['grove_dht11_definir', 'grove_dht11_mesure'], 'Température du DHT11',
-        "Branche le DHT11 sur P1 et affiche la température chaque seconde. Fiable seulement sur micro:bit V1.",
+        "Branche le DHT11 sur P1 et affiche la température chaque seconde. Sur micro:bit V2, lecture expérimentale (-1 si la mesure échoue).",
         [exStart(exB('grove_dht11_definir', { BROCHE: 'pin1' })),
          exLoop(exAff(exB('grove_dht11_mesure', { GRANDEUR: 'c' })), exWait(1))]);
     exemple(['grove_dht22_definir', 'grove_dht22_mesure'], 'Température du DHT22',
-        "Branche le DHT22 sur P1 et affiche la température chaque seconde. Fiable seulement sur micro:bit V1.",
+        "Branche le DHT22 sur P1 et affiche la température chaque seconde. Sur micro:bit V2, lecture expérimentale (-1 si la mesure échoue).",
         [exStart(exB('grove_dht22_definir', { BROCHE: 'pin1' })),
          exLoop(exAff(exB('grove_dht22_mesure', { GRANDEUR: 'c' })), exWait(1))]);
     exemple(['grove_couleur_init', 'grove_couleur_lire'], 'Lire le rouge détecté',
@@ -8645,7 +8723,7 @@ try {
     // Meme fenetre que l'aide d'un bloc, sans code ni exemple.
     const TEXTE_AIDE_CONSOLE =
         "La console affiche les messages écrits par le programme avec le bloc « afficher dans la console » " +
-        "(catégorie Affichage). Elle se trouve en bas de l'application.\n\n" +
+        "(catégorie Matrice LED). Elle se trouve en bas de l'application.\n\n" +
         "AFFICHER OU MASQUER\n" +
         "• Bouton « Console » de la barre d'outils, ou croix ✕ de la console.\n" +
         "• Elle s'ouvre toute seule à la première ligne reçue, sauf si vous l'avez fermée vous-même.\n" +
@@ -8937,9 +9015,10 @@ try {
     // Chaque fonction `on_…` que peuvent produire les blocs « lorsque … » doit
     // figurer ici, sinon le bloc correspondant ne serait jamais exécuté.
     const GESTIONNAIRES = [
-        ['def on_button_pressed_a(',  'if button_a.is_pressed(): on_button_pressed_a()'],
-        ['def on_button_pressed_b(',  'if button_b.is_pressed(): on_button_pressed_b()'],
-        ['def on_button_pressed_ab(', 'if button_a.is_pressed() and button_b.is_pressed(): on_button_pressed_ab()'],
+        // Un declenchement par appui (voir P.forBlock['lorsque_bouton']) ; A+B en premier : il consomme les appuis.
+        ['def on_button_pressed_ab(', 'if _boutons_ab(): on_button_pressed_ab()'],
+        ['def on_button_pressed_a(',  'if button_a.was_pressed(): on_button_pressed_a()'],
+        ['def on_button_pressed_b(',  'if button_b.was_pressed(): on_button_pressed_b()'],
         ['def on_logo_touched(',      'if pin_logo.is_touched(): on_logo_touched()'],
         ['def on_logo_released(',     'if not pin_logo.is_touched(): on_logo_released()'],
         ['def on_pin_pin0_touched(',  'if pin0.is_touched(): on_pin_pin0_touched()'],
@@ -11008,6 +11087,55 @@ try {
         return m;
     };
 
+    // ---- Radio entre simulateurs (multi-editeur radio, multi.html, ou deux onglets du meme navigateur) ----
+    // radio.send() du simulateur publie le message sur un BroadcastChannel ; chaque autre editeur dont la radio est
+    // allumee sur le meme groupe et le meme canal le recoit comme avec « Simuler la reception ». Reglages par defaut de
+    // MicroPython : groupe 0, canal 7. Tant que le programme recepteur n'a pas tourne, ses reglages sont lus dans son
+    // code (radio.on(), radio.config(group=N) / channel=N ecrits en nombres).
+    const ID_RADIO = Math.random().toString(36).slice(2);
+    const radioSimu = { connue: false, code: '', allumee: false, groupe: 0, canal: 7 };
+    window.simu_radioEtat = function(quoi, valeur) {
+        const code = String(window.currentPythonCode || '');
+        if (!radioSimu.connue || radioSimu.code !== code) Object.assign(radioSimu, reglagesRadioDuCode(), { connue: true, code });
+        radioSimu[quoi] = quoi === 'allumee' ? !!valeur : Number(valeur);
+    };
+    function reglagesRadioDuCode() {
+        const code = String(window.currentPythonCode || '');
+        const nombre = (motif, defaut) => { const m = code.match(motif); return m ? Number(m[1]) : defaut; };
+        return { allumee: /radio\.on\(\)/.test(code), groupe: nombre(/radio\.config\([^)]*group\s*=\s*(\d+)/, 0),
+                 canal: nombre(/radio\.config\([^)]*channel\s*=\s*(\d+)/, 7) };
+    }
+    // Reglages vus pendant l'execution, tant que le programme n'a pas change depuis ; sinon ceux ecrits dans le code.
+    const reglagesRadio = () => (radioSimu.connue && radioSimu.code === String(window.currentPythonCode || '') ? radioSimu : reglagesRadioDuCode());
+    let busRadio = null;
+    try { busRadio = 'BroadcastChannel' in window ? new BroadcastChannel('microbit-radio-v1') : null; } catch (erreur) { busRadio = null; }
+    window.simu_radioEmettre = function(message) {
+        const r = reglagesRadio();
+        if (!busRadio || !r.allumee) return;
+        busRadio.postMessage({ id: ID_RADIO, groupe: r.groupe, canal: r.canal, message: String(message) });
+        if (typeof window.consoleAjouterLigne === 'function') window.consoleAjouterLigne('📡 envoyé : ' + message, 'info');
+    };
+    // Messages recus en file, un seul par declenchement (comme « Simuler la reception », qui poursuit la simulation
+    // en cours ou la lance) ; 60 ms entre deux messages pour que chacun soit traite par le programme.
+    const fileRadio = [];
+    function distribuerRadio() {
+        if (!fileRadio.length) return;
+        messageRadioEnAttente = fileRadio.shift();
+        if (typeof window.consoleAjouterLigne === 'function') window.consoleAjouterLigne('📡 reçu : ' + messageRadioEnAttente, 'info');
+        window.simu_continuerOuLancer();
+        messageRadioEnAttente = '';
+        if (fileRadio.length) setTimeout(distribuerRadio, 60);
+    }
+    if (busRadio) {
+        busRadio.onmessage = (ev) => {
+            const d = ev.data || {}, r = reglagesRadio();
+            if (d.id === ID_RADIO || !r.allumee || d.groupe !== r.groupe || d.canal !== r.canal) return;
+            if (typeof window.simu_continuerOuLancer !== 'function') return;
+            if (fileRadio.length < 20) fileRadio.push(String(d.message));   // au-dela, perdus comme sur la carte
+            if (fileRadio.length === 1) distribuerRadio();
+        };
+    }
+
     window.simu_servo = function(broche, mode, valeur, angle) {
         window.simuQueue.push({ type: 'servo', broche: String(broche), mode: String(mode),
                                 valeur: Math.round(Number(valeur)), angle: Number(angle) });
@@ -12279,9 +12407,13 @@ try {
     if (curseurJY) curseurJY.addEventListener('input', () => { valeurJY.textContent = curseurJY.value; });
     // Bouton poussoir Grove : enfonce tant que le pointeur (souris, doigt) appuie dessus.
     if (boutonPoussoirGrove) {
-        const regler = enfonce => () => { boutonPoussoirEnfonce = enfonce; boutonPoussoirGrove.classList.toggle('enfonce', enfonce); };
+        // Le capuchon dessine reste enfonce tant qu'on appuie, ou tant que « maintenu enfonce » est coche.
+        const majVisuel = () => boutonPoussoirGrove.classList.toggle('enfonce',
+            boutonPoussoirEnfonce || !!(caseBoutonPoussoir && caseBoutonPoussoir.checked));
+        const regler = enfonce => () => { boutonPoussoirEnfonce = enfonce; majVisuel(); };
         boutonPoussoirGrove.addEventListener('pointerdown', regler(true));
         ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => boutonPoussoirGrove.addEventListener(t, regler(false)));
+        if (caseBoutonPoussoir) caseBoutonPoussoir.addEventListener('change', majVisuel);
     }
     const visuelPir = document.getElementById('grove-pir-visuel');
     if (visuelPir && casePir) {
@@ -12664,6 +12796,15 @@ try {
     // environnements plutot que de compter sur une difference de simulateur.
     window.simu_btnA_clics = 0;
     window.simu_btnB_clics = 0;
+    // Appui memorise pour button_x.was_pressed() : pose a l'appui, consomme a la lecture (un declenchement par appui).
+    window.simu_appuiA = false;
+    window.simu_appuiB = false;
+    window.simu_consommerAppui = function(bouton) {
+        const cle = bouton === 'a' ? 'simu_appuiA' : bouton === 'b' ? 'simu_appuiB' : null;
+        if (!cle || !window[cle]) return false;
+        window[cle] = false;
+        return true;
+    };
     window.simu_lireClicsBouton = function(bouton) {
         if (bouton === 'a') { const n = window.simu_btnA_clics; window.simu_btnA_clics = 0; return n; }
         if (bouton === 'b') { const n = window.simu_btnB_clics; window.simu_btnB_clics = 0; return n; }
@@ -12758,6 +12899,7 @@ try {
 
         window.simu_btnA_pressed = false;
         window.simu_btnB_pressed = false;
+        window.simu_appuiA = window.simu_appuiB = false;
         window.simu_logo_pressed = false;
         window.simu_pin0_pressed = false;
         window.simu_pin1_pressed = false;
@@ -12828,8 +12970,8 @@ try {
                 // Compte aussi comme un "clic" pour get_presses() (voir plus
                 // haut) — uniquement les boutons A/B, seuls concernés par ce
                 // bloc (pas les broches ni le logo).
-                if (idHTML === 'btn-a') window.simu_btnA_clics++;
-                if (idHTML === 'btn-b') window.simu_btnB_clics++;
+                if (idHTML === 'btn-a') { window.simu_btnA_clics++; window.simu_appuiA = true; }
+                if (idHTML === 'btn-b') { window.simu_btnB_clics++; window.simu_appuiB = true; }
                 // Un passage (5 tours, voir simu_lancerTours) est déjà en
                 // cours : le drapeau qu'on vient de poser sera vu par ses
                 // prochains tours tout seul. Relancer ici redémarrerait tout
@@ -12972,6 +13114,7 @@ try {
         btnAB.addEventListener('mousedown', () => {
             window.simu_btnA_pressed = true;
             window.simu_btnB_pressed = true;
+            window.simu_appuiA = window.simu_appuiB = true;   // comme sur la carte : A et B sont tous deux appuyes
             window.simu_continuerOuLancer();
         });
         btnAB.addEventListener('mouseup', () => {
