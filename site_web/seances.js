@@ -482,7 +482,7 @@ function brancher() {
     // Reprise apres un rechargement de la page : la seance reste ouverte, le travail aussi.
     try {
         const a = JSON.parse(localStorage.getItem(CLE_ACTIVE) || 'null');
-        if (a && a.def && a.eleves && moteur()) moteur().activer(a.def, a.eleves, a.groupe);
+        if (a && a.def && a.eleves && moteur()) { moteur().activer(a.def, a.eleves, a.groupe); moteur().reprendreEvaluation(); }
     } catch (e) { /* rien a reprendre */ }
     majMenu();
 }
