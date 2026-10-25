@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "blockly_ts_adacraft_vilain",
+      "name": "blockly_ts_adacraft_minimal",
       "runtimeExecutable": "python",
       "runtimeArgs": ["app.py"],
       "port": 8000
